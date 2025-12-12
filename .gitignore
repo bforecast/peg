@@ -1,0 +1,9 @@
+__pycache__/
+*.pyc
+.env
+.env.example
+.DS_Store
+earnings-worker/node_modules/
+earnings-worker/.wrangler/
+cache/
+*.log
