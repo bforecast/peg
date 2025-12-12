@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Forward PEG Analysis</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1/dist/chartjs-plugin-zoom.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #F6F6F6;
+            color: #0F1419;
+        }
+
+        .header {
+            background: #0F1419;
+            color: white;
+            padding: 16px 24px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            font-size: 20px;
+            font-weight: 600;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+
+        .search-section {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 24px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .search-box {
+            display: flex;
+            gap: 12px;
+        }
+
+        input {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid #E1E8ED;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+
+        button {
+            padding: 12px 24px;
+            background: #0078FF;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+
+        button:hover {
+            background: #0066DD;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .metric-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: #657786;
+            text-transform: uppercase;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .metric-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: #0F1419;
+        }
+
+        .chart-container {
+            background: white;
+            padding: 24px;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 24px;
+        }
+
+        .chart-wrapper {
+            height: 400px;
+            position: relative;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .status {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 16px;
+        }
+
+        .status.error {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+
+        .status.success {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <h1>Forward PEG Analysis - QQQ Stocks</h1>
+    </div>
+
+    <div class="container">
+        <div class="search-section">
+            <div class="search-box">
+                <input type="text" id="symbolInput" placeholder="Enter stock symbol (e.g., AAPL)" />
+                <button onclick="updateData()">Update Data</button>
+                <button onclick="analyzeStock()">Analyze</button>
+            </div>
+            <div id="statusDiv"></div>
+        </div>
+
+        <div id="resultsSection" class="hidden">
+            <div class="metrics-grid">
+                <div class="metric-card">
+                    <div class="metric-label">Current Price</div>
+                    <div class="metric-value" id="stockPrice">-</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Forward EPS</div>
+                    <div class="metric-value" id="forwardEPS">-</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Forward P/E</div>
+                    <div class="metric-value" id="forwardPE">-</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">Growth Rate</div>
+                    <div class="metric-value" id="growthRate">-</div>
+                </div>
+                <div class="metric-card">
+                    <div class="metric-label">PEG Ratio</div>
+                    <div class="metric-value" id="pegRatio">-</div>
+                </div>
+            </div>
+
+            <div class="chart-container">
+                <h2 style="margin-bottom: 16px;">Price & Forward PEG Trend</h2>
+                <div class="chart-wrapper">
+                    <canvas id="pegChart"></canvas>
+                </div>
+                <p style="margin-top: 12px; font-size: 14px; color: #657786;">
+                    💡 Tip: Scroll to zoom, Ctrl+Drag to pan, Double-click to reset
+                </p>
+            </div>
+
+            <div class="chart-container">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px;">
+                    <h2>Historical Data</h2>
+                    <button onclick="downloadCSV()" style="padding: 8px 16px; font-size: 14px;">
+                        📥 Download CSV
+                    </button>
+                </div>
+                <div style="max-height: 400px; overflow-y: auto; border: 1px solid #E1E8ED; border-radius: 6px;">
+                    <table style="width: 100%; border-collapse: collapse;">
+                        <thead style="position: sticky; top: 0; background: #F6F6F6; z-index: 1;">
+                            <tr>
+                                <th
+                                    style="padding: 12px; text-align: left; border-bottom: 2px solid #E1E8ED; font-weight: 600;">
+                                    Date</th>
+                                <th
+                                    style="padding: 12px; text-align: right; border-bottom: 2px solid #E1E8ED; font-weight: 600;">
+                                    Price</th>
+                                <th
+                                    style="padding: 12px; text-align: right; border-bottom: 2px solid #E1E8ED; font-weight: 600;">
+                                    Forward EPS</th>
+                                <th
+                                    style="padding: 12px; text-align: right; border-bottom: 2px solid #E1E8ED; font-weight: 600;">
+                                    Forward P/E</th>
+                                <th
+                                    style="padding: 12px; text-align: right; border-bottom: 2px solid #E1E8ED; font-weight: 600;">
+                                    Growth Rate</th>
+                                <th
+                                    style="padding: 12px; text-align: right; border-bottom: 2px solid #E1E8ED; font-weight: 600;">
+                                    PEG Ratio</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dataTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let chart = null;
+
+        function showStatus(message, type = 'info') {
+            const statusDiv = document.getElementById('statusDiv');
+            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+        }
+
+        async function updateData() {
+            const symbol = document.getElementById('symbolInput').value.toUpperCase().trim();
+            if (!symbol) {
+                showStatus('Please enter a symbol', 'error');
+                return;
+            }
+
+            showStatus('Updating data...', 'info');
+
+            try {
+                const pricesResp = await fetch(`/api/update-prices?symbol=${symbol}`, { method: 'POST' });
+                const pricesData = await pricesResp.json();
+
+                if (pricesData.error) {
+                    showStatus(`Error: ${pricesData.error}`, 'error');
+                } else {
+                    showStatus(`Updated ${pricesData.count} price records`, 'success');
+                    setTimeout(() => analyzeStock(), 2000);
+                }
+            } catch (e) {
+                showStatus(`Error: ${e.message}`, 'error');
+            }
+        }
+
+        async function analyzeStock() {
+            const symbol = document.getElementById('symbolInput').value.toUpperCase().trim();
+            if (!symbol) {
+                showStatus('Please enter a symbol', 'error');
+                return;
+            }
+
+            showStatus('Analyzing...', 'info');
+            document.getElementById('resultsSection').classList.add('hidden');
+
+            try {
+                const response = await fetch(`/api/forward-peg?symbol=${symbol}`);
+                const data = await response.json();
+
+                if (data.error) {
+                    showStatus(`Error: ${data.error}`, 'error');
+                    return;
+                }
+
+                displayResults(data);
+                document.getElementById('statusDiv').innerHTML = '';
+                document.getElementById('resultsSection').classList.remove('hidden');
+            } catch (e) {
+                showStatus(`Error: ${e.message}`, 'error');
+            }
+        }
+
+        function displayResults(data) {
+            // CRITICAL: Use LAST element (most recent data)
+            const latest = data.timeSeries[data.timeSeries.length - 1];
+
+            // Update metrics
+            document.getElementById('stockPrice').textContent = `$${parseFloat(latest.price).toFixed(2)}`;
+            document.getElementById('forwardEPS').textContent = `$${data.currentForwardEPS}`;
+            document.getElementById('forwardPE').textContent = latest.forwardPE.toFixed(2);
+            document.getElementById('growthRate').textContent = latest.growthRate ? `${latest.growthRate}%` : 'N/A';
+            document.getElementById('pegRatio').textContent = latest.peg || 'N/A';
+
+            renderChart(data.timeSeries);
+            populateDataTable(data.timeSeries);
+
+            // Store data globally for CSV download
+            window.currentData = data;
+        }
+
+        function populateDataTable(timeSeries) {
+            const tbody = document.getElementById('dataTableBody');
+            tbody.innerHTML = '';
+
+            // Reverse to show newest first
+            const reversedData = [...timeSeries].reverse();
+
+            reversedData.forEach(row => {
+                const tr = document.createElement('tr');
+                tr.style.borderBottom = '1px solid #E1E8ED';
+                tr.innerHTML = `
+                    <td style="padding: 12px;">${row.date}</td>
+                    <td style="padding: 12px; text-align: right;">$${parseFloat(row.price).toFixed(2)}</td>
+                    <td style="padding: 12px; text-align: right;">$${parseFloat(row.forwardEPS).toFixed(2)}</td>
+                    <td style="padding: 12px; text-align: right;">${row.forwardPE.toFixed(2)}</td>
+                    <td style="padding: 12px; text-align: right;">${row.growthRate || 'N/A'}</td>
+                    <td style="padding: 12px; text-align: right;">${row.peg || 'N/A'}</td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        function downloadCSV() {
+            if (!window.currentData) {
+                alert('No data to download. Please analyze a stock first.');
+                return;
+            }
+
+            const data = window.currentData;
+            const symbol = document.getElementById('symbolInput').value.toUpperCase();
+
+            // Create CSV content
+            let csv = 'Date,Price,Forward EPS,Forward P/E,Growth Rate (%),PEG Ratio\n';
+
+            data.timeSeries.forEach(row => {
+                csv += `${row.date},${row.price},${row.forwardEPS},${row.forwardPE.toFixed(2)},${row.growthRate || ''},${row.peg || ''}\n`;
+            });
+
+            // Create download link
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `${symbol}_forward_peg_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        function renderChart(timeSeries) {
+            const ctx = document.getElementById('pegChart').getContext('2d');
+
+            if (chart) {
+                chart.destroy();
+            }
+
+            const labels = timeSeries.map(d => d.date);
+            const prices = timeSeries.map(d => parseFloat(d.price));
+            const pegs = timeSeries.map(d => d.peg ? parseFloat(d.peg) : null);
+
+            chart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [
+                        {
+                            label: 'Price',
+                            data: prices,
+                            borderColor: '#0078FF',
+                            backgroundColor: 'rgba(0, 120, 255, 0.1)',
+                            yAxisID: 'y',
+                            tension: 0.1,
+                            borderWidth: 2
+                        },
+                        {
+                            label: 'PEG Ratio',
+                            data: pegs,
+                            borderColor: '#FF6B00',
+                            backgroundColor: 'rgba(255, 107, 0, 0.1)',
+                            yAxisID: 'y1',
+                            tension: 0.1,
+                            borderWidth: 2
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    interaction: {
+                        mode: 'index',
+                        intersect: false,
+                    },
+                    scales: {
+                        x: {
+                            display: true,
+                            title: {
+                                display: true,
+                                text: 'Date'
+                            }
+                        },
+                        y: {
+                            type: 'linear',
+                            display: true,
+                            position: 'left',
+                            title: {
+                                display: true,
+                                text: 'Price ($)'
+                            }
+                        },
+                        y1: {
+                            type: 'linear',
+                            display: true,
+                            position: 'right',
+                            title: {
+                                display: true,
+                                text: 'PEG Ratio'
+                            },
+                            grid: {
+                                drawOnChartArea: false
+                            }
+                        }
+                    },
+                    plugins: {
+                        zoom: {
+                            zoom: {
+                                wheel: {
+                                    enabled: true,
+                                    speed: 0.1
+                                },
+                                pinch: {
+                                    enabled: true
+                                },
+                                mode: 'x'
+                            },
+                            pan: {
+                                enabled: true,
+                                mode: 'x',
+                                modifierKey: 'ctrl'
+                            },
+                            limits: {
+                                x: { min: 'original', max: 'original' }
+                            }
+                        },
+                        legend: {
+                            display: true,
+                            position: 'top'
+                        },
+                        tooltip: {
+                            enabled: true
+                        }
+                    }
+                }
+            });
+        }
+
+        // Auto-analyze on load if symbol provided
+        window.addEventListener('load', () => {
+            const urlParams = new URLSearchParams(window.location.search);
+            const symbol = urlParams.get('symbol');
+            if (symbol) {
+                document.getElementById('symbolInput').value = symbol;
+                analyzeStock();
+            }
+        });
+    </script>
+</body>
+
+</html>
