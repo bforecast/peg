@@ -19,6 +19,7 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 // Serve Dashboard UI (Main Page)
 app.get('/', (c) => {
+    c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
     return c.html(DASHBOARD_HTML);
 });
 
@@ -27,10 +28,6 @@ app.get('/peg', (c) => {
     return c.html(UI_HTML);
 });
 
-// Dashboard Data API
-app.get('/api/dashboard-data', async (c) => {
-    return c.json(await getDashboardData(c.env));
-});
 
 // --- EXISTING ROUTES ---
 app.get('/api/earnings', async (c) => {
@@ -57,13 +54,11 @@ app.get('/api/prices', async (c) => {
 });
 
 // Calculate and return Forward PEG data
-app.get('/api/forward-peg', async (c) => {
-    const symbol = c.req.query('symbol')?.toUpperCase();
-    if (!symbol) return c.json({ error: 'Missing symbol parameter' }, 400);
-
+app.get('/api/dashboard-data', async (c) => {
     try {
-        const pegData = await calculateForwardPEG(c.env, symbol);
-        return c.json(pegData);
+        const groupId = c.req.query('groupId');
+        const data = await getDashboardData(c.env, groupId);
+        return c.json(data);
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     }
@@ -99,15 +94,128 @@ app.post('/api/update', async (c) => {
     }
 });
 
+// --- GROUP MANAGEMENT ROUTES ---
+
+// List Groups
+app.get('/api/groups', async (c) => {
+    try {
+        const { results } = await c.env.DB.prepare('SELECT * FROM groups ORDER BY created_at DESC').all();
+        return c.json(results || []);
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// Create Group
+app.post('/api/groups', async (c) => {
+    try {
+        const body = await c.req.json();
+        const { name, description } = body;
+        if (!name) return c.json({ error: 'Name is required' }, 400);
+
+        const { meta } = await c.env.DB.prepare(
+            'INSERT INTO groups (name, description) VALUES (?, ?)'
+        ).bind(name, description || null).run();
+
+        return c.json({ id: meta.last_row_id, name, description });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// Delete Group
+app.delete('/api/groups/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        await c.env.DB.prepare('DELETE FROM groups WHERE id = ?').bind(id).run();
+        // Members deleted via CASCADE
+        return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// Get Group Members
+app.get('/api/groups/:id/members', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const { results } = await c.env.DB.prepare(
+            'SELECT symbol FROM group_members WHERE group_id = ? ORDER BY added_at DESC'
+        ).bind(id).all();
+        return c.json(results || []);
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// Add Member
+app.post('/api/groups/:id/members', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const body = await c.req.json();
+        const { symbol } = body;
+        if (!symbol) return c.json({ error: 'Symbol is required' }, 400);
+
+        await c.env.DB.prepare(
+            'INSERT OR IGNORE INTO group_members (group_id, symbol) VALUES (?, ?)'
+        ).bind(id, symbol.toUpperCase()).run();
+
+        return c.json({ success: true, symbol });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// Remove Member
+app.delete('/api/groups/:id/members/:symbol', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const symbol = c.req.param('symbol');
+        await c.env.DB.prepare(
+            'DELETE FROM group_members WHERE group_id = ? AND symbol = ?'
+        ).bind(id, symbol).run();
+        return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
 export default app;
 
 // Helper to gather all dashboard data
-async function getDashboardData(env: Bindings) {
+async function getDashboardData(env: Bindings, groupId?: string) {
+    let tickers: string[] = AI_TICKERS;
+
+    // Filter by Group if requested
+    if (groupId) {
+        try {
+            // Ensure numeric ID
+            const gid = parseInt(groupId);
+            if (!isNaN(gid)) {
+                // console.log(`[API] Fetching members for group ID: ${gid}`);
+                const { results } = await env.DB.prepare('SELECT symbol FROM group_members WHERE group_id = ?').bind(gid).all();
+
+                if (results && results.length > 0) {
+                    tickers = results.map((r: any) => r.symbol);
+                } else {
+                    // console.log(`[API] Group ${gid} is empty or not found. Returning empty list.`);
+                    return [];
+                }
+            } else {
+                console.warn(`[API] Invalid groupId format: ${groupId}`); // Keep warning
+            }
+        } catch (e) {
+            console.error('Group Fetch Error', e);
+            return [];
+        }
+    }
+
     // 1. Fetch Quotes (Batch)
-    const quotes = await fetchQuotes(AI_TICKERS);
+    // console.log(`[API] Fetching data for ${tickers.length} tickers: ${tickers.join(',')}`);
+    const quotes = await fetchQuotes(tickers);
 
     // 2. Fetch History (Parallel) for Sparklines & SMAs
-    const historyPromises = AI_TICKERS.map(symbol => fetchPriceHistory(symbol));
+    const historyPromises = tickers.map(symbol => fetchPriceHistory(symbol));
     const histories = await Promise.all(historyPromises);
     const historyMap = new Map<string, PriceData>();
 
@@ -118,7 +226,7 @@ async function getDashboardData(env: Bindings) {
     });
 
     // 3. Combine Data 
-    const stocks = AI_TICKERS.map(symbol => {
+    const stocks = tickers.map(symbol => {
         const quote = quotes.find(q => q.symbol === symbol);
         const historyData = historyMap.get(symbol);
         const prices = historyData ? historyData.prices : [];

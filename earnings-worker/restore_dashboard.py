@@ -1,4 +1,10 @@
-// Dashboard HTML exported as string
+
+import os
+
+path = r"d:\AntigravityProjects\forward_peg_system\earnings-worker\src\dashboard_html.ts"
+
+# Added Debugging to Title and Loading Text
+html_content = r"""// Dashboard HTML exported as string
 export const DASHBOARD_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -211,7 +217,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                 const li = document.createElement('li');
                 li.className = 'group-item ' + (currentGroup && currentGroup.id === g.id ? 'active' : '');
                 // Icon: Folder
-                li.innerHTML = \`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> \${g.name}\`;
+                li.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> ${g.name}`;
                 li.onclick = () => selectGroup(g);
                 list.appendChild(li);
             });
@@ -266,7 +272,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             try {
                 let url = '/api/dashboard-data';
                 if (currentGroup && currentGroup.id) {
-                    url += \`?groupId=\${currentGroup.id}\`;
+                    url += `?groupId=${currentGroup.id}`;
                 }
                 // Cache bust
                 url += (url.includes('?') ? '&' : '?') + 't=' + Date.now();
@@ -345,10 +351,10 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                    const x = i*(bw+gap);
                    // Highlight max rank: Deep Green (#006400), others Light Green
                    const col = (r >= maxR && maxR > 0) ? '#006400' : '#A5D6A7';
-                   return \`<rect x="\${x}" y="\${h-rh}" width="\${bw}" height="\${rh}" style="fill:\${col}"><title>Rank: \${r}</title></rect>\`;
+                   return `<rect x="\${x}" y="\${h-rh}" width="\${bw}" height="\${rh}" style="fill:\${col}"><title>Rank: \${r}</title></rect>`;
                 }).join('');
                 
-                rows += \`
+                rows += `
                 <tr>
                     <td class="ticker-cell">
                         <img src="https://logo.clearbit.com/\${(stock.symbol||'').toLowerCase()}.com" class="ticker-icon" onerror="this.remove()" onload="this.style.display='inline-block'">
@@ -369,10 +375,10 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                         </div>
                     </td>
                     <td><svg width="70" height="20">\${rsBars}</svg></td>
-                    <td class="narrow-col">\${stock.sma20 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>'}</td>
-                    <td class="narrow-col">\${stock.sma50 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>'}</td>
-                    <td class="narrow-col">\${stock.sma200 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>'}</td>
-                </tr>\`;
+                    <td class="narrow-col">${stock.sma20 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>'}</td>
+                    <td class="narrow-col">${stock.sma50 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>'}</td>
+                    <td class="narrow-col">${stock.sma200 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>'}</td>
+                </tr>`;
             });
             tbody.innerHTML = rows;
             document.getElementById('tableFoot').style.display = 'table-header-group';
@@ -387,7 +393,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             const nr = Math.round(255 + ratio * (r - 255));
             const ng = Math.round(255 + ratio * (g - 255));
             const nb = Math.round(255 + ratio * (b - 255));
-            return \`background-color: rgb(\${nr},\${ng},\${nb}); color: black;\`;
+            return `background-color: rgb(\${nr},\${ng},\${nb}); color: black;`;
         }
         function formatMarketCap(n) {
              if(!n) return '-';
@@ -402,17 +408,17 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             const path = pts.map((p, i) => {
                 const x = (i / (pts.length - 1)) * w;
                 const y = h - ((p - min) / (max - min)) * h;
-                return \`\${x},\${y}\`;
+                return `\${x},\${y}`;
             }).join(' L'); // Wait, d="M..."
             // Points needs to be string "x,y x,y" for polyline or "Mx,y Lx,y" for path
             // Simplify: <path d="M... L..." />
             const d = pts.map((p,i) => {
                 const x = (i / (pts.length - 1)) * w;
                 const y = h - ((p - min) / (max - min)) * h;
-                return (i===0 ? 'M' : 'L') + \`\${x} \${y}\`;
+                return (i===0 ? 'M' : 'L') + `\${x} \${y}`;
             }).join(' ');
             const isDown = pts[pts.length-1] < pts[0];
-            return \`<svg class="sparkline \${isDown?'down':''}" viewBox="0 0 100 30"><path d="\${d}" stroke="\${isDown?'#F44336':'#4CAF50'}" fill="none" stroke-width="2"/></svg>\`;
+            return `<svg class="sparkline \${isDown?'down':''}" viewBox="0 0 100 30"><path d="\${d}" stroke="\${isDown?'#F44336':'#4CAF50'}" fill="none" stroke-width="2"/></svg>`;
         }
         
         // Modal / Group Ops
@@ -451,7 +457,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             closeDeleteModal();
             try {
                 const idToDelete = currentGroup.id;
-                const res = await fetch(\`/api/groups/\${currentGroup.id}\`, { method:'DELETE'});
+                const res = await fetch(`/api/groups/${currentGroup.id}`, { method:'DELETE'});
                 
                 if(!res.ok) alert('Delete failed ' + res.status);
                 else {
@@ -470,13 +476,13 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             const grid = document.getElementById('membersGrid');
             grid.innerHTML = 'Loading...';
             try {
-                const res = await fetch(\`/api/groups/\${currentGroup.id}/members\`);
+                const res = await fetch(`/api/groups/\${currentGroup.id}/members`);
                 const members = await res.json();
                 grid.innerHTML = '';
                 members.forEach(m => {
                     const el = document.createElement('div');
                     el.className = 'member-card';
-                    el.innerHTML = \`<div class="member-symbol">\${m.symbol}</div><button class="btn-remove" onclick="removeMember('\${m.symbol}')">×</button>\`;
+                    el.innerHTML = `<div class="member-symbol">\${m.symbol}</div><button class="btn-remove" onclick="removeMember('\${m.symbol}')">×</button>`;
                     grid.appendChild(el);
                 });
             } catch(e) { grid.textContent = 'Error'; }
@@ -486,17 +492,23 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             const symbol = inp.value.trim().toUpperCase();
             if(!symbol) return;
             try {
-                await fetch(\`/api/groups/\${currentGroup.id}/members\`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({symbol}) });
+                await fetch(`/api/groups/\${currentGroup.id}/members`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({symbol}) });
                 inp.value = '';
                 loadMembers();
             } catch(e) { alert('Error'); }
         }
         async function removeMember(symbol) {
              try {
-                await fetch(\`/api/groups/\${currentGroup.id}/members/\${symbol}\`, { method: 'DELETE' });
+                await fetch(`/api/groups/\${currentGroup.id}/members/\${symbol}`, { method: 'DELETE' });
                 loadMembers();
             } catch(e) { alert('Error'); }
         }
     </script>
 </body>
 </html>`;
+"""
+
+with open(path, 'w', encoding='utf-8') as f:
+    f.write(html_content)
+
+print("Restored dashboard_html.ts with DEBUGGING enabled.")
