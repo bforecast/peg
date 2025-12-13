@@ -1,14 +1,20 @@
-// Simplified list of QQQ top holdings (approx 100)
-// In a real app we might fetch this dynamically or maintain a full CSV.
+
 export const QQQ_TICKERS = [
-    "AAPL", "MSFT", "AMZN", "AVGO", "NVDA", "META", "TSLA", "GOOGL", "GOOG", "COST",
-    "ADBE", "AMD", "NFLX", "PEP", "CSCO", "TMUS", "CMCSA", "INTC", "QCOM", "TXN",
-    "AMGN", "HON", "INTU", "AMAT", "BKNG", "SBUX", "ISRG", "MDLZ", "GILD", "ADP",
-    "VRTX", "ADI", "REGN", "LRCX", "PYPL", "PANW", "SNPS", "MELI", "KLAC", "CDNS",
-    "CHTR", "CSX", "MAR", "ORLY", "ASML", "CTAS", "NXPI", "MNST", "WDAY", "ODFL",
-    "AEP", "CPRT", "LULU", "PCAR", "DXCM", "PAYX", "ROST", "IDXX", "ADSK", "KDP",
-    "EXC", "MRVL", "BKR", "AZN", "FAST", "CTSH", "EA", "VRSK", "CSGP", "GEHC",
-    "XEL", "MCHP", "BIIB", "TEAM", "GFS", "ON", "DLTR", "ANSS", "WBD", "CEG",
-    "TTD", "FANG", "ALGN", "ILMN", "WBA", "CRWD", "DDOG", "ZS", "LCID", "SIRI"
-    // ... Note: This list may need periodic updates.
+    "AAPL", "MSFT", "AMZN", "NVDA", "GOOGL", "GOOG", "META", "TSLA", "AVGO", "PEP",
+    "COST", "CSCO", "TMUS", "ADBE", "TXN", "CMCSA", "NFLX", "QCOM", "AMD", "INTC",
+    "INTU", "AMGN", "HON", "AMAT", "SBUX", "ADP", "BKNG", "GILD", "ISRG", "MDLZ",
+    "LRCX", "REGN", "VRTX", "ADI", "PANW", "SNPS", "KLAC", "CDNS", "CHTR", "MAR",
+    "CSX", "ORLY", "MNST", "CTAS", "FTNT", "WDAY", "AEP", "PAYX", "ODFL", "PCAR",
+    "MCHP", "KDP", "EXC", "XEL", "IDXX", "EA", "CTSH", "FAST", "ROST", "DLTR",
+    "BKR", "GFS", "VRSK", "CSGP", "DXCM", "TEAM", "FANG", "DDOG", "ZS", "LCID",
+    "RIVN", "WBD", "CEG", "AZN", "BIIB", "MRNA", "ZM", "SIRI", "EBAY", "JD",
+    "PDD", "BIDU", "NTES", "MELI", "ASML", "LULU", "CRWD", "ANSS", "SWKS", "SPLK"
+];
+
+// The specific list from the AI Earnings Beats image
+export const AI_TICKERS = [
+    "SNDK", "LITE", "WDC", "CLS", "STX",
+    "CIEN", "FN", "SANM", "CRDO", "VICR",
+    "COHR", "APH", "AVGO", "GOOGL", "TER",
+    "NVT", "VRT", "TSM", "ALAB", "NVDA"
 ];

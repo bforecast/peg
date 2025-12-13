@@ -1,3 +1,48 @@
+
+// Yahoo Finance API implementation with Session (Crumb/Cookie) support
+// Uses v10/quoteSummary for detailed metrics (P/S, Market Cap)
+
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+let yahooSession: { cookie: string, crumb: string } | null = null;
+let sessionPromise: Promise<{ cookie: string, crumb: string } | null> | null = null;
+
+async function getYahooSession(): Promise<{ cookie: string, crumb: string } | null> {
+    if (yahooSession) return yahooSession;
+    if (sessionPromise) return sessionPromise;
+
+    sessionPromise = (async () => {
+        try {
+            // 1. Get Cookie
+            const r1 = await fetch('https://fc.yahoo.com', { headers: { 'User-Agent': USER_AGENT } });
+            const cookieHeader = r1.headers.get('set-cookie');
+
+            if (!cookieHeader) return null;
+            const cookie = cookieHeader.split(';')[0];
+
+            // 2. Get Crumb
+            const r2 = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', {
+                headers: { 'User-Agent': USER_AGENT, 'Cookie': cookie }
+            });
+
+            if (!r2.ok) return null;
+
+            const crumb = await r2.text();
+            if (!crumb) return null;
+
+            yahooSession = { cookie, crumb };
+            return yahooSession;
+        } catch (e) {
+            console.error("Yahoo Session Error:", e);
+            return null;
+        } finally {
+            sessionPromise = null;
+        }
+    })();
+
+    return sessionPromise;
+}
+
 export interface YahooEarningsData {
     symbol: string;
     currentQuarterEstimate: number | null;
@@ -5,15 +50,22 @@ export interface YahooEarningsData {
 }
 
 export async function fetchCurrentEarnings(symbol: string): Promise<YahooEarningsData | { error: string }> {
-    // Yahoo Finance API for earnings estimates
-    const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=earningsTrend`;
+    // Existing logic for earnings... simplified to reuse session if needed, but currentEarnings uses v10 public?
+    // Let's assume currentEarnings logic was working fine via v10 public, but we can upgrade it to use crumb if needed.
+    // For now, keep it as is if it works? Actually, v10 public might be flaky. 
+    // Let's use session for robustness.
+
+    const session = await getYahooSession();
+    const headers: Record<string, string> = { 'User-Agent': USER_AGENT };
+    let url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=earningsTrend`;
+
+    if (session) {
+        headers['Cookie'] = session.cookie;
+        url += `&crumb=${session.crumb}`;
+    }
 
     try {
-        const response = await fetch(url, {
-            headers: {
-                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
-            }
-        });
+        const response = await fetch(url, { headers });
 
         if (!response.ok) {
             return { error: `HTTP Error: ${response.status}` };
@@ -26,8 +78,6 @@ export async function fetchCurrentEarnings(symbol: string): Promise<YahooEarning
         }
 
         const trend = data.quoteSummary.result[0].earningsTrend.trend;
-
-        // Get current quarter estimate (index 0 is current quarter)
         const currentQuarter = trend.find((t: any) => t.period === '0q');
 
         if (!currentQuarter?.earningsEstimate?.avg) {
@@ -43,4 +93,82 @@ export async function fetchCurrentEarnings(symbol: string): Promise<YahooEarning
     } catch (e: any) {
         return { error: `Fetch failed: ${e.message}` };
     }
+}
+
+export interface YahooQuote {
+    symbol: string;
+    shortName: string;
+    regularMarketPrice: number;
+    marketCap: number;
+    priceToSalesTrailing12Months: number;
+    trailingPE: number;
+    forwardPE: number;
+    fiftyTwoWeekHigh: number;
+    fiftyTwoWeekHighChangePercent: number;
+    regularMarketChangePercent: number; // Today's change
+}
+
+export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
+    if (!symbols.length) return [];
+
+    const session = await getYahooSession();
+    if (!session) {
+        console.error("Failed to get Yahoo Session for quotes");
+        return [];
+    }
+
+    // Parallel fetch for V10 QuoteSummary
+    const promises = symbols.map(async (symbol) => {
+        const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail,financialData,price&crumb=${session.crumb}`;
+
+        try {
+            const res = await fetch(url, {
+                headers: {
+                    'User-Agent': USER_AGENT,
+                    'Cookie': session.cookie
+                }
+            });
+
+            if (!res.ok) return null;
+
+            const data: any = await res.json();
+            const result = data.quoteSummary?.result?.[0];
+            if (!result) return null;
+
+            const summary = result.summaryDetail || {};
+            const financial = result.financialData || {};
+            const price = result.price || {};
+
+            // Calc 52w High Change % if missing
+            // summary.fiftyTwoWeekHigh is price.
+            // percent change = (current - high) / high
+            let deltaHigh = 0;
+            const currentPrice = financial.currentPrice?.raw || price.regularMarketPrice?.raw || 0;
+            const high52 = summary.fiftyTwoWeekHigh?.raw || 0;
+
+            if (high52) {
+                deltaHigh = (currentPrice - high52) / high52;
+            }
+
+            return {
+                symbol: symbol,
+                shortName: price.shortName || price.longName || symbol,
+                regularMarketPrice: currentPrice,
+                marketCap: summary.marketCap?.raw || price.marketCap?.raw || 0,
+                priceToSalesTrailing12Months: summary.priceToSalesTrailing12Months?.raw || 0,
+                trailingPE: summary.trailingPE?.raw || 0,
+                forwardPE: summary.forwardPE?.raw || 0,
+                fiftyTwoWeekHigh: high52,
+                fiftyTwoWeekHighChangePercent: deltaHigh,
+                regularMarketChangePercent: price.regularMarketChangePercent?.raw || 0
+            };
+
+        } catch (e) {
+            console.error(`Error fetching quote for ${symbol}:`, e);
+            return null;
+        }
+    });
+
+    const results = await Promise.all(promises);
+    return results.filter(r => r !== null) as YahooQuote[];
 }
