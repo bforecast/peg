@@ -119,73 +119,86 @@ export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
         return [];
     }
 
-    // Parallel fetch for V10 QuoteSummary
-    const promises = symbols.map(async (symbol) => {
-        const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail,financialData,price,earningsTrend&crumb=${session.crumb}`;
+    // Process in batches of 5 to avoid Rate Limiting
+    const BATCH_SIZE = 5;
+    const results: YahooQuote[] = [];
 
-        try {
-            const res = await fetch(url, {
-                headers: {
-                    'User-Agent': USER_AGENT,
-                    'Cookie': session.cookie
+    for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+        const batch = symbols.slice(i, i + BATCH_SIZE);
+        const batchPromises = batch.map(async (symbol) => {
+            const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail,financialData,price,earningsTrend&crumb=${session.crumb}`;
+
+            try {
+                const res = await fetch(url, {
+                    headers: {
+                        'User-Agent': USER_AGENT,
+                        'Cookie': session.cookie
+                    }
+                });
+
+                if (!res.ok) return null;
+
+                const data: any = await res.json();
+                const result = data.quoteSummary?.result?.[0];
+                if (!result) return null;
+
+                const summary = result.summaryDetail || {};
+                const financial = result.financialData || {};
+                const price = result.price || {};
+                const trend = result.earningsTrend?.trend || [];
+
+                // Extract EPS Estimates
+                let epsCurrentYear, epsNextYear;
+                const trendCurrent = trend.find((t: any) => t.period === '0y');
+                const trendNext = trend.find((t: any) => t.period === '+1y');
+
+                if (trendCurrent && trendCurrent.earningsEstimate) {
+                    epsCurrentYear = trendCurrent.earningsEstimate.avg?.raw;
                 }
-            });
+                if (trendNext && trendNext.earningsEstimate) {
+                    epsNextYear = trendNext.earningsEstimate.avg?.raw;
+                }
 
-            if (!res.ok) return null;
+                // Calc 52w High Change % if missing
+                let deltaHigh = 0;
+                const currentPrice = financial.currentPrice?.raw || price.regularMarketPrice?.raw || 0;
+                const high52 = summary.fiftyTwoWeekHigh?.raw || 0;
 
-            const data: any = await res.json();
-            const result = data.quoteSummary?.result?.[0];
-            if (!result) return null;
+                if (high52) {
+                    deltaHigh = (currentPrice - high52) / high52;
+                }
 
-            const summary = result.summaryDetail || {};
-            const financial = result.financialData || {};
-            const price = result.price || {};
-            const trend = result.earningsTrend?.trend || [];
+                return {
+                    symbol,
+                    shortName: price.shortName || price.longName || symbol,
+                    regularMarketPrice: currentPrice,
+                    marketCap: summary.marketCap?.raw || price.marketCap?.raw || 0,
+                    priceToSalesTrailing12Months: summary.priceToSalesTrailing12Months?.raw || 0,
+                    trailingPE: summary.trailingPE?.raw || 0,
+                    forwardPE: summary.forwardPE?.raw || 0,
+                    fiftyTwoWeekHigh: high52,
+                    fiftyTwoWeekHighChangePercent: deltaHigh,
+                    regularMarketChangePercent: price.regularMarketChangePercent?.raw || 0,
+                    epsCurrentYear,
+                    epsNextYear
+                };
 
-            // Extract EPS Estimates
-            let epsCurrentYear, epsNextYear;
-            const trendCurrent = trend.find((t: any) => t.period === '0y');
-            const trendNext = trend.find((t: any) => t.period === '+1y');
-
-            if (trendCurrent && trendCurrent.earningsEstimate) {
-                epsCurrentYear = trendCurrent.earningsEstimate.avg?.raw;
+            } catch (e) {
+                console.error(`Error fetching quote for ${symbol}:`, e);
+                return null;
             }
-            if (trendNext && trendNext.earningsEstimate) {
-                epsNextYear = trendNext.earningsEstimate.avg?.raw;
-            }
+        });
 
-            // Calc 52w High Change % if missing
-            // summary.fiftyTwoWeekHigh is price.
-            // percent change = (current - high) / high
-            let deltaHigh = 0;
-            const currentPrice = financial.currentPrice?.raw || price.regularMarketPrice?.raw || 0;
-            const high52 = summary.fiftyTwoWeekHigh?.raw || 0;
+        const batchResults = await Promise.all(batchPromises);
+        batchResults.forEach(r => {
+            if (r) results.push(r);
+        });
 
-            if (high52) {
-                deltaHigh = (currentPrice - high52) / high52;
-            }
-
-            return {
-                symbol,
-                shortName: price.shortName || price.longName || symbol,
-                regularMarketPrice: currentPrice,
-                marketCap: summary.marketCap?.raw || price.marketCap?.raw || 0,
-                priceToSalesTrailing12Months: summary.priceToSalesTrailing12Months?.raw || 0,
-                trailingPE: summary.trailingPE?.raw || 0,
-                forwardPE: summary.forwardPE?.raw || 0,
-                fiftyTwoWeekHigh: high52,
-                fiftyTwoWeekHighChangePercent: deltaHigh,
-                regularMarketChangePercent: price.regularMarketChangePercent?.raw || 0,
-                epsCurrentYear,
-                epsNextYear
-            };
-
-        } catch (e) {
-            console.error(`Error fetching quote for ${symbol}:`, e);
-            return null;
+        // Delay between batches (200ms)
+        if (i + BATCH_SIZE < symbols.length) {
+            await new Promise(r => setTimeout(r, 200));
         }
-    });
+    }
 
-    const results = await Promise.all(promises);
-    return results.filter(r => r !== null) as YahooQuote[];
+    return results;
 }

@@ -33,46 +33,55 @@ async function getYahooSession() {
     }
 }
 
-export async function fetchYahooEstimates(symbol: string) {
-    const session = await getYahooSession();
-    if (!session) {
-        console.error("Failed to init Yahoo Session");
-        return null;
+// Helper for delay
+const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+async function fetchWithRetry(fn: () => Promise<any>, retries = 3, backoff = 1000) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const res = await fn();
+            if (res) return res;
+        } catch (e) {
+            console.error(`Retry ${i + 1} failed:`, e);
+        }
+        await delay(backoff * (i + 1));
+        // Reset session on failure, might be stale
+        yahooSession = null;
     }
+    return null;
+}
 
-    const { cookie, crumb } = session;
-    const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=earningsTrend&crumb=${crumb}`;
+export async function fetchYahooEstimates(symbol: string) {
+    return fetchWithRetry(async () => {
+        const session = await getYahooSession();
+        if (!session) return null;
 
-    try {
+        const { cookie, crumb } = session;
+        const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=earningsTrend&crumb=${crumb}`;
+
         const response = await fetch(url, {
-            headers: {
-                'User-Agent': USER_AGENT,
-                'Cookie': cookie
-            }
+            headers: { 'User-Agent': USER_AGENT, 'Cookie': cookie }
         });
 
         if (!response.ok) {
-            console.error(`Yahoo Fetch Error: ${response.status}`);
-            return null;
+            if (response.status === 404) return null; // Not found, don't retry forever
+            throw new Error(`Yahoo HTTP ${response.status}`);
         }
 
         const data: any = await response.json();
-
-        // Path: quoteSummary.result[0].earningsTrend
         const result = data?.quoteSummary?.result?.[0]?.earningsTrend;
+
         if (!result) return null;
 
-        // Strategy 1: Use 'epsTrend.current' if available (matches User's "2.67")
         const epsCurrent = result.epsTrend?.current;
         if (epsCurrent && epsCurrent.raw) {
             return {
                 source: 'epsTrend',
                 estimated_eps: parseFloat(epsCurrent.raw),
-                fiscal_date_ending: '1970-01-01' // Force index.ts to calculate target date
+                fiscal_date_ending: '1970-01-01'
             };
         }
 
-        // Strategy 2: Fallback to 'trend[0]' (avg estimate)
         const trends = result.trend;
         if (trends && Array.isArray(trends) && trends.length > 0) {
             const currentQ = trends.find((t: any) => t.period === '0q') || trends[0];
@@ -82,34 +91,25 @@ export async function fetchYahooEstimates(symbol: string) {
                 fiscal_date_ending: currentQ.endDate
             };
         }
-
         return null;
-
-    } catch (error) {
-        console.error("Yahoo Fetch Exception:", error);
-        return null;
-    }
+    });
 }
 
 export async function fetchYahooPrices(symbol: string) {
-    const session = await getYahooSession();
-    if (!session) return null;
+    return fetchWithRetry(async () => {
+        const session = await getYahooSession();
+        if (!session) return null;
 
-    const { cookie, crumb } = session;
-    // Fetch 10 years of daily data
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=10y&crumb=${crumb}`;
+        const { cookie, crumb } = session;
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=10y&crumb=${crumb}`;
 
-    try {
         const response = await fetch(url, {
-            headers: {
-                'User-Agent': USER_AGENT,
-                'Cookie': cookie
-            }
+            headers: { 'User-Agent': USER_AGENT, 'Cookie': cookie }
         });
 
         if (!response.ok) {
-            console.error(`Yahoo Price Fetch Error: ${response.status}`);
-            return null;
+            if (response.status === 404) return null;
+            throw new Error(`Yahoo Price HTTP ${response.status}`);
         }
 
         const data: any = await response.json();
@@ -130,7 +130,6 @@ export async function fetchYahooPrices(symbol: string) {
         const prices = [];
         for (let i = 0; i < timestamps.length; i++) {
             if (closes[i] === null) continue;
-
             const d = new Date(timestamps[i] * 1000);
             const dateStr = d.toISOString().split('T')[0];
 
@@ -143,10 +142,6 @@ export async function fetchYahooPrices(symbol: string) {
                 volume: volumes ? volumes[i] : null
             });
         }
-
         return prices;
-    } catch (e) {
-        console.error("Yahoo Price Exception:", e);
-        return null;
-    }
+    }, 3, 2000); // 3 retries, start with 2s delay
 }

@@ -112,11 +112,14 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         <header>
             <div style="display:flex; align-items:center;">
                 <button class="btn-mobile-toggle" onclick="toggleSidebar()">☰</button>
-                <h1 id="pageTitle">AI Earnings Beats</h1>
+                <div style="display:flex; flex-direction:column; justify-content:center;">
+                    <h1 id="pageTitle" style="margin:0; line-height: 1.2;">AI Earnings Beats</h1>
+                    <div id="dashboardMemo" style="font-size: 0.85rem; color: #666; margin-top: 2px;"></div>
+                </div>
             </div>
             <div id="headerActions">
-                <button id="btnManage" onclick="toggleManager()" style="display:none; padding: 6px 12px; border: 1px solid #CCC; background: white; border-radius: 4px; cursor: pointer;">Manage Portfolio</button>
-                <div style="font-size: 0.9rem; color: #666;" id="currentDate"></div>
+                <button id="btnRefresh" onclick="refreshCurrentGroup()" style="padding: 6px 12px; border: 1px solid #2196F3; background: white; color: #2196F3; border-radius: 4px; cursor: pointer; margin-right: 10px; font-weight: 500;">Refresh</button>
+                <button id="btnManage" onclick="toggleManager()" style="display:none; padding: 6px 12px; border: 1px solid #CCC; background: white; border-radius: 4px; cursor: pointer;">Edit</button>
             </div>
         </header>
 
@@ -148,15 +151,18 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             </div>
 
             <div id="view-manager" style="display: none;">
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
-                    <h2 style="margin:0;">Manage Portfolio</h2>
-                    <button onclick="deleteGroup()" style="color: red; background: white; border: 1px solid red; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Delete Portfolio</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; border-bottom: 1px solid #eee; padding-bottom: 15px;">
+                    <h2 style="margin:0; font-size:1.4rem;">Edit Portfolio</h2>
+                    <div style="display:flex; gap:10px;">
+                        <button onclick="deleteGroup()" style="color: #F44336; background: white; border: 1px solid #F44336; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size:0.9rem;">Delete</button>
+                        <button onclick="toggleManager()" style="color: white; background: #666; border: none; padding: 6px 18px; border-radius: 4px; cursor: pointer; font-weight:500;">Done</button>
+                    </div>
                 </div>
                 
                 <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
                     <!-- Left Column: Settings -->
                     <div>
-                        <h3 style="margin-top:0; border-bottom:1px solid #EEE; padding-bottom:10px; margin-bottom:20px;">Settings</h3>
+                        <h3 style="margin-top:0; color:#555; font-size:1.1rem; margin-bottom:15px;">Settings</h3>
                         
                         <div style="margin-bottom:20px;">
                             <label style="display:block; font-weight:600; color:#444; margin-bottom:8px;">Portfolio Name</label>
@@ -176,10 +182,10 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                         </div>
                     </div>
 
-                    <!-- Right Column: Members -->
+                    <!-- Right Column: Stocks -->
                     <div>
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <h3 style="margin-top:0; border-bottom:1px solid #EEE; padding-bottom:10px; margin-bottom:20px;">Members</h3>
+                            <h3 style="margin-top:0; color:#555; font-size:1.1rem; margin-bottom:15px;">Stocks</h3>
                         </div>
                         
                         <div style="display:flex; gap:10px; margin-bottom:20px; align-items:center;">
@@ -206,10 +212,36 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     <div id="groupModal" class="modal">
         <div class="modal-content">
             <h3>Create New Portfolio</h3>
-            <input type="text" id="newGroupName" class="input-field" placeholder="Portfolio Name">
+            
+            <div style="margin-bottom: 20px; display: flex; gap: 15px; font-size: 0.95rem;">
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    <input type="radio" name="createMode" value="blank" checked onchange="toggleCreateMode()"> Blank Portfolio
+                </label>
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    <input type="radio" name="createMode" value="import" onchange="toggleCreateMode()"> Import Superinvestor
+                </label>
+            </div>
+
+            <div id="modeBlank">
+                 <input type="text" id="newGroupName" class="input-field" placeholder="Portfolio Name">
+            </div>
+
+            <div id="modeImport" style="display:none;">
+                 <select id="investorSelect" class="input-field" style="width: 100%; margin-bottom: 15px; padding: 10px;">
+                     <option value="">Select Manager...</option>
+                 </select>
+                 <div style="margin-bottom: 15px;">
+                     <label style="display:block; font-weight:600; color:#444; margin-bottom:5px;">Max Stocks to Import</label>
+                     <input type="number" id="importLimit" class="input-field" value="10" min="1" max="500" style="width: 100px;">
+                 </div>
+                 <div style="font-size: 0.85rem; color: #666; margin-bottom: 10px;">
+                     This will create a new portfolio with the top holdings from the selected manager.
+                 </div>
+            </div>
+
             <div class="modal-footer">
                 <button onclick="closeModal()" style="padding: 8px 16px; cursor: pointer;">Cancel</button>
-                <button onclick="createGroup()" style="padding: 8px 16px; background: #4CAF50; color: white; border: none; cursor: pointer; border-radius: 4px;">Create</button>
+                <button id="btnCreateAction" onclick="handleCreate()" style="padding: 8px 16px; background: #4CAF50; color: white; border: none; cursor: pointer; border-radius: 4px;">Create</button>
             </div>
         </div>
     </div>
@@ -238,7 +270,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         let originalState = {};
 
         window.addEventListener('load', async () => {
-            document.getElementById('currentDate').textContent = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric'});
+            // Updated Date logic removed as per user request
             await fetchGroups();
             
             // Auto-select "AI Earnings Beats" or first group
@@ -276,8 +308,12 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             currentGroup = group;
             document.title = currentGroup.name;
             document.getElementById('pageTitle').textContent = currentGroup.name;
+            // Update Memo
+            const memoEl = document.getElementById('dashboardMemo');
+            if(memoEl) memoEl.textContent = currentGroup.description || '';
+
             const btnManage = document.getElementById('btnManage');
-            if(currentGroup.id) { btnManage.style.display = 'block'; btnManage.textContent = 'Manage Group'; }
+            if(currentGroup.id) { btnManage.style.display = 'block'; btnManage.textContent = 'Edit'; }
             else { btnManage.style.display = 'none'; }
             
             // Auto-hide sidebar
@@ -298,8 +334,10 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             document.getElementById('view-dashboard').style.display = view === 'dashboard' ? 'block' : 'none';
             document.getElementById('view-manager').style.display = view === 'manager' ? 'block' : 'none';
             const btnManage = document.getElementById('btnManage');
+            document.getElementById('btnRefresh').style.display = view === 'manager' ? 'none' : 'inline-block';
+            btnManage.style.display = view === 'manager' ? 'none' : 'inline-block';
             if(currentView === 'manager') {
-                btnManage.textContent = 'Back to Dashboard';
+                // btnManage.textContent = 'Back to Dashboard'; // Removed as button is hidden
                 loadMembers();
                 // Load group details into inputs
                 if(currentGroup) {
@@ -309,7 +347,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                     document.getElementById('groupModified').textContent = updated ? new Date(updated).toLocaleString() : 'N/A';
                 }
             } else {
-                if(currentGroup.id) btnManage.textContent = 'Manage Group';
+                if(currentGroup.id) btnManage.textContent = 'Edit';
                 // if(currentGroup.id) loadDashboardData(); // optimize: don't reload if just toggling view? actually safer to reload.
                 if(currentGroup.id) loadDashboardData();
             }
@@ -406,13 +444,12 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                    const rh = Math.max((r/100)*h, 4);
                    const x = i*(bw+gap);
                    const col = (r >= maxR && maxR > 0) ? '#006400' : '#A5D6A7';
-                   return \`<rect x="\${x}" y="\${h-rh}" width="\${bw}" height="\${rh}" style="fill:\${col}"><title>Rank: \${r}</title></rect>\`;
+                   return \`<rect x="\${x}" y="\${h-rh}" width="\${bw}" height="\${rh}" style="fill:\${col}"></rect>\`;
                 }).join('');
                 
                 rows += \`
                 <tr>
                     <td class="ticker-cell">
-                        <img src="https://logo.clearbit.com/\${(stock.symbol||'').toLowerCase()}.com" class="ticker-icon" onerror="this.remove()" onload="this.style.display='inline-block'">
                         \${stock.symbol}
                     </td>
                     <td title="\${stock.name}"><span class="company-cell">\${stock.name}</span></td>
@@ -487,54 +524,187 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         function openDeleteModal() { document.getElementById('deleteModal').classList.add('open'); }
         function closeDeleteModal() { document.getElementById('deleteModal').classList.remove('open'); }
         
-        async function createGroup() {
-            const name = document.getElementById('newGroupName').value;
-            if(!name) return;
+
+        let managersLoaded = false;
+
+        function toggleCreateMode() {
+            const mode = document.querySelector('input[name="createMode"]:checked').value;
+            document.getElementById('modeBlank').style.display = mode === 'blank' ? 'block' : 'none';
+            document.getElementById('modeImport').style.display = mode === 'import' ? 'block' : 'none';
+            document.getElementById('btnCreateAction').textContent = mode === 'import' ? 'Import' : 'Create';
+            
+            if (mode === 'import' && !managersLoaded) {
+                loadManagers();
+            }
+        }
+
+        async function loadManagers() {
+            const sel = document.getElementById('investorSelect');
+            sel.innerHTML = '<option>Loading...</option>';
             try {
-                const res = await fetch('/api/groups', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) });
-                const newGroup = await res.json();
-                closeModal();
-                document.getElementById('newGroupName').value = '';
-                await fetchGroups(); // refresh list
+                const res = await fetch('/api/superinvestors');
+                const list = await res.json();
+                sel.innerHTML = '<option value="">Select Manager...</option>';
+                list.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.code;
+                    opt.textContent = m.name;
+                    sel.appendChild(opt);
+                });
+                managersLoaded = true;
+            } catch (e) {
+                sel.innerHTML = '<option>Error loading managers</option>';
+            }
+        }
+
+        async function handleCreate() {
+            const mode = document.querySelector('input[name="createMode"]:checked').value;
+            if (mode === 'blank') {
+                createGroup();
+            } else {
+                importGroup();
+            }
+        }
+
+        async function importGroup() {
+            const code = document.getElementById('investorSelect').value;
+            if (!code) {
+                showToast('Please select a manager', 'error');
+                return;
+            }
+            
+            const limitInput = document.getElementById('importLimit');
+            const limit = limitInput ? parseInt(limitInput.value) : 10;
+
+            const btn = document.getElementById('btnCreateAction');
+            const originalText = btn.textContent;
+            btn.textContent = 'Importing...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/import-superinvestor', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code, limit }) // Send limit
+                });
                 
-                // Auto-redirect
-                if(newGroup.id) {
-                    console.log('Created ID:', newGroup.id, 'Groups:', groups);
-                    const g = groups.find(x => x.id == newGroup.id);
-                    if(g) {
-                        await selectGroup(g);
-                        toggleManager(); // Switch to manager view
-                    } else {
-                        console.error('New group not found in list, race condition?');
-                        // Fallback: manually select temp object
-                        const tempG = { id: newGroup.id, name: name, description: '' };
-                        groups.unshift(tempG); // Add to local list
-                        renderSidebar();
-                        await selectGroup(tempG);
-                        toggleManager();
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.error || 'Import failed');
+                
+                showToast('Imported ' + result.name + ' (' + result.memberCount + ' stocks)', 'success');
+                closeModal();
+                await fetchGroups();
+
+                const newGroup = groups.find(g => g.id === result.id);
+                if (newGroup) {
+                     // Add holdings to the group object for the next step
+                     newGroup.holdings = result.holdings || []; // Ensure holdings was returned
+                     await selectGroup(newGroup);
+                }
+
+                if (newGroup && newGroup.holdings && newGroup.holdings.length > 0) {
+                    showToast('Imported. Updating data for ' + newGroup.holdings.length + ' stocks...', 'info');
+                    
+                    // Client-side sequential update to avoid worker timeouts
+                    let done = 0;
+                    const total = newGroup.holdings.length;
+                    
+                    // Process in batches to speed up (concurrency of 20)
+                    const BATCH_SIZE = 20;
+                    for (let i = 0; i < total; i += BATCH_SIZE) {
+                        const batch = newGroup.holdings.slice(i, i + BATCH_SIZE);
+                        
+                        await Promise.all(batch.map(async (holding) => {
+                            try {
+                                await fetch('/api/refresh/' + holding.symbol, { method: 'POST' });
+                            } catch (e) {
+                                console.error('Update failed for', holding.symbol);
+                            } finally {
+                                done++;
+                            }
+                        }));
+                        
+                        showToast('Updating data: ' + done + '/' + total + '...', 'info');
+                        // Minimized delay
+                        await new Promise(r => setTimeout(r, 10));
+                    }
+                    showToast('Data update complete', 'success');
+                    // Refresh current view to show new data
+                    if (currentGroup && currentGroup.id == newGroup.id) {
+                        await loadDashboardData();
                     }
                 }
-            } catch(e) { alert('Error creating group'); }
+
+            } catch (e) {
+    showToast('Error importing: ' + e.message, 'error');
+} finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+}
         }
-        async function deleteGroup() {
-             if(!currentGroup.id) return;
-             openDeleteModal();
+
+async function createGroup() {
+    const name = document.getElementById('newGroupName').value;
+    if (!name) return;
+    try {
+        const res = await fetch('/api/groups', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) });
+        const newGroup = await res.json();
+        closeModal();
+        document.getElementById('newGroupName').value = '';
+        await fetchGroups(); // refresh list
+
+        // Auto-redirect
+        if (newGroup.id) {
+            console.log('Created ID:', newGroup.id, 'Groups:', groups);
+            const g = groups.find(x => x.id == newGroup.id);
+            if (g) {
+                await selectGroup(g);
+                toggleManager(); // Switch to manager view
+            } else {
+                console.error('New group not found in list, race condition?');
+                // Fallback: manually select temp object
+                const tempG = { id: newGroup.id, name: name, description: '' };
+                groups.unshift(tempG); // Add to local list
+                renderSidebar();
+                await selectGroup(tempG);
+                toggleManager();
+            }
         }
-        async function confirmDeleteGroup() {
-            if(!currentGroup.id) return;
-            // Close immediately for better UX
-            closeDeleteModal();
-            try {
-                const idToDelete = currentGroup.id;
-                const res = await fetch(\`/api/groups/\${currentGroup.id}\`, { method:'DELETE'});
+    } catch (e) { alert('Error creating group'); }
+}
+async function deleteGroup() {
+    if (!currentGroup.id) return;
+    openDeleteModal();
+}
+async function confirmDeleteGroup() {
+    if (!currentGroup.id) return;
+    // Close immediately for better UX
+    closeDeleteModal();
+    try {
+        const idToDelete = currentGroup.id;
+        const res = await fetch(\`/api/groups/\${currentGroup.id}\`, { method:'DELETE'});
                 
                 if(!res.ok) showToast('Delete failed ' + res.status, 'error');
                 else {
                     // Optimistic update
                     groups = groups.filter(g => g.id !== idToDelete);
-                    selectGroup(null);
                     renderSidebar();
                     showToast('Portfolio deleted', 'success');
+
+                    if (groups.length > 0) {
+                        selectGroup(groups[0]);
+                    } else {
+                        // Reset to empty state
+                        currentGroup = null;
+                        document.title = 'Dashboard';
+                        document.getElementById('pageTitle').textContent = 'Dashboard';
+                        document.getElementById('btnManage').style.display = 'none';
+                        setView('dashboard');
+                        renderSidebar();
+                        // Load empty data or show welcome?
+                        dashboardData = [];
+                        renderTable([]);
+                    }
                 }
             } catch(e) { showToast('Error: ' + e, 'error'); }
         }
@@ -802,6 +972,65 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                 setTimeout(() => el.remove(), 300);
             }, 3000);
         }
+        async function refreshCurrentGroup() {
+            if (!currentGroup) return;
+            
+            // Re-use logic from importGroup: fetch parallel updates
+            // First, get latest members/holdings
+            let holdings = [];
+            // If we have dashboardData, we can use it, but safer to use members list
+            // We need symbols.
+            if (dashboardData.length > 0) {
+                holdings = dashboardData.map(s => ({ symbol: s.symbol }));
+            } else {
+               // Fallback if empty dashboard (broken portfolio)
+               // We should fetch members from API or use currentGroup details if we had them full
+               // But loadDashboardData returns empty.
+               // Let's try to fetch members first
+               try {
+                   const res = await fetch('/api/groups/' + currentGroup.id + '/members');
+                   const members = await res.json();
+                   holdings = members; // [{symbol: 'AAPL', ...}]
+               } catch(e) {
+                   showToast('Error getting members list', 'error');
+                   return;
+               }
+            }
+
+            if (!holdings || holdings.length === 0) {
+                showToast('No stocks to refresh', 'info');
+                return;
+            }
+
+            const btn = document.getElementById('btnRefresh');
+            const originalText = btn.textContent;
+            btn.disabled = true;
+            btn.textContent = 'Refreshing...';
+            
+            let done = 0;
+            const total = holdings.length;
+            const BATCH_SIZE = 20;
+            
+            showToast('Starting refresh for ' + total + ' stocks...', 'info');
+
+            for (let i = 0; i < total; i += BATCH_SIZE) {
+                const batch = holdings.slice(i, i + BATCH_SIZE);
+                await Promise.all(batch.map(async (h) => {
+                    try {
+                        await fetch('/api/refresh/' + h.symbol, { method: 'POST' });
+                    } catch (e) { console.error(e); }
+                    finally { done++; }
+                }));
+                showToast('Refreshed ' + done + '/' + total, 'info');
+                await new Promise(r => setTimeout(r, 10));
+            }
+            
+            showToast('Refresh Complete!', 'success');
+            btn.disabled = false;
+            btn.textContent = originalText;
+            loadDashboardData();
+        }
+
     </script>
 </body>
 </html>`;

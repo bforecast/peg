@@ -3,7 +3,8 @@ import { Hono } from 'hono';
 import { fetchEarnings } from './alpha_vantage';
 import { fetchPriceHistory, PriceData } from './price_fetcher';
 import { fetchQuotes } from './yahoo_finance';
-import { fetchYahooEstimates } from './yahoo';
+import { fetchYahooEstimates, fetchYahooPrices } from './yahoo';
+import { getSuperinvestors, getPortfolio } from './dataroma';
 import { QQQ_TICKERS, AI_TICKERS } from './tickers';
 import { UI_HTML } from './ui_html';
 import { DASHBOARD_HTML } from './dashboard_html';
@@ -89,6 +90,79 @@ app.post('/api/update', async (c) => {
     try {
         const result = await updateTicker(c.env, symbol);
         return c.json({ status: 'ok', symbol, ...result });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// --- SUPERINVESTOR ROUTES ---
+
+app.get('/api/superinvestors', async (c) => {
+    try {
+        const managers = await getSuperinvestors();
+        return c.json(managers);
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+app.post('/api/import-superinvestor', async (c) => {
+    try {
+        const body = await c.req.json();
+        const { code, nameOverride, limit } = body; // limit: optional number
+        if (!code) return c.json({ error: 'Manager code required' }, 400);
+
+        const portfolio = await getPortfolio(code);
+
+        // Sort by allocation DESC (just in case) and Apply Limit
+        if (portfolio.holdings && portfolio.holdings.length > 0) {
+            portfolio.holdings.sort((a, b) => b.allocation - a.allocation);
+            if (limit && typeof limit === 'number' && limit > 0) {
+                portfolio.holdings = portfolio.holdings.slice(0, limit);
+            }
+        }
+
+        const groupName = nameOverride || portfolio.manager;
+        const description = `Imported from DataRoma\nDate: ${portfolio.date}\nPeriod: ${portfolio.period}\nValue: ${portfolio.value}`;
+
+        // 1. Create Group
+        const { meta } = await c.env.DB.prepare(
+            'INSERT INTO groups (name, description) VALUES (?, ?)'
+        ).bind(groupName, description).run();
+
+        const groupId = meta.last_row_id;
+
+        // 2. Add Members
+        if (portfolio.holdings.length > 0) {
+            const stmt = c.env.DB.prepare('INSERT INTO group_members (group_id, symbol, allocation) VALUES (?, ?, ?)');
+            const batch = portfolio.holdings.map(h => stmt.bind(groupId, h.symbol, h.allocation));
+            await c.env.DB.batch(batch);
+        }
+
+        // 3. (Optional) Trigger Background Updates - Reduced scope
+        // We will now rely on the frontend to trigger reliable updates for all members
+        // to avoid Worker timeouts on large portfolios.
+
+        return c.json({
+            success: true,
+            id: groupId,
+            name: groupName,
+            memberCount: portfolio.holdings.length,
+            holdings: portfolio.holdings // Return holdings so frontend can iterate
+        });
+
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// New Endpoint for Client-Side Driven Updates
+app.post('/api/refresh/:symbol', async (c) => {
+    const symbol = c.req.param('symbol');
+    try {
+        const pRes = await updatePrices(c.env, symbol);
+        const tRes = await updateTicker(c.env, symbol);
+        return c.json({ prices: pRes, ticker: tRes });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     }
@@ -286,16 +360,84 @@ async function getDashboardData(env: Bindings, groupId?: string) {
     // console.log(`[API] Fetching data for ${tickers.length} tickers: ${tickers.join(',')}`);
     const quotes = await fetchQuotes(tickers);
 
-    // 2. Fetch History (Parallel) for Sparklines & SMAs
-    const historyPromises = tickers.map(symbol => fetchPriceHistory(symbol));
-    const histories = await Promise.all(historyPromises);
-    const historyMap = new Map<string, PriceData>();
+    // 2. Fetch History from Database (Much Faster)
+    // We already populate stock_prices during import/refresh.
+    // Reading 47 stocks from DB is instant compared to 47 HTTP requests.
+    // 2. Fetch History (Hybrid: DB + Live Fallback)
+    const historyMap = new Map<string, { symbol: string, prices: any[] }>();
+    const missingSymbols: string[] = [];
 
-    histories.forEach(h => {
-        if (h && !('error' in h)) {
-            historyMap.set(h.symbol, h as PriceData);
+    // Step A: Try DB first (Fast Path)
+    await Promise.all(tickers.map(async (symbol) => {
+        try {
+            const { results } = await env.DB.prepare(
+                `SELECT date, close FROM stock_prices WHERE symbol = ? ORDER BY date DESC LIMIT 400`
+            ).bind(symbol).all();
+
+            if (results && results.length > 20) {
+                const prices = results.reverse().map((r: any) => ({
+                    date: r.date,
+                    close: r.close
+                }));
+                historyMap.set(symbol, { symbol, prices });
+            } else {
+                missingSymbols.push(symbol);
+            }
+        } catch (e) {
+            console.error(`DB Fetch error for ${symbol}`, e);
+            missingSymbols.push(symbol);
         }
-    });
+    }));
+
+    // Step B: Fetch Missing from Yahoo (Slow Path, Cached on write)
+    // TEMPORARILY DISABLED: The lazy fetch is causing worker timeouts/crashes for large empty portfolios.
+    // relying on 'updateTicker' scheduled job or manual refresh for now.
+    if (false && missingSymbols.length > 0) {
+        // console.log(`[API] Lazy fetching history for ${missingSymbols.length} symbols: ${missingSymbols.join(',')}`);
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < missingSymbols.length; i += BATCH_SIZE) {
+            const batch = missingSymbols.slice(i, i + BATCH_SIZE);
+            const batchPromises = batch.map(async (symbol) => {
+                // Fetch full history
+                const prices = await fetchYahooPrices(symbol);
+                if (prices && prices.length > 0) {
+                    // Save to DB (Fire and forget, or await? Await to ensure consistency if reused immediately)
+                    // Re-using updatePrices logic inline or efficiently inserting
+                    const stmt = env.DB.prepare(`INSERT OR REPLACE INTO stock_prices (symbol, date, open, high, low, close, volume) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+                    const dbBatch = [];
+                    // Save last 400 days to keep DB light and PREVENT WORKER TIMEOUT
+                    // Full history (10y) is too heavy for on-the-fly save (2500+ rows per stock).
+                    // The scheduled job will backfill full history later.
+                    const pricesToSave = prices.slice(-400);
+
+                    for (const p of pricesToSave) {
+                        dbBatch.push(stmt.bind(symbol, p.date, p.open, p.high, p.low, p.close, p.volume));
+                    }
+                    // Chunk insert
+                    const CHUNK = 50;
+                    for (let k = 0; k < dbBatch.length; k += CHUNK) {
+                        await env.DB.batch(dbBatch.slice(k, k + CHUNK));
+                    }
+                    // Return mapped structure
+                    return {
+                        symbol,
+                        prices: prices.slice(-400).map(p => ({ date: p.date, close: p.close }))
+                    };
+                }
+                return { symbol, prices: [] };
+            });
+
+            const results = await Promise.all(batchPromises);
+            results.forEach(h => {
+                if (h.prices.length > 0) historyMap.set(h.symbol, h);
+            });
+
+            // Delay if more batches
+            if (i + BATCH_SIZE < missingSymbols.length) {
+                await new Promise(r => setTimeout(r, 200));
+            }
+        }
+    }
 
     // 3. Combine Data 
     const stocks = tickers.map(symbol => {
@@ -413,14 +555,45 @@ async function getDashboardData(env: Bindings, groupId?: string) {
 }
 
 // Scheduled Handler
+// Scheduled Handler
 export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
-    console.log('Scheduled event triggered');
-    const shuffled = [...QQQ_TICKERS].sort(() => 0.5 - Math.random());
-    const batch = shuffled.slice(0, 5);
+    console.log('Scheduled Update Triggered');
 
-    for (const ticker of batch) {
-        ctx.waitUntil(updateTicker(env, ticker));
-    }
+    // 1. Get all unique active symbols from portfolios
+    // We update everything users are actually tracking.
+    const { results } = await env.DB.prepare("SELECT DISTINCT symbol FROM group_members").all();
+    const symbols = results.map((r: any) => r.symbol);
+
+    console.log(`[Cron] Updating ${symbols.length} tracked symbols...`);
+
+    // 2. Run updates in a background promise (keep worker alive)
+    ctx.waitUntil((async () => {
+        const BATCH_SIZE = 5;
+        // Shuffle to ensure fair coverage if we time out? 
+        // Or just sort? Let's just iterate.
+
+        for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+            const batch = symbols.slice(i, i + BATCH_SIZE);
+
+            // Run updates for this batch in parallel
+            await Promise.all(batch.map(async (symbol) => {
+                try {
+                    // Update Price History (Daily) - Checks maxDate internally so it's efficient
+                    await updatePrices(env, symbol);
+
+                    // Update Earnings Estimates (Daily? or Weekly?)
+                    // Doing it daily ensures new earnings reports are caught quickly.
+                    await updateTicker(env, symbol);
+                } catch (e) {
+                    console.error(`Update failed for ${symbol}`, e);
+                }
+            }));
+
+            // Small delay to be nice to APIs and CPU
+            await new Promise(r => setTimeout(r, 1000));
+        }
+        console.log('[Cron] Update Complete');
+    })());
 }
 
 async function updatePrices(env: Bindings, symbol: string) {
@@ -447,8 +620,6 @@ async function updatePrices(env: Bindings, symbol: string) {
         const targetDate = lastTradingDate.toISOString().split('T')[0];
         if (maxDate >= targetDate) return { count: 0, message: `Prices up to date (${maxDate})` };
     }
-
-    const { fetchYahooPrices } = require('./yahoo');
 
     const prices = await fetchYahooPrices(symbol);
     if (!prices) return { count: 0, message: "Yahoo Price Fetch Failed" };
