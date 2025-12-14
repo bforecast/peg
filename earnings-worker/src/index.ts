@@ -135,14 +135,86 @@ app.delete('/api/groups/:id', async (c) => {
     }
 });
 
+// Update Group
+// Update Group (Batch)
+app.put('/api/groups/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const body = await c.req.json();
+        const { name, description, members } = body;
+
+        const statements: D1PreparedStatement[] = [];
+
+        // 1. Update Group Metadata
+        let query = 'UPDATE groups SET updated_at = CURRENT_TIMESTAMP';
+        const params: any[] = [];
+
+        if (name) {
+            query += ', name = ?';
+            params.push(name);
+        }
+        if (description !== undefined) {
+            query += ', description = ?';
+            params.push(description);
+        }
+        query += ' WHERE id = ?';
+        params.push(id);
+
+        statements.push(c.env.DB.prepare(query).bind(...params));
+
+        // 2. Update Members (if provided)
+        if (Array.isArray(members)) {
+            // Delete existing
+            statements.push(c.env.DB.prepare('DELETE FROM group_members WHERE group_id = ?').bind(id));
+
+            // Insert new
+            const insertStmt = c.env.DB.prepare('INSERT INTO group_members (group_id, symbol, allocation) VALUES (?, ?, ?)');
+            // Dedup symbols just in case
+            // Members array should be objects { symbol: 'X', allocation: 10 }
+            const seen = new Set();
+            for (const mem of members) {
+                // Handle both old format (string) and new format (object) for backward compat while transitioning
+                const symbol = typeof mem === 'string' ? mem : mem.symbol;
+                const allocation = (typeof mem === 'object' && mem.allocation) ? mem.allocation : 0;
+
+                if (!seen.has(symbol)) {
+                    statements.push(insertStmt.bind(id, symbol, allocation));
+                    seen.add(symbol);
+                }
+            }
+        }
+
+        await c.env.DB.batch(statements);
+        return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
 // Get Group Members
 app.get('/api/groups/:id/members', async (c) => {
     try {
         const id = c.req.param('id');
         const { results } = await c.env.DB.prepare(
-            'SELECT symbol FROM group_members WHERE group_id = ? ORDER BY added_at DESC'
+            'SELECT symbol, allocation FROM group_members WHERE group_id = ?'
         ).bind(id).all();
         return c.json(results || []);
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// Validate Symbol
+app.get('/api/validate/:symbol', async (c) => {
+    try {
+        const symbol = c.req.param('symbol')?.toUpperCase();
+        if (!symbol) return c.json({ valid: false });
+
+        const quotes = await fetchQuotes([symbol]);
+        if (quotes && quotes.length > 0 && quotes[0]) {
+            return c.json({ valid: true, symbol: quotes[0].symbol, name: quotes[0].shortName });
+        }
+        return c.json({ valid: false });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     }
@@ -323,6 +395,13 @@ async function getDashboardData(env: Bindings, groupId?: string) {
             marketCap: quote?.marketCap || 0,
             ps: quote?.priceToSalesTrailing12Months || null,
             pe: quote?.trailingPE || null,
+            peg: (() => {
+                if (quote?.epsCurrentYear && quote?.epsNextYear && quote?.epsCurrentYear !== 0 && quote?.trailingPE) {
+                    const growth = ((quote.epsNextYear - quote.epsCurrentYear) / quote.epsCurrentYear) * 100;
+                    if (growth > 0) return quote.trailingPE / growth;
+                }
+                return null;
+            })(),
             changeYTD,
             change1Y,
             history: oneYearPrices,

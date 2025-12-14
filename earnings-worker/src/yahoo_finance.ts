@@ -106,6 +106,8 @@ export interface YahooQuote {
     fiftyTwoWeekHigh: number;
     fiftyTwoWeekHighChangePercent: number;
     regularMarketChangePercent: number; // Today's change
+    epsCurrentYear?: number;
+    epsNextYear?: number;
 }
 
 export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
@@ -119,7 +121,7 @@ export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
 
     // Parallel fetch for V10 QuoteSummary
     const promises = symbols.map(async (symbol) => {
-        const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail,financialData,price&crumb=${session.crumb}`;
+        const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail,financialData,price,earningsTrend&crumb=${session.crumb}`;
 
         try {
             const res = await fetch(url, {
@@ -138,6 +140,19 @@ export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
             const summary = result.summaryDetail || {};
             const financial = result.financialData || {};
             const price = result.price || {};
+            const trend = result.earningsTrend?.trend || [];
+
+            // Extract EPS Estimates
+            let epsCurrentYear, epsNextYear;
+            const trendCurrent = trend.find((t: any) => t.period === '0y');
+            const trendNext = trend.find((t: any) => t.period === '+1y');
+
+            if (trendCurrent && trendCurrent.earningsEstimate) {
+                epsCurrentYear = trendCurrent.earningsEstimate.avg?.raw;
+            }
+            if (trendNext && trendNext.earningsEstimate) {
+                epsNextYear = trendNext.earningsEstimate.avg?.raw;
+            }
 
             // Calc 52w High Change % if missing
             // summary.fiftyTwoWeekHigh is price.
@@ -151,7 +166,7 @@ export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
             }
 
             return {
-                symbol: symbol,
+                symbol,
                 shortName: price.shortName || price.longName || symbol,
                 regularMarketPrice: currentPrice,
                 marketCap: summary.marketCap?.raw || price.marketCap?.raw || 0,
@@ -160,7 +175,9 @@ export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
                 forwardPE: summary.forwardPE?.raw || 0,
                 fiftyTwoWeekHigh: high52,
                 fiftyTwoWeekHighChangePercent: deltaHigh,
-                regularMarketChangePercent: price.regularMarketChangePercent?.raw || 0
+                regularMarketChangePercent: price.regularMarketChangePercent?.raw || 0,
+                epsCurrentYear,
+                epsNextYear
             };
 
         } catch (e) {

@@ -7,8 +7,9 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     <title>AI Earnings Beats</title>
     <style>
         :root { --bg-color: #FAFAFA; --text-color: #111; --sidebar-width: 250px; --sidebar-bg: #F8F9FA; --active-item-bg: #E8F5E9; --active-item-text: #2E7D32; --border-color: #DDD; }
+        * { box-sizing: border-box; }
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg-color); color: var(--text-color); margin: 0; padding: 0; height: 100vh; display: flex; overflow: hidden; }
-        #sidebar { width: var(--sidebar-width); background: var(--sidebar-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 20px; box-sizing: border-box; flex-shrink: 0; margin-left: 0; }
+        #sidebar { width: var(--sidebar-width); background: var(--sidebar-bg); border-right: 1px solid var(--border-color); display: flex; flex-direction: column; padding: 20px; flex-shrink: 0; margin-left: 0; }
         #sidebar h2 { font-size: 1.2rem; margin-top: 0; color: #333; margin-bottom: 20px; }
         .group-list { list-style: none; padding: 0; margin: 0; flex-grow: 1; overflow-y: auto; }
         .group-item { padding: 10px 15px; margin-bottom: 5px; border-radius: 6px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; color: #555; transition: background 0.2s; }
@@ -23,24 +24,28 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         #headerActions { display: flex; align-items: center; gap: 15px; }
         
         .view-container { flex-grow: 1; overflow-y: auto; padding: 20px 25px; position: relative; }
-        .dashboard-container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #EEE; overflow: hidden; }
+        .dashboard-container { max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #EEE; overflow-x: auto; -webkit-overflow-scrolling: touch; }
         
-        table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-        th, td { padding: 8px 10px; text-align: left; border-bottom: 1px solid #EEE; font-weight: 600; }
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        th, td { padding: 6px 6px; text-align: center; border-bottom: 1px solid #EEE; font-weight: 600; }
+        th:nth-child(1), td:nth-child(1), th:nth-child(2), td:nth-child(2) { text-align: left; }
         th { background: #F9F9F9; font-weight: 700; color: #555; cursor: pointer; user-select: none; font-size: 11px; white-space: nowrap; }
         th:hover { background: #E0E0E0; }
-        th.narrow-col, td.narrow-col { width: 40px; text-align: center; padding: 8px 4px; }
+        th.narrow-col, td.narrow-col { width: 25px; padding: 6px 2px; font-size: 0.75rem; }
+        .company-cell { max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
         
         /* Manager View Styles */
         .manager-header { display: flex; gap: 10px; margin-bottom: 20px; }
         .input-group { display: flex; gap: 10px; flex-grow: 1; max-width: 600px; }
         .input-field { padding: 10px; border: 1px solid #DDD; border-radius: 4px; flex-grow: 1; font-size: 1rem; }
         .btn-add { padding: 10px 20px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }
-        .members-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 15px; }
-        .member-card { background: white; border: 1px solid #EEE; border-radius: 6px; padding: 15px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
-        .member-symbol { font-size: 1.2rem; font-weight: bold; font-family: 'Courier New', monospace; }
-        .btn-remove { color: #F44336; background: none; border: none; cursor: pointer; font-size: 1.2rem; opacity: 0.6; }
-        .btn-remove:hover { opacity: 1; }
+        .members-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 15px; }
+        .member-card { background: white; border: 1px solid #EEE; border-radius: 8px; padding: 12px 15px; display: flex; align-items: center; justify-content: space-between; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: box-shadow 0.2s; }
+        .member-card:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .member-symbol { font-size: 1.1rem; font-weight: 700; color: #333; }
+        .member-alloc { display: flex; align-items: center; gap: 8px; }
+        .btn-remove { margin-left: 10px; color: #DDD; background: none; border: none; cursor: pointer; font-size: 1.4rem; line-height: 1; padding: 0; transition: color 0.2s; }
+        .btn-remove:hover { color: #F44336; }
         
         /* Modal */
         .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); align-items: center; justify-content: center; z-index: 1000; }
@@ -82,6 +87,14 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                 The inner one is inside h2. Let's hide the inner 'X' on desktop. */
              #sidebar .btn-mobile-toggle { display: none !important; }
         }
+        
+        /* Toast Notification */
+        #toast-container { position: fixed; bottom: 20px; right: 20px; z-index: 2000; display: flex; flex-direction: column; gap: 10px; pointer-events: none; }
+        .toast { pointer-events: auto; background: #333; color: white; padding: 12px 24px; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.15); font-size: 0.95rem; opacity: 0; transform: translateY(20px); transition: all 0.3s ease; display: flex; align-items: center; min-width: 250px; }
+        .toast.show { opacity: 1; transform: translateY(0); }
+        .toast.success { background: #4CAF50; }
+        .toast.error { background: #F44336; }
+        .toast.info { background: #2196F3; }
     </style>
 </head>
 <body class="desktop-hidden">
@@ -92,7 +105,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             My Portfolios
         </h2>
         <ul class="group-list" id="groupList"></ul>
-        <button class="btn-new-group" onclick="openModal()"><span>+</span> Create New Group</button>
+        <button class="btn-new-group" onclick="openModal()"><span>+</span> Create New Portfolio</button>
     </div>
 
     <div id="main-content">
@@ -102,7 +115,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                 <h1 id="pageTitle">AI Earnings Beats</h1>
             </div>
             <div id="headerActions">
-                <button id="btnManage" onclick="toggleManager()" style="display:none; padding: 6px 12px; border: 1px solid #CCC; background: white; border-radius: 4px; cursor: pointer;">Manage Group</button>
+                <button id="btnManage" onclick="toggleManager()" style="display:none; padding: 6px 12px; border: 1px solid #CCC; background: white; border-radius: 4px; cursor: pointer;">Manage Portfolio</button>
                 <div style="font-size: 0.9rem; color: #666;" id="currentDate"></div>
             </div>
         </header>
@@ -116,6 +129,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                                 <th>Ticker</th><th>Company</th><th>Price</th><th>Market Cap</th>
                                 <th class="sortable" onclick="sortData('ps')">P/S <span id="sort-ps"></span></th>
                                 <th class="sortable" onclick="sortData('pe')">P/E <span id="sort-pe"></span></th>
+                                <th class="sortable" onclick="sortData('peg')">PEG <span id="sort-peg"></span></th>
                                 <th class="sortable" onclick="sortData('changeYTD')">% YTD <span id="sort-changeYTD"></span></th>
                                 <th>Chart 1Y</th>
                                 <th class="sortable" onclick="sortData('change1Y')">% 1Y <span id="sort-change1Y"></span></th>
@@ -126,7 +140,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                         <tfoot id="tableFoot" style="display:none;">
                             <tr style="background: #F9F9F9; font-weight: bold;">
                                 <td colspan="4" style="text-align: right;">Avg.</td>
-                                <td id="avgPS">-</td><td id="avgPE">-</td><td colspan="8"></td>
+                                <td id="avgPS">-</td><td id="avgPE">-</td><td id="avgPEG">-</td><td colspan="8"></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -134,15 +148,51 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             </div>
 
             <div id="view-manager" style="display: none;">
-                <div class="manager-header">
-                    <div class="input-group">
-                        <input type="text" id="newMemberInput" class="input-field" placeholder="Enter stock symbol (e.g. NVDA)">
-                        <button class="btn-add" onclick="addMember()">+ Add Stock</button>
-                    </div>
-                    <button onclick="deleteGroup()" style="color: red; background: none; border: 1px solid red; padding: 10px; border-radius: 4px; cursor: pointer;">Delete Group</button>
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+                    <h2 style="margin:0;">Manage Portfolio</h2>
+                    <button onclick="deleteGroup()" style="color: red; background: white; border: 1px solid red; padding: 8px 16px; border-radius: 4px; cursor: pointer;">Delete Portfolio</button>
                 </div>
-                <h2>Manage Members</h2>
-                <div id="membersGrid" class="members-grid"></div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                    <!-- Left Column: Settings -->
+                    <div>
+                        <h3 style="margin-top:0; border-bottom:1px solid #EEE; padding-bottom:10px; margin-bottom:20px;">Settings</h3>
+                        
+                        <div style="margin-bottom:20px;">
+                            <label style="display:block; font-weight:600; color:#444; margin-bottom:8px;">Portfolio Name</label>
+                            <input type="text" id="editGroupName" class="input-field" placeholder="Portfolio Name" oninput="checkDirty()" style="width:100%; box-sizing:border-box;">
+                        </div>
+
+                        <div style="margin-bottom:20px;">
+                            <label style="display:block; font-weight:600; color:#444; margin-bottom:8px;">Memo</label>
+                            <textarea id="editGroupMemo" class="input-field" rows="5" placeholder="Add notes here..." style="width:100%; box-sizing:border-box; font-family:inherit; resize:vertical;" oninput="checkDirty()"></textarea>
+                        </div>
+
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:30px;">
+                            <div style="font-size:0.85rem; color:#888;">
+                                Last Modified: <span id="groupModified">-</span>
+                            </div>
+                            <button id="btnSaveGroup" onclick="updateGroup()" disabled style="padding: 12px 24px; background: #EEE; color: #999; border: none; border-radius: 4px; cursor: not-allowed; font-weight:600; transition: background 0.2s;">Save Changes</button>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Members -->
+                    <div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <h3 style="margin-top:0; border-bottom:1px solid #EEE; padding-bottom:10px; margin-bottom:20px;">Members</h3>
+                        </div>
+                        
+                        <div style="display:flex; gap:10px; margin-bottom:20px; align-items:center;">
+                            <div class="input-group" style="flex-grow:1;">
+                                <input type="text" id="newMemberInput" class="input-field" placeholder="Add Symbol (e.g. MSFT)" onkeydown="if(event.key==='Enter') addMember()">
+                                <button class="btn-add" onclick="addMember()">Add</button>
+                            </div>
+                            <button id="btnDistribute" onclick="distributeAllocation()" style="display:none; height:42px; padding:0 15px; border:1px solid #2196F3; color:#2196F3; background:white; border-radius:4px; cursor:pointer; white-space:nowrap;">Equalize</button>
+                        </div>
+
+                        <div id="membersGrid" class="members-grid" style="max-height: 500px; overflow-y: auto;"></div>
+                    </div>
+                </div>
             </div>
             
             <div id="loading" class="loading-overlay">
@@ -152,10 +202,11 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         </div>
     </div>
 
+    <div id="toast-container"></div>
     <div id="groupModal" class="modal">
         <div class="modal-content">
-            <h3>Create New Group</h3>
-            <input type="text" id="newGroupName" class="input-field" placeholder="Group Name">
+            <h3>Create New Portfolio</h3>
+            <input type="text" id="newGroupName" class="input-field" placeholder="Portfolio Name">
             <div class="modal-footer">
                 <button onclick="closeModal()" style="padding: 8px 16px; cursor: pointer;">Cancel</button>
                 <button onclick="createGroup()" style="padding: 8px 16px; background: #4CAF50; color: white; border: none; cursor: pointer; border-radius: 4px;">Create</button>
@@ -165,8 +216,8 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 
     <div id="deleteModal" class="modal">
         <div class="modal-content">
-            <h3>Delete Group?</h3>
-            <p>Are you sure you want to delete this group? This cannot be undone.</p>
+            <h3>Delete Portfolio?</h3>
+            <p>Are you sure you want to delete this portfolio? This cannot be undone.</p>
             <div class="modal-footer">
                 <button onclick="closeDeleteModal()" style="padding: 8px 16px; cursor: pointer;">Cancel</button>
                 <button onclick="confirmDeleteGroup()" style="padding: 8px 16px; background: #F44336; color: white; border: none; cursor: pointer; border-radius: 4px;">Delete</button>
@@ -176,16 +227,23 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 
     <script>
         console.log("DASHBOARD SCRIPT STARTED");
+
         let currentGroup = null; 
         let currentView = 'dashboard';
         let groups = [];
         let dashboardData = []; 
         let currentSort = { key: 'changeYTD', dir: 'desc'};
+        // Batch Saving State
+        let localMembers = [];
+        let originalState = {};
 
         window.addEventListener('load', async () => {
             document.getElementById('currentDate').textContent = new Date().toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric'});
             await fetchGroups();
-            // Selection now handled in fetchGroups
+            
+            // Auto-select "AI Earnings Beats" or first group
+            const defaultGroup = groups.find(g => g.name === 'AI Earnings Beats') || groups[0];
+            if (defaultGroup) selectGroup(defaultGroup);
         });
 
         async function fetchGroups() {
@@ -194,10 +252,6 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                 if (res.ok) {
                     groups = await res.json();
                     renderSidebar();
-                    
-                    // Auto-select "AI Earnings Beats" or first group
-                    const defaultGroup = groups.find(g => g.name === 'AI Earnings Beats') || groups[0];
-                    if (defaultGroup) selectGroup(defaultGroup);
                 }
             } catch (e) { console.error('Error fetching groups', e); }
         }
@@ -247,9 +301,17 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             if(currentView === 'manager') {
                 btnManage.textContent = 'Back to Dashboard';
                 loadMembers();
+                // Load group details into inputs
+                if(currentGroup) {
+                    document.getElementById('editGroupName').value = currentGroup.name || '';
+                    document.getElementById('editGroupMemo').value = currentGroup.description || '';
+                    const updated = currentGroup.updated_at || currentGroup.created_at;
+                    document.getElementById('groupModified').textContent = updated ? new Date(updated).toLocaleString() : 'N/A';
+                }
             } else {
                 if(currentGroup.id) btnManage.textContent = 'Manage Group';
-                if(currentGroup.id) loadDashboardData(); // Reload data when returning to dashboard
+                // if(currentGroup.id) loadDashboardData(); // optimize: don't reload if just toggling view? actually safer to reload.
+                if(currentGroup.id) loadDashboardData();
             }
         }
 
@@ -289,7 +351,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             dashboardData.sort((a, b) => {
                 let va = a[key] ?? -Infinity;
                 let vb = b[key] ?? -Infinity;
-                if(key === 'pe' || key === 'ps') {
+                if(key === 'pe' || key === 'ps' || key === 'peg') {
                    // nulls last
                    if(a[key] == null) va = Infinity;
                    if(b[key] == null) vb = Infinity;
@@ -317,25 +379,25 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             const tbody = document.getElementById('tableBody');
             if(!tbody) return;
             let rows = '';
-            let totalPE=0, totalPS=0, countPE=0, countPS=0;
+            let totalPE=0, totalPS=0, totalPEG=0, countPE=0, countPS=0, countPEG=0;
             const minPS=0, maxPS=20, minPE=0, maxPE=60, minYTD=0, maxYTD=100, min1Y=0, max1Y=100;
             
             data.forEach(stock => {
                 if(stock.pe) { totalPE+=stock.pe; countPE++; }
                 if(stock.ps) { totalPS+=stock.ps; countPS++; }
+                if(stock.peg) { totalPEG+=stock.peg; countPEG++; }
                 
                 const psStyle = getGradientColor(stock.ps, minPS, maxPS, 255, 200, 100);
                 let peStyle = getGradientColor(stock.pe, minPE, maxPE, 255, 200, 100);
                 if (!stock.pe && stock.pe !== 0) peStyle = 'background-color: rgb(255, 180, 100); color: black;';
+                const pegStyle = getGradientColor(stock.peg, 0, 3, 255, 100, 100);
                 const ytdStyle = getGradientColor(stock.changeYTD, minYTD, maxYTD, 76, 175, 80);
                 const oneYStyle = getGradientColor(stock.change1Y, min1Y, max1Y, 76, 175, 80);
                 
-                // Visualization
                 const deltaHigh = stock.delta52wHigh || 0;
-                const deltaWidth = Math.min(Math.abs(deltaHigh) * 2, 80);
+                const deltaWidth = Math.min(Math.abs(deltaHigh) * 1.5, 50);
                 const deltaColor = Math.abs(deltaHigh) > 20 ? 'red' : '';
                 
-                // Ensure numbers, treat invalid as 0
                 const rankHistory = (stock.rsRankHistory || []).map(x => { const n = parseFloat(x); return isNaN(n) ? 0 : n; });
                 const maxR = rankHistory.length ? Math.max(...rankHistory) : 0;
                 
@@ -343,7 +405,6 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                    const h = 20, bw = 2, gap=1;
                    const rh = Math.max((r/100)*h, 4);
                    const x = i*(bw+gap);
-                   // Highlight max rank: Deep Green (#006400), others Light Green
                    const col = (r >= maxR && maxR > 0) ? '#006400' : '#A5D6A7';
                    return \`<rect x="\${x}" y="\${h-rh}" width="\${bw}" height="\${rh}" style="fill:\${col}"><title>Rank: \${r}</title></rect>\`;
                 }).join('');
@@ -354,18 +415,19 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                         <img src="https://logo.clearbit.com/\${(stock.symbol||'').toLowerCase()}.com" class="ticker-icon" onerror="this.remove()" onload="this.style.display='inline-block'">
                         \${stock.symbol}
                     </td>
-                    <td style="font-weight:normal">\${stock.name}</td>
+                    <td title="\${stock.name}"><span class="company-cell">\${stock.name}</span></td>
                     <td>$\${(stock.price||0).toFixed(2)}</td>
                     <td>\${formatMarketCap(stock.marketCap)}</td>
                     <td style="\${psStyle}">\${stock.ps ? stock.ps.toFixed(2) : '-'}</td>
                     <td style="\${peStyle}">\${stock.pe ? stock.pe.toFixed(2) : '-'}</td>
-                    <td style="\${ytdStyle}">\${(stock.changeYTD||0).toFixed(2)}%</td>
+                    <td style="\${pegStyle}">\${stock.peg ? stock.peg.toFixed(2) : '-'}</td>
+                    <td style="\${ytdStyle}">\${(stock.changeYTD||0).toFixed(0)}%</td>
                     <td>\${createSparkline(stock.history)}</td>
-                    <td style="\${oneYStyle}">\${(stock.change1Y||0).toFixed(2)}%</td>
+                    <td style="\${oneYStyle}">\${(stock.change1Y||0).toFixed(0)}%</td>
                     <td>
                         <div class="delta-bar-container">
                             <div class="delta-bar \${deltaColor}" style="width:\${deltaWidth}px"></div>
-                            <div>\${deltaHigh.toFixed(2)}%</div>
+                            <div>\${deltaHigh.toFixed(1)}%</div>
                         </div>
                     </td>
                     <td><svg width="70" height="20">\${rsBars}</svg></td>
@@ -378,6 +440,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             document.getElementById('tableFoot').style.display = 'table-header-group';
             document.getElementById('avgPS').textContent = countPS ? (totalPS/countPS).toFixed(2) : '-';
             document.getElementById('avgPE').textContent = countPE ? (totalPE/countPE).toFixed(2) : '-';
+            document.getElementById('avgPEG').textContent = countPEG ? (totalPEG/countPEG).toFixed(2) : '-';
         }
 
         // Helpers
@@ -399,13 +462,6 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             if(!pts || pts.length < 2) return '';
             const min = Math.min(...pts), max = Math.max(...pts);
             const w = 100, h = 30;
-            const path = pts.map((p, i) => {
-                const x = (i / (pts.length - 1)) * w;
-                const y = h - ((p - min) / (max - min)) * h;
-                return \`\${x},\${y}\`;
-            }).join(' L'); // Wait, d="M..."
-            // Points needs to be string "x,y x,y" for polyline or "Mx,y Lx,y" for path
-            // Simplify: <path d="M... L..." />
             const d = pts.map((p,i) => {
                 const x = (i / (pts.length - 1)) * w;
                 const y = h - ((p - min) / (max - min)) * h;
@@ -435,11 +491,30 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             const name = document.getElementById('newGroupName').value;
             if(!name) return;
             try {
-                await fetch('/api/groups', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) });
+                const res = await fetch('/api/groups', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({name}) });
+                const newGroup = await res.json();
                 closeModal();
                 document.getElementById('newGroupName').value = '';
-                await fetchGroups();
-            } catch(e) { alert('Error'); }
+                await fetchGroups(); // refresh list
+                
+                // Auto-redirect
+                if(newGroup.id) {
+                    console.log('Created ID:', newGroup.id, 'Groups:', groups);
+                    const g = groups.find(x => x.id == newGroup.id);
+                    if(g) {
+                        await selectGroup(g);
+                        toggleManager(); // Switch to manager view
+                    } else {
+                        console.error('New group not found in list, race condition?');
+                        // Fallback: manually select temp object
+                        const tempG = { id: newGroup.id, name: name, description: '' };
+                        groups.unshift(tempG); // Add to local list
+                        renderSidebar();
+                        await selectGroup(tempG);
+                        toggleManager();
+                    }
+                }
+            } catch(e) { alert('Error creating group'); }
         }
         async function deleteGroup() {
              if(!currentGroup.id) return;
@@ -453,18 +528,53 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                 const idToDelete = currentGroup.id;
                 const res = await fetch(\`/api/groups/\${currentGroup.id}\`, { method:'DELETE'});
                 
-                if(!res.ok) alert('Delete failed ' + res.status);
+                if(!res.ok) showToast('Delete failed ' + res.status, 'error');
                 else {
                     // Optimistic update
                     groups = groups.filter(g => g.id !== idToDelete);
                     selectGroup(null);
                     renderSidebar();
-                    // await fetchGroups(); // Removed to prevent zombie re-add
+                    showToast('Portfolio deleted', 'success');
                 }
-            } catch(e) { alert('Error: ' + e); }
+            } catch(e) { showToast('Error: ' + e, 'error'); }
+        }
+
+        
+        async function updateGroup() {
+            if(!currentGroup.id) return;
+            const name = document.getElementById('editGroupName').value;
+            const description = document.getElementById('editGroupMemo').value;
+            // Send localMembers as well
+            try {
+                const res = await fetch(\`/api/groups/\${currentGroup.id}\`, { 
+                    method:'PUT', 
+                    headers:{'Content-Type':'application/json'}, 
+                    body:JSON.stringify({name, description, members: localMembers}) 
+                });
+                if(res.ok) {
+                    showToast('Saved successfully!', 'success');
+                    await fetchGroups(); 
+                    currentGroup.name = name;
+                    currentGroup.description = description;
+                    document.title = name;
+                    document.getElementById('pageTitle').textContent = name;
+                    document.getElementById('groupModified').textContent = new Date().toLocaleString();
+                    
+                    // Reset original state
+                    originalState = {
+                        name: name,
+                        description: description || '',
+                        members: JSON.stringify(localMembers.sort())
+                    };
+                    checkDirty();
+                    
+                    // Redirect back to dashboard
+                    toggleManager();
+                    await loadDashboardData();
+                } else showToast('Failed to save', 'error');
+            } catch(e) { showToast('Error saving: ' + e.message, 'error'); }
         }
         
-        // Members
         async function loadMembers() {
             if(!currentGroup.id) return;
             const grid = document.getElementById('membersGrid');
@@ -472,30 +582,225 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             try {
                 const res = await fetch(\`/api/groups/\${currentGroup.id}/members\`);
                 const members = await res.json();
-                grid.innerHTML = '';
-                members.forEach(m => {
-                    const el = document.createElement('div');
-                    el.className = 'member-card';
-                    el.innerHTML = \`<div class="member-symbol">\${m.symbol}</div><button class="btn-remove" onclick="removeMember('\${m.symbol}')">×</button>\`;
-                    grid.appendChild(el);
-                });
+                
+                // Initialize local state with allocation
+                localMembers = members.map(m => ({ symbol: m.symbol, allocation: m.allocation || 0 }));
+                originalState = {
+                    name: currentGroup.name || '',
+                    description: currentGroup.description || '',
+                    members: JSON.stringify([...localMembers].sort((a,b) => a.symbol.localeCompare(b.symbol)))
+                };
+                checkDirty();
+                renderMembers();
             } catch(e) { grid.textContent = 'Error'; }
         }
+
+        function renderMembers() {
+            const grid = document.getElementById('membersGrid');
+            grid.innerHTML = '';
+            
+            // Toggle Distribute button
+            const btnDist = document.getElementById('btnDistribute');
+            if(btnDist) btnDist.style.display = localMembers.length > 0 ? 'block' : 'none';
+            
+            // Calculate total allocation
+            const totalAlloc = localMembers.reduce((sum, m) => sum + (parseFloat(m.allocation) || 0), 0);
+            
+            localMembers.forEach((mem, index) => {
+                const el = document.createElement('div');
+                el.className = 'member-card';
+                
+                el.innerHTML = \`
+                    <div class="member-symbol">\${mem.symbol}</div>
+                    <div style="display:flex; align-items:center;">
+                        <div class="member-alloc">
+                            <input type="number" step="0.01" min="0" max="100" class="input-field" 
+                                style="width:70px; padding:5px; text-align:right; font-size: 1rem; border:1px solid #DDD; height: 34px;" 
+                                value="\${mem.allocation}" 
+                                oninput="updateAllocation('\${mem.symbol}', this.value)"
+                                placeholder="0.00">
+                            <span style="font-size:0.9rem; color:#777; font-weight:500;">%</span>
+                        </div>
+                        <button class="btn-remove" onclick="removeMember('\${mem.symbol}')" title="Remove">×</button>
+                    </div>
+                \`;
+                grid.appendChild(el);
+            });
+            
+            // Show total
+            if(localMembers.length > 0) {
+                 const totalEl = document.createElement('div');
+                 totalEl.style.gridColumn = '1 / -1';
+                 totalEl.style.textAlign = 'right';
+                 totalEl.style.padding = '10px';
+                 totalEl.style.fontWeight = 'bold';
+                 // Strict validation: > 100.00 is Error
+                 const isError = totalAlloc > 100.0001; 
+                 totalEl.style.color = isError ? 'red' : (Math.abs(100 - totalAlloc) < 0.01 ? 'green' : '#666');
+                 totalEl.innerHTML = \`Total Allocation: \${totalAlloc.toFixed(2)}%\`;
+                 grid.appendChild(totalEl);
+            }
+        }
+        
+        function updateAllocation(symbol, value) {
+            const mem = localMembers.find(m => m.symbol === symbol);
+            if(mem) {
+                mem.allocation = value; // Keep as string to avoid cursor jumping or float issues during typing
+                checkDirty();
+                renderMembers(); // Re-render to update Total. Note: This might cause focus loss logic issues if not careful, but simple implementation often re-renders. 
+                // Wait, re-rendering the whole grid WILL lose focus on the input being typed.
+                // Better approach: Update the total display separately or only re-render if NOT typing.
+                // For now, let's just NOT re-render the whole grid, but just update the Total element?
+                // Actually, let's fix the focus issue by NOT re-rendering logic inside updateAllocation.
+            }
+        }
+        
+        // Revised renderMembers to handle Partial Updates if needed, 
+        // but for simplicity let's separate "Render Grid" vs "Render Stats"
+        // For now, we revert the re-render call in updateAllocation to avoid typing issues.
+        // We will add a specific function to update the Total Text.
+        
+        function updateTotalDisplay() {
+             const totalAlloc = localMembers.reduce((sum, m) => sum + (parseFloat(m.allocation) || 0), 0);
+             const grid = document.getElementById('membersGrid');
+             if(grid.lastElementChild && grid.lastElementChild.textContent.includes('Total Allocation')) {
+                 const totalEl = grid.lastElementChild;
+                 const isError = totalAlloc > 100.0001;
+                 totalEl.style.color = isError ? 'red' : (Math.abs(100 - totalAlloc) < 0.01 ? 'green' : '#666');
+                 totalEl.innerHTML = \`Total Allocation: \${totalAlloc.toFixed(2)}%\`;
+             }
+        }
+
+        // Overwrite updateAllocation to use the new optimized flow
+        function updateAllocation(symbol, value) {
+            const mem = localMembers.find(m => m.symbol === symbol);
+            if(mem) {
+                mem.allocation = value;
+                checkDirty();
+                updateTotalDisplay();
+            }
+        }
+        
+        function distributeAllocation() {
+             if(localMembers.length === 0) return;
+             
+             const count = localMembers.length;
+             const rawShare = 100 / count;
+             const share = Math.floor(rawShare * 100) / 100; // Floor to 2 decimals
+             
+             // Assign floor share to all
+             localMembers.forEach(m => m.allocation = share.toFixed(2));
+             
+             // Calculate remainder
+             const currentTotal = share * count;
+             const remainder = 100 - currentTotal;
+             
+             // Add remainder to first element (or distribute 0.01 to first N)
+             if(remainder > 0.001) {
+                 // How many pennies off? e.g. 0.02
+                 const pennies = Math.round(remainder * 100);
+                 for(let i=0; i<pennies; i++) {
+                     if(localMembers[i]) {
+                         let val = parseFloat(localMembers[i].allocation) + 0.01;
+                         localMembers[i].allocation = val.toFixed(2);
+                     }
+                 }
+             }
+
+             renderMembers();
+             checkDirty();
+             showToast('Allocations distributed evenly', 'info');
+        }
+
         async function addMember() {
             const inp = document.getElementById('newMemberInput');
             const symbol = inp.value.trim().toUpperCase();
             if(!symbol) return;
-            try {
-                await fetch(\`/api/groups/\${currentGroup.id}/members\`, { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({symbol}) });
+            
+            if(localMembers.some(m => m.symbol === symbol)) {
+                showToast('Symbol already in list', 'info');
                 inp.value = '';
-                loadMembers();
-            } catch(e) { alert('Error'); }
+                return;
+            }
+
+            // UI Feedback
+            const originalBtnText = document.querySelector('.btn-add').textContent;
+            document.querySelector('.btn-add').textContent = '...';
+            document.querySelector('.btn-add').disabled = true;
+
+            try {
+                const res = await fetch(\`/api/validate/\${symbol}\`);
+                const data = await res.json();
+                
+                if (data.valid) {
+                    localMembers.unshift({ symbol: data.symbol, allocation: 0 }); // Init with 0%
+                    renderMembers();
+                    checkDirty();
+                    inp.value = '';
+                    showToast(\`Added \${data.symbol}\`, 'success');
+                } else {
+                    showToast('Invalid symbol: ' + symbol, 'error');
+                }
+            } catch(e) {
+                console.error(e);
+                showToast('Error validating symbol', 'error');
+            } finally {
+                document.querySelector('.btn-add').textContent = originalBtnText;
+                document.querySelector('.btn-add').disabled = false;
+                inp.focus();
+            }
         }
-        async function removeMember(symbol) {
-             try {
-                await fetch(\`/api/groups/\${currentGroup.id}/members/\${symbol}\`, { method: 'DELETE' });
-                loadMembers();
-            } catch(e) { alert('Error'); }
+
+        function removeMember(symbol) {
+             localMembers = localMembers.filter(m => m.symbol !== symbol);
+             renderMembers();
+             checkDirty();
+        }
+
+        function checkDirty() {
+            const currentName = document.getElementById('editGroupName').value;
+            const currentDesc = document.getElementById('editGroupMemo').value;
+            // Sort to compare consistently
+            const currentMembersStr = JSON.stringify([...localMembers].sort((a,b) => a.symbol.localeCompare(b.symbol)));
+            
+            const totalAlloc = localMembers.reduce((sum, m) => sum + (parseFloat(m.allocation) || 0), 0);
+            
+            const isDirty = (currentName !== originalState.name) ||
+                            (currentDesc !== originalState.description) ||
+                            (currentMembersStr !== originalState.members);
+            
+            const isValid = totalAlloc <= 100.0001; // Allow floating point epsilon
+
+            const btn = document.getElementById('btnSaveGroup');
+            if(isDirty && isValid) {
+                btn.disabled = false;
+                btn.style.background = '#4CAF50';
+                btn.style.color = 'white';
+                btn.style.cursor = 'pointer';
+            } else {
+                btn.disabled = true;
+                btn.style.background = '#EEE';
+                btn.style.color = '#999';
+                btn.style.cursor = 'not-allowed';
+            }
+        }
+        
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            if(!container) return;
+            const el = document.createElement('div');
+            el.className = \`toast \${type}\`;
+            el.textContent = message;
+            container.appendChild(el);
+            
+            // Trigger animation
+            requestAnimationFrame(() => el.classList.add('show'));
+            
+            // Auto remove
+            setTimeout(() => {
+                el.classList.remove('show');
+                setTimeout(() => el.remove(), 300);
+            }, 3000);
         }
     </script>
 </body>
