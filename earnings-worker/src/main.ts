@@ -2,7 +2,7 @@
 import { Hono } from 'hono';
 import { fetchEarnings } from './alpha_vantage';
 import { fetchPriceHistory, PriceData } from './price_fetcher';
-import { fetchQuotes } from './yahoo_finance';
+import { fetchQuotes, YahooQuote } from './yahoo_finance';
 import { fetchYahooEstimates, fetchYahooPrices } from './yahoo';
 import { getSuperinvestors, getPortfolio } from './dataroma';
 import { QQQ_TICKERS, AI_TICKERS } from './tickers';
@@ -59,7 +59,14 @@ app.get('/api/dashboard-data', async (c) => {
     try {
         const groupId = c.req.query('groupId');
         const data = await getDashboardData(c.env, groupId);
-        return c.json(data);
+
+        // Get last updated date from stock_quotes
+        const lastUpdatedRow: any = await c.env.DB.prepare(
+            'SELECT MAX(updated_at) as lastTime FROM stock_quotes'
+        ).first();
+        const lastUpdated = lastUpdatedRow?.lastTime || null;
+
+        return c.json({ lastUpdated, data });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     }
@@ -333,16 +340,21 @@ async function getDashboardData(env: Bindings, groupId?: string) {
     let tickers: string[] = AI_TICKERS;
 
     // Filter by Group if requested
+    const allocationMap = new Map<string, number>();
     if (groupId) {
         try {
             // Ensure numeric ID
             const gid = parseInt(groupId);
             if (!isNaN(gid)) {
                 // console.log(`[API] Fetching members for group ID: ${gid}`);
-                const { results } = await env.DB.prepare('SELECT symbol FROM group_members WHERE group_id = ?').bind(gid).all();
-
+                const { results } = await env.DB.prepare('SELECT symbol, allocation as allocated_pct FROM group_members WHERE group_id = ?').bind(gid).all();
                 if (results && results.length > 0) {
-                    tickers = results.map((r: any) => r.symbol);
+                    console.log('[API] Group Members Sample:', JSON.stringify(results[0]));
+                    tickers = results.map((r: any) => {
+                        const alloc = Number(r.allocated_pct);
+                        allocationMap.set(r.symbol, !isNaN(alloc) ? alloc : 0);
+                        return r.symbol;
+                    });
                 } else {
                     // console.log(`[API] Group ${gid} is empty or not found. Returning empty list.`);
                     return [];
@@ -356,9 +368,11 @@ async function getDashboardData(env: Bindings, groupId?: string) {
         }
     }
 
-    // 1. Fetch Quotes (Batch)
-    // console.log(`[API] Fetching data for ${tickers.length} tickers: ${tickers.join(',')}`);
-    const quotes = await fetchQuotes(tickers);
+    // 1. Fetch Quotes (From DB with Live Fallback)
+    // console.log(`[API] Fetching data for ${tickers.length} tickers`);
+    // const quotes = await fetchQuotes(tickers); // OLD WAY
+
+    const quotes = await getLatestQuotes(env, tickers);
 
     // 2. Fetch History from Database (Much Faster)
     // We already populate stock_prices during import/refresh.
@@ -453,6 +467,7 @@ async function getDashboardData(env: Bindings, groupId?: string) {
             prices, // Pass full price history (with dates)
             closePrices,
             currentPrice,
+            allocation: allocationMap.get(symbol) || 0,
             rsRankHistory: [] as number[]
         };
     });
@@ -488,7 +503,7 @@ async function getDashboardData(env: Bindings, groupId?: string) {
 
     // Final Map
     return stocks.map(s => {
-        const { symbol, quote, prices, closePrices, currentPrice, rsRankHistory } = s;
+        const { symbol, quote, prices, closePrices, currentPrice, rsRankHistory, allocation } = s;
         const oneYearPrices = closePrices.slice(-252);
 
         let sma20 = false, sma50 = false, sma200 = false;
@@ -532,6 +547,8 @@ async function getDashboardData(env: Bindings, groupId?: string) {
 
         return {
             symbol,
+            quote,
+            allocation,
             name: quote?.shortName || symbol,
             price: currentPrice,
             marketCap: quote?.marketCap || 0,
@@ -575,7 +592,19 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
         for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
             const batch = symbols.slice(i, i + BATCH_SIZE);
 
-            // Run updates for this batch in parallel
+            // Run updates for this batch
+
+            // A. Fetch and Cache Board Metrics (New)
+            try {
+                const quotes = await fetchQuotes(batch);
+                if (quotes && quotes.length > 0) {
+                    await saveQuotesToDB(env, quotes);
+                }
+            } catch (e) {
+                console.error(`[Cron] Error updating quotes for batch ${batch.join(',')}`, e);
+            }
+
+            // B. Run granular updates in parallel
             await Promise.all(batch.map(async (symbol) => {
                 try {
                     // Update Price History (Daily) - Checks maxDate internally so it's efficient
@@ -734,4 +763,115 @@ async function updateTicker(env: Bindings, symbol: string) {
         }
     } catch (e) { }
     return { count: avCount, message: avMsg };
+}
+
+// --- QUOTE OPS ---
+
+async function saveQuotesToDB(env: Bindings, quotes: YahooQuote[]) {
+    // We store using today's date (UTC or NY? uses simple string YYYY-MM-DD from system time)
+    // This runs in a worker, time is usually UTC.
+    const now = new Date();
+    const dateStr = now.toISOString().split('T')[0];
+
+    const stmt = env.DB.prepare(`
+        INSERT OR REPLACE INTO stock_quotes (
+            symbol, date, price, market_cap, pe_ratio, forward_pe, ps_ratio,
+            fifty_two_week_high, fifty_two_week_high_change_percent, change_percent,
+            eps_current_year, eps_next_year
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `);
+
+    const batch = quotes.map(q => stmt.bind(
+        q.symbol,
+        dateStr,
+        q.regularMarketPrice,
+        q.marketCap,
+        q.trailingPE,
+        q.forwardPE,
+        q.priceToSalesTrailing12Months,
+        q.fiftyTwoWeekHigh,
+        q.fiftyTwoWeekHighChangePercent,
+        q.regularMarketChangePercent,
+        q.epsCurrentYear || null,
+        q.epsNextYear || null
+    ));
+
+    if (batch.length > 0) {
+        // D1 limit is often 100 statements per batch? 
+        // 5 items is safe.
+        await env.DB.batch(batch);
+    }
+}
+
+async function getLatestQuotes(env: Bindings, symbols: string[]): Promise<YahooQuote[]> {
+    const results: YahooQuote[] = [];
+    const missing: string[] = [];
+
+    // Optimize: Can we fetch all in one query?
+    // "SELECT * FROM stock_quotes WHERE symbol IN (?...) AND date > ?"
+    // Using a recent window (e.g. 7 days) to ensure we get some data even if cron failed yesterday
+    // But we need the *latest* for each.
+
+    // Parallel reads for now (D1 is fast for simple selects)
+    // Or simpler: Iterate and fetch LIMIT 1.
+    // Be careful of concurrency limits if list is huge (40+).
+    // Let's batch the reads or use Promise.all.
+
+    // We'll stick to batching 10 at a time to be safe.
+    const CHUNK = 10;
+    for (let i = 0; i < symbols.length; i += CHUNK) {
+        const batch = symbols.slice(i, i + CHUNK);
+        await Promise.all(batch.map(async (symbol) => {
+            try {
+                const row: any = await env.DB.prepare(
+                    'SELECT * FROM stock_quotes WHERE symbol = ? ORDER BY date DESC LIMIT 1'
+                ).bind(symbol).first();
+
+                if (row) {
+                    results.push(mapToYahooQuote(row));
+                } else {
+                    missing.push(symbol);
+                }
+            } catch (e) {
+                missing.push(symbol);
+            }
+        }));
+    }
+
+    // Fallback: Fetch missing live
+    if (missing.length > 0) {
+        // console.log(`[API] Cache miss for ${missing.length} symbols, fetching live...`);
+        try {
+            const liveQuotes = await fetchQuotes(missing);
+            if (liveQuotes && liveQuotes.length > 0) {
+                // Save to DB so next time it's there
+                // Don't await this to speed up response? 
+                // Better to await to ensure no concurrency weirdness? 
+                // We'll await to be safe, client can wait a bit.
+                await saveQuotesToDB(env, liveQuotes);
+                results.push(...liveQuotes);
+            }
+        } catch (e) {
+            console.error("Error fetching missing quotes", e);
+        }
+    }
+
+    return results;
+}
+
+function mapToYahooQuote(row: any): YahooQuote {
+    return {
+        symbol: row.symbol,
+        shortName: row.symbol, // We don't store shortName in DB yet? Use symbol as fallback.
+        regularMarketPrice: row.price,
+        marketCap: row.market_cap,
+        priceToSalesTrailing12Months: row.ps_ratio,
+        trailingPE: row.pe_ratio,
+        forwardPE: row.forward_pe,
+        fiftyTwoWeekHigh: row.fifty_two_week_high,
+        fiftyTwoWeekHighChangePercent: row.fifty_two_week_high_change_percent,
+        regularMarketChangePercent: row.change_percent,
+        epsCurrentYear: row.eps_current_year,
+        epsNextYear: row.eps_next_year
+    };
 }

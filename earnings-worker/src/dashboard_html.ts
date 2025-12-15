@@ -1,4 +1,4 @@
-// Dashboard HTML exported as string
+﻿// Dashboard HTML exported as string
 export const DASHBOARD_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -39,6 +39,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
         .input-group { display: flex; gap: 10px; flex-grow: 1; max-width: 600px; }
         .input-field { padding: 10px; border: 1px solid #DDD; border-radius: 4px; flex-grow: 1; font-size: 1rem; }
         .btn-add { padding: 10px 20px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; }
+        .manager-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; }
         .members-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 15px; }
         .member-card { background: white; border: 1px solid #EEE; border-radius: 8px; padding: 12px 15px; display: flex; align-items: center; justify-content: space-between; position: relative; box-shadow: 0 1px 2px rgba(0,0,0,0.05); transition: box-shadow 0.2s; }
         .member-card:hover { box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
@@ -79,6 +80,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             #mobileOverlay { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.3); z-index:900; }
             #mobileOverlay.open { display: block; }
             .btn-mobile-toggle { display: block !important; margin-right: 15px; font-size: 1.5rem; cursor: pointer; color: #333; }
+            .manager-layout { grid-template-columns: 1fr; gap: 20px; }
         }
         /* Show toggle button on desktop too but style it */
         .btn-mobile-toggle { display: block; margin-right: 15px; background: none; border: none; font-size: 1.5rem; cursor: pointer; color: #333; }
@@ -101,25 +103,27 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
     <div id="mobileOverlay" onclick="toggleSidebar()"></div> 
     <div id="sidebar">
         <h2>
-            <span onclick="toggleSidebar()" class="btn-mobile-toggle" style="display:inline-block; font-size:1rem; margin-right:10px; color:#555;">✕</span>
+            <span onclick="toggleSidebar()" class="btn-mobile-toggle" style="display:inline-block; font-size:1rem; margin-right:10px; color:#555;">&#9776;</span>
             My Portfolios
         </h2>
         <ul class="group-list" id="groupList"></ul>
         <button class="btn-new-group" onclick="openModal()"><span>+</span> Create New Portfolio</button>
     </div>
-
     <div id="main-content">
         <header>
-            <div style="display:flex; align-items:center;">
-                <button class="btn-mobile-toggle" onclick="toggleSidebar()">☰</button>
+            <div style="display:flex; align-items:center; gap: 12px;">
+                <button class="btn-mobile-toggle" onclick="toggleSidebar()">&#9776;</button>
                 <div style="display:flex; flex-direction:column; justify-content:center;">
-                    <h1 id="pageTitle" style="margin:0; line-height: 1.2;">AI Earnings Beats</h1>
+                    <div style="display:flex; align-items:center; gap: 10px;">
+                        <h1 id="pageTitle" style="margin:0; line-height: 1.2;">AI Earnings Beats</h1>
+                        <button id="btnManage" onclick="toggleManager()" style="display:none; padding: 4px 10px; border: 1px solid #E0E0E0; background: #FAFAFA; border-radius: 4px; cursor: pointer; font-size: 0.8rem; color: #666; transition: all 0.2s;">&#9998; Edit</button>
+                    </div>
                     <div id="dashboardMemo" style="font-size: 0.85rem; color: #666; margin-top: 2px;"></div>
                 </div>
             </div>
-            <div id="headerActions">
-                <button id="btnRefresh" onclick="refreshCurrentGroup()" style="padding: 6px 12px; border: 1px solid #2196F3; background: white; color: #2196F3; border-radius: 4px; cursor: pointer; margin-right: 10px; font-weight: 500;">Refresh</button>
-                <button id="btnManage" onclick="toggleManager()" style="display:none; padding: 6px 12px; border: 1px solid #CCC; background: white; border-radius: 4px; cursor: pointer;">Edit</button>
+            <div id="headerActions" style="display:flex; align-items:center; gap: 12px;">
+                <span id="lastUpdated" style="font-size: 0.75rem; color: #888; font-style: italic;"></span>
+                <button id="btnRefresh" onclick="refreshCurrentGroup()" style="padding: 6px 14px; border: 1px solid #2196F3; background: white; color: #2196F3; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.2s;">&#x21bb; Refresh</button>
             </div>
         </header>
 
@@ -129,9 +133,10 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                     <table>
                         <thead>
                             <tr>
-                                <th>Ticker</th><th>Company</th><th>Price</th><th>Market Cap</th>
+                                <th>Ticker</th><th style="cursor:pointer; text-align: center;" onclick="sortData('allocation')">% Portfolio <span id="sort-allocation"></span></th><th>Price</th><th>Market Cap</th>
                                 <th class="sortable" onclick="sortData('ps')">P/S <span id="sort-ps"></span></th>
                                 <th class="sortable" onclick="sortData('pe')">P/E <span id="sort-pe"></span></th>
+                                <th class="sortable" onclick="sortData('growth')">% Growth <span id="sort-growth"></span></th>
                                 <th class="sortable" onclick="sortData('peg')">PEG <span id="sort-peg"></span></th>
                                 <th class="sortable" onclick="sortData('changeYTD')">% YTD <span id="sort-changeYTD"></span></th>
                                 <th>Chart 1Y</th>
@@ -142,8 +147,8 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                         <tbody id="tableBody"></tbody>
                         <tfoot id="tableFoot" style="display:none;">
                             <tr style="background: #F9F9F9; font-weight: bold;">
-                                <td colspan="4" style="text-align: right;">Avg.</td>
-                                <td id="avgPS">-</td><td id="avgPE">-</td><td id="avgPEG">-</td><td colspan="8"></td>
+                                <td colspan="4" style="text-align: right;">W. Avg.</td>
+                                <td id="avgPS">-</td><td id="avgPE">-</td><td id="avgGrowth">-</td><td id="avgPEG">-</td><td colspan="8"></td>
                             </tr>
                         </tfoot>
                     </table>
@@ -155,11 +160,12 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                     <h2 style="margin:0; font-size:1.4rem;">Edit Portfolio</h2>
                     <div style="display:flex; gap:10px;">
                         <button onclick="deleteGroup()" style="color: #F44336; background: white; border: 1px solid #F44336; padding: 6px 14px; border-radius: 4px; cursor: pointer; font-size:0.9rem;">Delete</button>
-                        <button onclick="toggleManager()" style="color: white; background: #666; border: none; padding: 6px 18px; border-radius: 4px; cursor: pointer; font-weight:500;">Done</button>
+                        <button id="btnCancel" onclick="toggleManager()" style="display:none; color: white; background: #666; border: none; padding: 6px 18px; border-radius: 4px; cursor: pointer; font-weight:500;">Cancel</button>
+                        <button id="btnMainAction" onclick="handleMainAction()" style="color: white; background: #999; border: none; padding: 6px 18px; border-radius: 4px; cursor: pointer; font-weight:500;">Done</button>
                     </div>
                 </div>
                 
-                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 40px;">
+                <div class="manager-layout">
                     <!-- Left Column: Settings -->
                     <div>
                         <h3 style="margin-top:0; color:#555; font-size:1.1rem; margin-bottom:15px;">Settings</h3>
@@ -174,12 +180,9 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                             <textarea id="editGroupMemo" class="input-field" rows="5" placeholder="Add notes here..." style="width:100%; box-sizing:border-box; font-family:inherit; resize:vertical;" oninput="checkDirty()"></textarea>
                         </div>
 
-                        <div style="display:flex; justify-content:space-between; align-items:center; margin-top:30px;">
                             <div style="font-size:0.85rem; color:#888;">
                                 Last Modified: <span id="groupModified">-</span>
                             </div>
-                            <button id="btnSaveGroup" onclick="updateGroup()" disabled style="padding: 12px 24px; background: #EEE; color: #999; border: none; border-radius: 4px; cursor: not-allowed; font-weight:600; transition: background 0.2s;">Save Changes</button>
-                        </div>
                     </div>
 
                     <!-- Right Column: Stocks -->
@@ -373,9 +376,23 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 
                 document.getElementById('loadingText').textContent = 'Loading...';
                 const res = await fetch(url);
-                const data = await res.json();
-                dashboardData = Array.isArray(data) ? data : []; 
-                // document.getElementById('pageTitle').textContent += " [" + url + "]"; // DEBUG TITLE REMOVED
+                const response = await res.json();
+                
+                // Handle new format: { lastUpdated, data } or old format (array)
+                if (response && response.data && Array.isArray(response.data)) {
+                    dashboardData = response.data;
+                    // Display lastUpdated
+                    const lastUpdatedEl = document.getElementById('lastUpdated');
+                    if (lastUpdatedEl && response.lastUpdated) {
+                        const dt = new Date(response.lastUpdated + 'Z');\n                        const formatted = dt.toLocaleString('en-US', { timeZone: 'America/New_York', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' });\n                        lastUpdatedEl.textContent = 'Updated: ' + formatted;
+                    }
+                } else if (Array.isArray(response)) {
+                    // Fallback for old format
+                    dashboardData = response;
+                } else {
+                    dashboardData = [];
+                }
+                
                 executeSort(currentSort.key);
             } catch (e) {
                 console.error('Error loading data', e);
@@ -408,7 +425,7 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
 
         function updateSortIcons() {
             document.querySelectorAll('thead th span').forEach(sp => sp.textContent = '');
-            const arrow = currentSort.dir === 'asc' ? '▲' : '▼';
+            const arrow = currentSort.dir === 'asc' ? '\\u25B2' : '\\u25BC';
             const el = document.getElementById('sort-' + currentSort.key);
             if(el) el.textContent = arrow;
         }
@@ -417,15 +434,34 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
             const tbody = document.getElementById('tableBody');
             if(!tbody) return;
             let rows = '';
-            let totalPE=0, totalPS=0, totalPEG=0, countPE=0, countPS=0, countPEG=0;
+            
+            // Weighted Average Headers
+            let wTotalPE=0, wTotalGrowth=0, wTotalPS=0, wTotalPEG=0;
+            let totalAllocPE=0, totalAllocGrowth=0, totalAllocPS=0, totalAllocPEG=0;
+
             const minPS=0, maxPS=20, minPE=0, maxPE=60, minYTD=0, maxYTD=100, min1Y=0, max1Y=100;
             
             data.forEach(stock => {
-                if(stock.pe) { totalPE+=stock.pe; countPE++; }
-                if(stock.ps) { totalPS+=stock.ps; countPS++; }
-                if(stock.peg) { totalPEG+=stock.peg; countPEG++; }
+                const alloc = parseFloat(stock.allocation) || 0; // Allocation percentage (0-100)
+                
+                // Calculate Growth
+                const epsC = parseFloat(stock.quote?.epsCurrentYear) || 0;
+                const epsN = parseFloat(stock.quote?.epsNextYear) || 0;
+                let growth = 0;
+                if(epsC !== 0) growth = ((epsN - epsC) / Math.abs(epsC)) * 100;
+                stock.growth = growth;
+
+                if(stock.pe && alloc > 0) { wTotalPE += stock.pe * alloc; totalAllocPE += alloc; }
+                if(Math.abs(growth) < 1000 && alloc > 0) { wTotalGrowth += growth * alloc; totalAllocGrowth += alloc; }
+                if(stock.ps && alloc > 0) { wTotalPS += stock.ps * alloc; totalAllocPS += alloc; }
+                if(stock.peg && alloc > 0) { wTotalPEG += stock.peg * alloc; totalAllocPEG += alloc; }
                 
                 const psStyle = getGradientColor(stock.ps, minPS, maxPS, 255, 200, 100);
+                // Color by meaning: Green > 0, Red < 0 (Background)
+                let growthStyle = ''; 
+                if (stock.growth > 0) growthStyle = 'background-color: #C8E6C9; color: black;'; // Light Green
+                if (stock.growth < 0) growthStyle = 'background-color: #FFCDD2; color: black;'; // Light Red
+
                 let peStyle = getGradientColor(stock.pe, minPE, maxPE, 255, 200, 100);
                 if (!stock.pe && stock.pe !== 0) peStyle = 'background-color: rgb(255, 180, 100); color: black;';
                 const pegStyle = getGradientColor(stock.peg, 0, 3, 255, 100, 100);
@@ -444,50 +480,53 @@ export const DASHBOARD_HTML = `<!DOCTYPE html>
                    const rh = Math.max((r/100)*h, 4);
                    const x = i*(bw+gap);
                    const col = (r >= maxR && maxR > 0) ? '#006400' : '#A5D6A7';
-                   return \`<rect x="\${x}" y="\${h-rh}" width="\${bw}" height="\${rh}" style="fill:\${col}"></rect>\`;
+                   return '<rect x="' + x + '" y="' + (h-rh) + '" width="' + bw + '" height="' + rh + '" style="fill:' + col + '"></rect>';
                 }).join('');
-                
-                rows += \`
-                <tr>
-                    <td class="ticker-cell">
-                        \${stock.symbol}
-                    </td>
-                    <td title="\${stock.name}"><span class="company-cell">\${stock.name}</span></td>
-                    <td>$\${(stock.price||0).toFixed(2)}</td>
-                    <td>\${formatMarketCap(stock.marketCap)}</td>
-                    <td style="\${psStyle}">\${stock.ps ? stock.ps.toFixed(2) : '-'}</td>
-                    <td style="\${peStyle}">\${stock.pe ? stock.pe.toFixed(2) : '-'}</td>
-                    <td style="\${pegStyle}">\${stock.peg ? stock.peg.toFixed(2) : '-'}</td>
-                    <td style="\${ytdStyle}">\${(stock.changeYTD||0).toFixed(0)}%</td>
-                    <td>\${createSparkline(stock.history)}</td>
-                    <td style="\${oneYStyle}">\${(stock.change1Y||0).toFixed(0)}%</td>
-                    <td>
-                        <div class="delta-bar-container">
-                            <div class="delta-bar \${deltaColor}" style="width:\${deltaWidth}px"></div>
-                            <div>\${deltaHigh.toFixed(1)}%</div>
-                        </div>
-                    </td>
-                    <td><svg width="70" height="20">\${rsBars}</svg></td>
-                    <td class="narrow-col">\${stock.sma20 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>'}</td>
-                    <td class="narrow-col">\${stock.sma50 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>'}</td>
-                    <td class="narrow-col">\${stock.sma200 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>'}</td>
-                </tr>\`;
+
+            rows += [
+                '<tr>',
+                '<td class="ticker-cell">',
+                    stock.symbol,
+                '</td>',
+                '<td style="text-align: center;" title="' + stock.name + '">' + parseFloat(stock.allocation || 0).toFixed(2) + '%</td>',
+                '<td>$' + (stock.price || 0).toFixed(2) + '</td>',
+                '<td>' + formatMarketCap(stock.marketCap) + '</td>',
+                '<td style="' + psStyle + '">' + (stock.ps ? stock.ps.toFixed(2) : '-') + '</td>',
+                '<td style="' + peStyle + '">' + (stock.pe ? stock.pe.toFixed(2) : '-') + '</td>',
+                '<td style="' + growthStyle + '">' + (stock.growth ? stock.growth.toFixed(1) + '%' : '-') + '</td>',
+                '<td style="' + pegStyle + '">' + (stock.peg ? stock.peg.toFixed(2) : '-') + '</td>',
+                '<td style="' + ytdStyle + '">' + (stock.changeYTD || 0).toFixed(0) + '%</td>',
+                '<td>' + createSparkline(stock.history) + '</td>',
+                '<td style="' + oneYStyle + '">' + (stock.change1Y || 0).toFixed(0) + '%</td>',
+                '<td>',
+                    '<div class="delta-bar-container">',
+                        '<div>' + (deltaHigh >= 0 ? '&#9650;' : '&#9660;') + Math.abs(deltaHigh).toFixed(1) + '%</div>',
+                    '</div>',
+                '</td>',
+                '<td><svg width="70" height="20">' + rsBars + '</svg></td>',
+                '<td class="narrow-col">' + (stock.sma20 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>') + '</td>',
+                '<td class="narrow-col">' + (stock.sma50 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>') + '</td>',
+                '<td class="narrow-col">' + (stock.sma200 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>') + '</td>',
+                '</tr>'
+            ].join('');
             });
-            tbody.innerHTML = rows;
-            document.getElementById('tableFoot').style.display = 'table-header-group';
-            document.getElementById('avgPS').textContent = countPS ? (totalPS/countPS).toFixed(2) : '-';
-            document.getElementById('avgPE').textContent = countPE ? (totalPE/countPE).toFixed(2) : '-';
-            document.getElementById('avgPEG').textContent = countPEG ? (totalPEG/countPEG).toFixed(2) : '-';
+tbody.innerHTML = rows;
+document.getElementById('tableFoot').style.display = 'table-header-group';
+
+document.getElementById('avgPS').textContent = totalAllocPS > 0 ? (wTotalPS / totalAllocPS).toFixed(2) : '-';
+document.getElementById('avgPE').textContent = totalAllocPE > 0 ? (wTotalPE / totalAllocPE).toFixed(2) : '-';
+document.getElementById('avgGrowth').textContent = totalAllocGrowth > 0 ? (wTotalGrowth / totalAllocGrowth).toFixed(1) + '%' : '-';
+document.getElementById('avgPEG').textContent = totalAllocPEG > 0 ? (wTotalPEG / totalAllocPEG).toFixed(2) : '-';
         }
 
-        // Helpers
-        function getGradientColor(v, min, max, r, g, b) {
-            if(v==null) return '';
-            const ratio = Math.max(0, Math.min(1, (v - min) / (max - min)));
-            const nr = Math.round(255 + ratio * (r - 255));
-            const ng = Math.round(255 + ratio * (g - 255));
-            const nb = Math.round(255 + ratio * (b - 255));
-            return \`background-color: rgb(\${nr},\${ng},\${nb}); color: black;\`;
+// Helpers
+function getGradientColor(v, min, max, r, g, b) {
+    if (v == null) return '';
+    const ratio = Math.max(0, Math.min(1, (v - min) / (max - min)));
+    const nr = Math.round(255 + ratio * (r - 255));
+    const ng = Math.round(255 + ratio * (g - 255));
+    const nb = Math.round(255 + ratio * (b - 255));
+    return \`background-color: rgb(\${nr},\${ng},\${nb}); color: black;\`;
         }
         function formatMarketCap(n) {
              if(!n) return '-';
@@ -791,39 +830,29 @@ async function confirmDeleteGroup() {
                                 placeholder="0.00">
                             <span style="font-size:0.9rem; color:#777; font-weight:500;">%</span>
                         </div>
-                        <button class="btn-remove" onclick="removeMember('\${mem.symbol}')" title="Remove">×</button>
+                        <button class="btn-remove" onclick="removeMember('\${mem.symbol}')" title="Remove">&times;</button>
                     </div>
                 \`;
-                grid.appendChild(el);
+grid.appendChild(el);
             });
-            
-            // Show total
-            if(localMembers.length > 0) {
-                 const totalEl = document.createElement('div');
-                 totalEl.style.gridColumn = '1 / -1';
-                 totalEl.style.textAlign = 'right';
-                 totalEl.style.padding = '10px';
-                 totalEl.style.fontWeight = 'bold';
-                 // Strict validation: > 100.00 is Error
-                 const isError = totalAlloc > 100.0001; 
-                 totalEl.style.color = isError ? 'red' : (Math.abs(100 - totalAlloc) < 0.01 ? 'green' : '#666');
-                 totalEl.innerHTML = \`Total Allocation: \${totalAlloc.toFixed(2)}%\`;
+
+// Show total
+if (localMembers.length > 0) {
+    const totalEl = document.createElement('div');
+    totalEl.style.gridColumn = '1 / -1';
+    totalEl.style.textAlign = 'right';
+    totalEl.style.padding = '10px';
+    totalEl.style.fontWeight = 'bold';
+    // Strict validation: > 100.00 is Error
+    const isError = totalAlloc > 100.0001;
+    totalEl.style.color = isError ? 'red' : (Math.abs(100 - totalAlloc) < 0.01 ? 'green' : '#666');
+    totalEl.innerHTML = \`Total Allocation: \${totalAlloc.toFixed(2)}%\`;
                  grid.appendChild(totalEl);
             }
         }
         
-        function updateAllocation(symbol, value) {
-            const mem = localMembers.find(m => m.symbol === symbol);
-            if(mem) {
-                mem.allocation = value; // Keep as string to avoid cursor jumping or float issues during typing
-                checkDirty();
-                renderMembers(); // Re-render to update Total. Note: This might cause focus loss logic issues if not careful, but simple implementation often re-renders. 
-                // Wait, re-rendering the whole grid WILL lose focus on the input being typed.
-                // Better approach: Update the total display separately or only re-render if NOT typing.
-                // For now, let's just NOT re-render the whole grid, but just update the Total element?
-                // Actually, let's fix the focus issue by NOT re-rendering logic inside updateAllocation.
-            }
-        }
+        
+        // Revised renderMembers to handle Partial Updates if needed
         
         // Revised renderMembers to handle Partial Updates if needed, 
         // but for simplicity let's separate "Render Grid" vs "Render Stats"
@@ -939,19 +968,33 @@ async function confirmDeleteGroup() {
                             (currentDesc !== originalState.description) ||
                             (currentMembersStr !== originalState.members);
             
-            const isValid = totalAlloc <= 100.0001; // Allow floating point epsilon
+            const isValid = totalAlloc <= 100.0001; 
 
-            const btn = document.getElementById('btnSaveGroup');
-            if(isDirty && isValid) {
-                btn.disabled = false;
-                btn.style.background = '#4CAF50';
-                btn.style.color = 'white';
-                btn.style.cursor = 'pointer';
+            const btn = document.getElementById('btnMainAction');
+            const btnCancel = document.getElementById('btnCancel');
+            
+            if(isDirty) {
+                if(btnCancel) btnCancel.style.display = 'inline-block';
+                btn.textContent = 'Save';
+                btn.style.background = isValid ? '#2196F3' : '#F44336'; // Blue if valid, Red if invalid
+                btn.style.cursor = isValid ? 'pointer' : 'not-allowed';
+                btn.disabled = !isValid;
+                // Add * to indicate unsaved changes?
             } else {
-                btn.disabled = true;
-                btn.style.background = '#EEE';
-                btn.style.color = '#999';
-                btn.style.cursor = 'not-allowed';
+                if(btnCancel) btnCancel.style.display = 'none';
+                btn.textContent = 'Done';
+                btn.style.background = '#999'; // Neutral
+                btn.style.cursor = 'pointer';
+                btn.disabled = false;
+            }
+        }
+
+        function handleMainAction() {
+            const btn = document.getElementById('btnMainAction');
+            if(btn.textContent === 'Save') {
+                updateGroup();
+            } else {
+                toggleManager();
             }
         }
         
@@ -1034,3 +1077,7 @@ async function confirmDeleteGroup() {
     </script>
 </body>
 </html>`;
+
+
+
+
