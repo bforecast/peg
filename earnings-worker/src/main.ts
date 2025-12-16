@@ -2,7 +2,7 @@
 import { Hono } from 'hono';
 import { fetchEarnings } from './alpha_vantage';
 import { fetchPriceHistory, PriceData } from './price_fetcher';
-import { fetchQuotes, YahooQuote } from './yahoo_finance';
+import { fetchQuotes, YahooQuote, fetchPriceHistory as fetchYahooHistory } from './yahoo_finance';
 import { fetchYahooEstimates, fetchYahooPrices } from './yahoo';
 import { getSuperinvestors, getPortfolio } from './dataroma';
 import { QQQ_TICKERS, AI_TICKERS } from './tickers';
@@ -112,6 +112,22 @@ app.get('/api/superinvestors', async (c) => {
         return c.json({ error: e.message }, 500);
     }
 });
+
+
+
+
+app.get('/api/cron-logs', async (c) => {
+    try {
+        const { results } = await c.env.DB.prepare('SELECT * FROM cron_logs ORDER BY id DESC LIMIT 50').all();
+        return c.json({ logs: results });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+
+
+
 
 app.post('/api/import-superinvestor', async (c) => {
     try {
@@ -526,7 +542,7 @@ async function getDashboardData(env: Bindings, groupId?: string) {
 
             // YTD Change
             // Find last close of previous year
-            const currentYear = new Date().getFullYear();
+            const currentYear = parseInt(getESTDate().substring(0, 4));
             const prevYear = (currentYear - 1).toString();
 
             // Find the last entry that starts with prevYear
@@ -585,44 +601,45 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
     // 2. Run updates in a background promise (keep worker alive)
     ctx.waitUntil((async () => {
-        const BATCH_SIZE = 5;
-        // Shuffle to ensure fair coverage if we time out? 
-        // Or just sort? Let's just iterate.
-
-        for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
-            const batch = symbols.slice(i, i + BATCH_SIZE);
-
-            // Run updates for this batch
-
-            // A. Fetch and Cache Board Metrics (New)
-            try {
-                const quotes = await fetchQuotes(batch);
-                if (quotes && quotes.length > 0) {
-                    await saveQuotesToDB(env, quotes);
-                }
-            } catch (e) {
-                console.error(`[Cron] Error updating quotes for batch ${batch.join(',')}`, e);
-            }
-
-            // B. Run granular updates in parallel
-            await Promise.all(batch.map(async (symbol) => {
+        try {
+            await logCronStatus(env, 'STARTED', `Updating ${symbols.length} tracked symbols`);
+            const BATCH_SIZE = 5;
+            for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+                const batch = symbols.slice(i, i + BATCH_SIZE);
                 try {
-                    // Update Price History (Daily) - Checks maxDate internally so it's efficient
-                    await updatePrices(env, symbol);
-
-                    // Update Earnings Estimates (Daily? or Weekly?)
-                    // Doing it daily ensures new earnings reports are caught quickly.
-                    await updateTicker(env, symbol);
+                    const quotes = await fetchQuotes(batch);
+                    if (quotes && quotes.length > 0) {
+                        await saveQuotesToDB(env, quotes);
+                    }
                 } catch (e) {
-                    console.error(`Update failed for ${symbol}`, e);
+                    console.error(`[Cron] Error updating quotes for batch ${batch.join(',')}`, e);
                 }
-            }));
-
-            // Small delay to be nice to APIs and CPU
-            await new Promise(r => setTimeout(r, 1000));
+                await Promise.all(batch.map(async (symbol) => {
+                    try {
+                        await updatePrices(env, symbol);
+                        await updateTicker(env, symbol);
+                    } catch (e) {
+                        console.error(`Update failed for ${symbol}`, e);
+                    }
+                }));
+                await new Promise(r => setTimeout(r, 1000));
+            }
+            console.log('[Cron] Update Complete');
+            await logCronStatus(env, 'SUCCESS', 'Update Complete');
+        } catch (e: any) {
+            console.error('[Cron] Critical Error', e);
+            await logCronStatus(env, 'FAILED', e.message, JSON.stringify(e));
         }
-        console.log('[Cron] Update Complete');
     })());
+}
+
+async function logCronStatus(env: Bindings, status: string, message: string, details: string = '') {
+    try {
+        const timestamp = getESTTimestamp();
+        await env.DB.prepare('INSERT INTO cron_logs (timestamp, status, message, details) VALUES (?, ?, ?, ?)').bind(timestamp, status, message, details).run();
+    } catch (e) {
+        console.error('Failed to log cron status', e);
+    }
 }
 
 async function updatePrices(env: Bindings, symbol: string) {
@@ -647,20 +664,21 @@ async function updatePrices(env: Bindings, symbol: string) {
             }
         }
         const targetDate = lastTradingDate.toISOString().split('T')[0];
-        if (maxDate >= targetDate) return { count: 0, message: `Prices up to date (${maxDate})` };
+        if (maxDate > targetDate) return { count: 0, message: `Prices up to date (${maxDate})` };
     }
 
     const prices = await fetchYahooPrices(symbol);
     if (!prices) return { count: 0, message: "Yahoo Price Fetch Failed" };
 
+    const updatedAt = getESTTimestamp();
     const stmt = env.DB.prepare(`
-        INSERT OR REPLACE INTO stock_prices (symbol, date, open, high, low, close, volume)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO stock_prices (symbol, date, open, high, low, close, volume, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const batch = [];
     for (const price of prices) {
-        batch.push(stmt.bind(symbol, price.date, price.open || null, price.high || null, price.low || null, price.close || null, price.volume || null));
+        batch.push(stmt.bind(symbol, price.date, price.open || null, price.high || null, price.low || null, price.close || null, price.volume || null, updatedAt));
     }
 
     if (batch.length > 0) {
@@ -731,11 +749,12 @@ async function updateTicker(env: Bindings, symbol: string) {
     if (FETCH_AV_HISTORY) {
         const data = await fetchEarnings(symbol, apiKey);
         if (data && !('error' in data)) {
-            const stmt = env.DB.prepare(`INSERT OR REPLACE INTO earnings_estimates (symbol, fiscal_date_ending, estimated_eps, reported_eps, surprise, surprise_percentage, report_date) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+            const updatedAt = getESTTimestamp();
+            const stmt = env.DB.prepare(`INSERT OR REPLACE INTO earnings_estimates (symbol, fiscal_date_ending, estimated_eps, reported_eps, surprise, surprise_percentage, report_date, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
             const batch = [];
             for (const q of data.quarterlyEarnings) {
                 if (q.fiscalDateEnding < '2018-01-01') continue;
-                batch.push(stmt.bind(data.symbol, q.fiscalDateEnding, parseFloat(q.estimatedEPS) || null, parseFloat(q.reportedEPS) || null, parseFloat(q.surprise) || null, parseFloat(q.surprisePercentage) || null, q.reportedDate));
+                batch.push(stmt.bind(data.symbol, q.fiscalDateEnding, parseFloat(q.estimatedEPS) || null, parseFloat(q.reportedEPS) || null, parseFloat(q.surprise) || null, parseFloat(q.surprisePercentage) || null, q.reportedDate, updatedAt));
             }
             if (batch.length > 0) {
                 await env.DB.batch(batch);
@@ -759,7 +778,8 @@ async function updateTicker(env: Bindings, symbol: string) {
                 const isoDate = d.toISOString().split('T')[0];
                 if (yahooData.fiscal_date_ending < maxDate) targetDate = isoDate;
             }
-            await env.DB.prepare(`INSERT OR REPLACE INTO earnings_estimates (symbol, fiscal_date_ending, estimated_eps, report_date) VALUES (?, ?, ?, ?)`).bind(symbol, targetDate, yahooData.estimated_eps, null).run();
+            const updatedAt = getESTTimestamp();
+            await env.DB.prepare(`INSERT OR REPLACE INTO earnings_estimates (symbol, fiscal_date_ending, estimated_eps, report_date, updated_at) VALUES (?, ?, ?, ?, ?)`).bind(symbol, targetDate, yahooData.estimated_eps, null, updatedAt).run();
         }
     } catch (e) { }
     return { count: avCount, message: avMsg };
@@ -767,18 +787,35 @@ async function updateTicker(env: Bindings, symbol: string) {
 
 // --- QUOTE OPS ---
 
-async function saveQuotesToDB(env: Bindings, quotes: YahooQuote[]) {
-    // We store using today's date (UTC or NY? uses simple string YYYY-MM-DD from system time)
-    // This runs in a worker, time is usually UTC.
+// Helper for EST Date (YYYY-MM-DD)
+function getESTDate(): string {
     const now = new Date();
-    const dateStr = now.toISOString().split('T')[0];
+    // 'en-CA' gives YYYY-MM-DD format
+    return now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
+}
+
+// Helper for EST Timestamp (YYYY-MM-DD HH:MM:SS)
+function getESTTimestamp(): string {
+    const now = new Date();
+    // 'en-CA' allows almost correct format, but we need HH:MM:SS
+    // toLocaleString with en-CA gives "YYYY-MM-DD, HH:MM:SS a" usually or similar.
+    // Let's build it manually to be safe for SQL
+    const nyStr = now.toLocaleString("en-US", { timeZone: "America/New_York", hour12: false });
+    const d = new Date(nyStr);
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+async function saveQuotesToDB(env: Bindings, quotes: YahooQuote[]) {
+    const dateStr = getESTDate();
+    const updatedAt = getESTTimestamp();
 
     const stmt = env.DB.prepare(`
         INSERT OR REPLACE INTO stock_quotes (
             symbol, date, price, market_cap, pe_ratio, forward_pe, ps_ratio,
             fifty_two_week_high, fifty_two_week_high_change_percent, change_percent,
-            eps_current_year, eps_next_year
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            eps_current_year, eps_next_year, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     const batch = quotes.map(q => stmt.bind(
@@ -793,7 +830,8 @@ async function saveQuotesToDB(env: Bindings, quotes: YahooQuote[]) {
         q.fiftyTwoWeekHighChangePercent,
         q.regularMarketChangePercent,
         q.epsCurrentYear || null,
-        q.epsNextYear || null
+        q.epsNextYear || null,
+        updatedAt
     ));
 
     if (batch.length > 0) {
@@ -874,4 +912,33 @@ function mapToYahooQuote(row: any): YahooQuote {
         epsCurrentYear: row.eps_current_year,
         epsNextYear: row.eps_next_year
     };
+}
+
+async function backfillHistory(env: Bindings, symbol: string) {
+    try {
+        console.log(`[Backfill] Fetching history for ${symbol}`);
+        const prices = await fetchYahooHistory(symbol);
+
+        if (prices && prices.length > 0) {
+            const stmt = env.DB.prepare(`INSERT OR REPLACE INTO stock_prices (symbol, date, open, high, low, close, volume, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
+            const batch = [];
+            const updatedAt = getESTTimestamp();
+
+            // Optimize: Save last 400 days
+            for (const p of prices) {
+                batch.push(stmt.bind(symbol, p.date, p.open, p.high, p.low, p.close, p.volume, updatedAt));
+            }
+
+            // Chunk insert
+            const CHUNK = 50;
+            for (let k = 0; k < batch.length; k += CHUNK) {
+                await env.DB.batch(batch.slice(k, k + CHUNK));
+            }
+            console.log(`[Backfill] Saved ${prices.length} days for ${symbol}`);
+        } else {
+            console.log(`[Backfill] No history found for ${symbol}`);
+        }
+    } catch (e) {
+        console.error(`[Backfill] Failed for ${symbol}`, e);
+    }
 }

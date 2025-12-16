@@ -161,7 +161,7 @@ export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
 
                 // Calc 52w High Change % if missing
                 let deltaHigh = 0;
-                const currentPrice = financial.currentPrice?.raw || price.regularMarketPrice?.raw || 0;
+                const currentPrice = price.regularMarketPrice?.raw || financial.currentPrice?.raw || 0;
                 const high52 = summary.fiftyTwoWeekHigh?.raw || 0;
 
                 if (high52) {
@@ -201,4 +201,55 @@ export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
     }
 
     return results;
+}
+
+export async function fetchPriceHistory(symbol: string): Promise<any[]> {
+    try {
+        const session = await getYahooSession();
+        if (!session) throw new Error('Failed to get Yahoo Session');
+
+        const { crumb, cookie } = session;
+        const period1 = Math.floor((Date.now() - 31536000000 * 2) / 1000); // 2 years ago (safe buffer)
+        const period2 = Math.floor(Date.now() / 1000);
+
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?symbol=${symbol}&period1=${period1}&period2=${period2}&interval=1d&crumb=${crumb}`;
+
+        const response = await fetch(url, {
+            headers: { 'User-Agent': USER_AGENT, 'Cookie': cookie }
+        });
+
+        if (!response.ok) {
+            console.error(`Yahoo History Error for ${symbol}: ${response.status} ${response.statusText}`);
+            return [];
+        }
+
+        const data: any = await response.json();
+        const result = data.chart?.result?.[0];
+
+        if (!result) return [];
+
+        const timestamps = result.timestamp;
+        const closes = result.indicators?.quote?.[0]?.close;
+
+        if (!timestamps || !closes || timestamps.length === 0) return [];
+
+        const prices = [];
+        for (let i = 0; i < timestamps.length; i++) {
+            if (closes[i] !== null && closes[i] !== undefined) {
+                // Convert timestamp to YYYY-MM-DD
+                const d = new Date(timestamps[i] * 1000);
+                const dateStr = d.toISOString().split('T')[0];
+                prices.push({
+                    date: dateStr,
+                    close: parseFloat(closes[i].toFixed(2)),
+                    open: 0, high: 0, low: 0, volume: 0 // Simplification for now
+                });
+            }
+        }
+        return prices;
+
+    } catch (e) {
+        console.error(`Failed to fetch history for ${symbol}`, e);
+        return [];
+    }
 }

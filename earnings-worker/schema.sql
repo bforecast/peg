@@ -26,3 +26,13 @@ CREATE TABLE stock_prices (
 );
 CREATE INDEX idx_prices_symbol ON stock_prices(symbol);
 CREATE INDEX idx_prices_date ON stock_prices(symbol, date DESC);
+
+-- Cron Logs Table
+CREATE TABLE IF NOT EXISTS cron_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    timestamp TEXT NOT NULL,
+    status TEXT NOT NULL,
+    message TEXT,
+    details TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_cron_logs_timestamp ON cron_logs(timestamp DESC);
