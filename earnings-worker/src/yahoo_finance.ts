@@ -100,17 +100,19 @@ export interface YahooQuote {
     shortName: string;
     regularMarketPrice: number;
     marketCap: number;
-    priceToSalesTrailing12Months: number;
-    trailingPE: number;
-    forwardPE: number;
-    fiftyTwoWeekHigh: number;
-    fiftyTwoWeekHighChangePercent: number;
-    regularMarketChangePercent: number; // Today's change
+    priceToSalesTrailing12Months?: number;
+    trailingPE?: number;
+    forwardPE?: number;
+    fiftyTwoWeekHigh?: number;
+    fiftyTwoWeekHighChangePercent?: number;
+    regularMarketChangePercent?: number; // Today's change
     epsCurrentYear?: number;
     epsNextYear?: number;
+    dividendYield?: number;
 }
 
-export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
+// Internal: Fetches a batch of symbols without retries
+async function fetchQuotesInternal(symbols: string[]): Promise<YahooQuote[]> {
     if (!symbols.length) return [];
 
     const session = await getYahooSession();
@@ -180,7 +182,8 @@ export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
                     fiftyTwoWeekHighChangePercent: deltaHigh,
                     regularMarketChangePercent: price.regularMarketChangePercent?.raw || 0,
                     epsCurrentYear,
-                    epsNextYear
+                    epsNextYear,
+                    dividendYield: summary.dividendYield?.raw || 0
                 };
 
             } catch (e) {
@@ -201,6 +204,37 @@ export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
     }
 
     return results;
+}
+
+// Exported: Robust Fetch with Auto-Retry (Up to 3 times)
+export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
+    const allResults: YahooQuote[] = [];
+    let pending = [...symbols];
+    let attempt = 1;
+
+    while (pending.length > 0 && attempt <= 3) {
+        if (attempt > 1) {
+            console.log(`Retry attempt ${attempt} for ${pending.length} symbols...`);
+            await new Promise(r => setTimeout(r, attempt * 1000)); // Backoff: 2s, 3s
+        }
+
+        const quotes = await fetchQuotesInternal(pending);
+
+        // Add successes to results
+        allResults.push(...quotes);
+
+        // Calculate remaining
+        const successSymbols = quotes.map(q => q.symbol);
+        pending = pending.filter(s => !successSymbols.includes(s));
+
+        attempt++;
+    }
+
+    if (pending.length > 0) {
+        console.error(`Failed to fetch after 3 attempts: ${pending.join(', ')}`);
+    }
+
+    return allResults;
 }
 
 export async function fetchPriceHistory(symbol: string): Promise<any[]> {

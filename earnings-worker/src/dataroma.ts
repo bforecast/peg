@@ -1,22 +1,4 @@
-
-export interface Superinvestor {
-    name: string;
-    code: string;
-}
-
-export interface PortfolioHolding {
-    symbol: string;
-    name: string;
-    allocation: number;
-}
-
-export interface Portfolio {
-    manager: string;
-    date: string;
-    period: string;
-    value: string;
-    holdings: PortfolioHolding[];
-}
+import { Superinvestor, Portfolio, PortfolioHolding } from './types';
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
