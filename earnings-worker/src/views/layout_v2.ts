@@ -10,7 +10,7 @@ export const HTML = `<!DOCTYPE html>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>AI Earnings Beats (v2.19)</title>
+    <title>AI Earnings Beats (v2.0)</title>
     <style>${STYLES}</style>
 </head>
 <body class="desktop-hidden">
@@ -21,25 +21,27 @@ export const HTML = `<!DOCTYPE html>
             My Portfolios
         </h2>
         <ul class="group-list" id="groupList"></ul>
-        <button class="btn-new-group" onclick="openModal()"><span>+</span> Create New Portfolio</button>
+        
+        <div class="sidebar-footer">
+            <button onclick="openModal()" class="btn-add">New Portfolio</button>
+            <div style="margin-top:10px; font-size:0.8rem; color:#888;">
+                <div id="healthBadge" style="display:inline-block; width:8px; height:8px; border-radius:50%; background:#ccc; margin-right:5px;" onclick="checkHealth()"></div>
+                System Status
+            </div>
+        </div>
     </div>
+
+    <!-- Main Content -->
     <div id="main-content">
-        <header>
-            <div style="display:flex; align-items:center; gap: 12px;">
-                <button class="btn-mobile-toggle" onclick="toggleSidebar()">&#9776;</button>
-                <div style="display:flex; flex-direction:column; justify-content:center;">
-                    <div style="display:flex; align-items:center; gap: 10px;">
-                        <h1 id="pageTitle" onclick="goHome()" style="margin:0; line-height: 1.2; cursor:pointer;" title="Return to Home">Brilliant Forecast Portfolios</h1>
-                    </div>
-                    <div id="dashboardMemo" style="font-size: 0.85rem; color: #666; margin-top: 2px;"></div>
-                </div>
+        <!-- Header -->
+        <div class="header" id="mainHeader">
+            <div style="display:flex; align-items:center;">
+                <span onclick="toggleSidebar()" class="btn-mobile-toggle" style="margin-right:15px; font-size:1.2rem; cursor:pointer;">&#9776;</span>
+                <h1 id="pageTitle" onclick="goHome()" style="cursor:pointer;">Brilliant Forecast Portfolios</h1>
             </div>
-            <div id="headerActions" style="display:flex; align-items:center; gap: 12px;">
-                <span id="healthBadge" class="health-badge" title="System Check Pending"></span>
-                <span id="lastUpdated" style="font-size: 0.75rem; color: #888; font-style: italic;"></span>
-                <button id="btnRefresh" onclick="refreshCurrentGroup()" style="padding: 6px 14px; border: 1px solid #2196F3; background: white; color: #2196F3; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.2s;">&#x21bb; Refresh</button>
-            </div>
-        </header>
+            <!-- Old btnManage removed from here -->
+            <div id="dashboardMemo" style="margin-top:5px; font-size:0.9rem; color:#DDD;"></div>
+        </div>
 
         <div class="view-container">
             <!-- Portfolios Board (Recap) -->
@@ -70,14 +72,12 @@ export const HTML = `<!DOCTYPE html>
             <div id="view-dashboard" style="display: none;">
                 <div class="dashboard-container">
                     <!-- Portfolio Title Bar -->
-                    <div id="portfolioTitleBar" style="display:flex; justify-content:space-between; align-items:flex-start; padding:15px 0; margin-bottom:10px; border-bottom:1px solid #eee;">
-                        <div style="display:flex; flex-direction:column; gap:4px;">
-                            <div style="display:flex; align-items:center; gap:15px;">
-                                <h2 id="portfolioTitle" style="margin:0; color:#333; font-size:1.3rem;"></h2>
-                                <button id="btnEditPortfolio" onclick="toggleManager()" style="padding:4px 12px; border:1px solid #2196F3; background:white; color:#2196F3; border-radius:4px; cursor:pointer; font-size:0.8rem;">&#9998; Edit</button>
-                            </div>
-                            <div id="portfolioMemo" style="font-size:0.85rem; color:#666; max-width:600px; text-align:left;"></div>
+                    <div id="portfolioTitleBar" style="display:flex; justify-content:space-between; align-items:center; padding:15px 0; margin-bottom:10px; border-bottom:1px solid #eee;">
+                        <div style="display:flex; align-items:center; gap:15px;">
+                            <h2 id="portfolioTitle" style="margin:0; color:#333; font-size:1.3rem;"></h2>
+                            <button id="btnEditPortfolio" onclick="toggleManager()" style="padding:4px 12px; border:1px solid #2196F3; background:white; color:#2196F3; border-radius:4px; cursor:pointer; font-size:0.8rem;">&#9998; Edit</button>
                         </div>
+                        <div id="portfolioMemo" style="font-size:0.85rem; color:#666; max-width:400px; text-align:right;"></div>
                     </div>
                     <table>
                         <thead>
@@ -143,78 +143,74 @@ export const HTML = `<!DOCTYPE html>
                         <div style="display:flex; justify-content:space-between; align-items:center;">
                             <h3 style="margin-top:0; color:#555; font-size:1.1rem; margin-bottom:15px;">Stocks</h3>
                         </div>
-                        
-                        <div style="display:flex; gap:10px; margin-bottom:20px; align-items:center;">
-                            <div class="input-group" style="flex-grow:1;">
-                                <input type="text" id="newMemberInput" class="input-field" placeholder="Add Symbol (e.g. MSFT)" onkeydown="if(event.key==='Enter') addMember()">
-                                <button class="btn-add" onclick="addMember()">Add</button>
-                            </div>
-                            <button id="btnDistribute" onclick="distributeAllocation()" style="display:none; height:42px; padding:0 15px; border:1px solid #2196F3; color:#2196F3; background:white; border-radius:4px; cursor:pointer; white-space:nowrap;">Equalize</button>
-                        </div>
 
-                        <div id="membersGrid" class="members-grid" style="max-height: 500px; overflow-y: auto;"></div>
+                        <div style="display:flex; gap:10px; margin-bottom:15px;">
+                            <input type="text" id="newMemberInput" class="input-field" placeholder="Enter Symbol (e.g. MSFT)" style="flex:1;" onkeypress="if(event.key==='Enter') addMember()">
+                            <button onclick="addMember()" class="btn-primary btn-add" style="padding: 8px 16px;">Add</button>
+                        </div>
+                        
+                        <div id="membersGrid" class="members-grid"></div>
+
+                        <div style="margin-top:15px; text-align:right;">
+                            <button id="btnDistribute" onclick="distributeAllocation()" style="padding:5px 10px; font-size:0.8rem; border:1px solid #ccc; background:white; border-radius:4px; cursor:pointer; color:#555; display:none;">Auto Distribute</button>
+                        </div>
                     </div>
                 </div>
             </div>
             
-            <div id="loading" class="loading-overlay">
-                <div class="spinner"></div>
-                <div id="loadingText">Loading...</div>
-            </div>
+            <div id="loadingText" style="text-align: center; margin-top: 50px; color: #666;">Loading...</div>
         </div>
     </div>
 
-    <div id="toast-container"></div>
+    <!-- Modals -->
     <div id="groupModal" class="modal">
         <div class="modal-content">
-            <h3>Create New Portfolio</h3>
+            <h3>New Portfolio</h3>
             
-            <div style="margin-bottom: 20px; display: flex; gap: 15px; font-size: 0.95rem;">
-                <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                    <input type="radio" name="createMode" value="blank" checked onchange="toggleCreateMode()"> Blank Portfolio
-                </label>
-                <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
-                    <input type="radio" name="createMode" value="import" onchange="toggleCreateMode()"> Import Superinvestor
-                </label>
+            <div style="margin-bottom: 20px;">
+                <label style="display:block; margin-bottom:8px;">Mode:</label>
+                <div style="display:flex; gap:20px;">
+                     <label><input type="radio" name="createMode" value="blank" checked onchange="toggleCreateMode()"> Empty Portfolio</label>
+                     <label><input type="radio" name="createMode" value="import" onchange="toggleCreateMode()"> Import Superinvestor</label>
+                </div>
             </div>
 
+            <!-- Blank Mode -->
             <div id="modeBlank">
-                 <input type="text" id="newGroupName" class="input-field" placeholder="Portfolio Name">
+                <input type="text" id="newGroupName" class="input-field" placeholder="Portfolio Name" style="width:100%; margin-bottom: 15px;">
             </div>
 
+            <!-- Import Mode -->
             <div id="modeImport" style="display:none;">
-                 <select id="investorSelect" class="input-field" style="width: 100%; margin-bottom: 15px; padding: 10px;">
-                     <option value="">Select Manager...</option>
-                 </select>
-                 <div style="margin-bottom: 15px;">
-                     <label style="display:block; font-weight:600; color:#444; margin-bottom:5px;">Max Stocks to Import</label>
-                     <input type="number" id="importLimit" class="input-field" value="10" min="1" max="500" style="width: 100px;">
-                 </div>
-                 <div style="font-size: 0.85rem; color: #666; margin-bottom: 10px;">
-                     This will create a new portfolio with the top holdings from the selected manager.
-                 </div>
+                <p style="font-size:0.9rem; color:#666; margin-bottom:10px;">Select a guru to copy top holdings from:</p>
+                <select id="investorSelect" class="input-field" style="width:100%; margin-bottom: 10px;">
+                    <option value="">Loading...</option>
+                </select>
+                <div style="font-size:0.85rem; color: #888; margin-bottom: 15px;">
+                     Limit: <input type="number" id="importLimit" value="10" min="5" max="50" style="width:50px;"> stocks
+                </div>
             </div>
 
-            <div class="modal-footer">
-                <button onclick="closeModal()" style="padding: 8px 16px; cursor: pointer;">Cancel</button>
-                <button id="btnCreateAction" onclick="handleCreate()" style="padding: 8px 16px; background: #4CAF50; color: white; border: none; cursor: pointer; border-radius: 4px;">Create</button>
+            <div style="text-align: right; margin-top: 20px;">
+                <button onclick="closeModal()" style="margin-right: 10px; padding: 8px 16px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor:pointer;">Cancel</button>
+                <button id="btnCreateAction" onclick="if(document.querySelector('input[name=createMode]:checked').value === 'blank') createGroup(); else importGroup();" class="btn-primary">Create</button>
             </div>
         </div>
     </div>
-
+    
     <div id="deleteModal" class="modal">
-        <div class="modal-content">
-            <h3>Delete Portfolio?</h3>
-            <p>Are you sure you want to delete this portfolio? This cannot be undone.</p>
-            <div class="modal-footer">
-                <button onclick="closeDeleteModal()" style="padding: 8px 16px; cursor: pointer;">Cancel</button>
-                <button onclick="confirmDeleteGroup()" style="padding: 8px 16px; background: #F44336; color: white; border: none; cursor: pointer; border-radius: 4px;">Delete</button>
+        <div class="modal-content" style="max-width: 400px;">
+             <h3 style="color:#F44336; margin-top:0;">Delete Portfolio?</h3>
+             <p>Are you sure you want to delete this portfolio? This cannot be undone.</p>
+             <div style="text-align: right; margin-top: 25px;">
+                <button onclick="closeDeleteModal()" style="margin-right: 10px; padding: 8px 16px; border: 1px solid #ccc; background: white; border-radius: 4px; cursor:pointer;">Keep</button>
+                <button onclick="confirmDeleteGroup()" style="background:#F44336; color:white; border:none; padding: 8px 20px; border-radius: 4px; cursor:pointer;">Delete</button>
             </div>
         </div>
     </div>
 
+    <!-- Scripts -->
     <script>${CLIENT_JS}</script>
     <script>${SCRIPTS}</script>
 </body>
 </html>`;
-

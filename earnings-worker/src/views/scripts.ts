@@ -9,16 +9,10 @@ export const SCRIPTS = `
         // Batch Saving State
         let localMembers = [];
         let originalState = {};
+        let portfolioSort = { key: 'cagr', dir: 'desc' }; // Portfolios Board sort state
 
-        window.addEventListener('load', async () => {
-            checkHealth();
-            // Updated Date logic removed as per user request
-            await fetchGroups();
-            
-            // Auto-select "AI Earnings Beats" or first group
-            const defaultGroup = groups.find(g => g.name === 'AI Earnings Beats') || groups[0];
-            if (defaultGroup) selectGroup(defaultGroup);
-        });
+        // Removed conflicting window.load listener
+
 
         async function checkHealth() {
              const badge = document.getElementById('healthBadge');
@@ -38,15 +32,7 @@ export const SCRIPTS = `
              }
         }
 
-        async function fetchGroups() {
-            try {
-                const res = await fetch('/api/groups?t=' + Date.now());
-                if (res.ok) {
-                    groups = await res.json();
-                    renderSidebar();
-                }
-            } catch (e) { console.error('Error fetching groups', e); }
-        }
+
 
         function renderSidebar() {
             const list = document.getElementById('groupList');
@@ -63,18 +49,35 @@ export const SCRIPTS = `
             });
         }
 
+        // Navigate back to Portfolios Board (Home)
+        async function goHome() {
+            currentGroup = null;
+            document.title = 'Brilliant Forecast Portfolios';
+            document.getElementById('pageTitle').textContent = 'Brilliant Forecast Portfolios';
+            document.getElementById('dashboardMemo').textContent = '';
+            setView('portfolios');
+            await loadPortfolios();
+        }
+
         async function selectGroup(group) {
             if (!group) return; 
             currentGroup = group;
-            document.title = currentGroup.name;
-            document.getElementById('pageTitle').textContent = currentGroup.name;
-            // Update Memo
-            const memoEl = document.getElementById('dashboardMemo');
-            if(memoEl) memoEl.textContent = currentGroup.description || '';
-
-            const btnManage = document.getElementById('btnManage');
-            if(currentGroup.id) { btnManage.style.display = 'block'; btnManage.textContent = 'Edit'; }
-            else { btnManage.style.display = 'none'; }
+            // Browser tab title only - NOT the main h1 header
+            document.title = currentGroup.name + ' | Brilliant Forecast Portfolios';
+            
+            // Populate new portfolio title bar elements inside dashboard view
+            const portfolioTitleEl = document.getElementById('portfolioTitle');
+            if(portfolioTitleEl) portfolioTitleEl.textContent = currentGroup.name;
+            
+            const portfolioMemoEl = document.getElementById('portfolioMemo');
+            if(portfolioMemoEl) portfolioMemoEl.textContent = currentGroup.description || '';
+            
+            // Populate manager view title
+            const managerNameEl = document.getElementById('managerPortfolioName');
+            if(managerNameEl) managerNameEl.textContent = currentGroup.name;
+            
+            // Clear old header memo
+            document.getElementById('dashboardMemo').textContent = '';
             
             // Auto-hide sidebar
             if(window.innerWidth <= 768) {
@@ -91,13 +94,15 @@ export const SCRIPTS = `
 
         function setView(view) {
             currentView = view;
+            // Handle Portfolios View
+            const vPort = document.getElementById('view-portfolios');
+            if(vPort) vPort.style.display = view === 'portfolios' ? 'flex' : 'none';
+            
             document.getElementById('view-dashboard').style.display = view === 'dashboard' ? 'flex' : 'none';
             document.getElementById('view-manager').style.display = view === 'manager' ? 'block' : 'none';
-            const btnManage = document.getElementById('btnManage');
             document.getElementById('btnRefresh').style.display = view === 'manager' ? 'none' : 'inline-block';
-            btnManage.style.display = view === 'manager' ? 'none' : 'inline-block';
+            
             if(currentView === 'manager') {
-                // btnManage.textContent = 'Back to Dashboard'; // Removed as button is hidden
                 loadMembers();
                 // Load group details into inputs
                 if(currentGroup) {
@@ -107,9 +112,7 @@ export const SCRIPTS = `
                     document.getElementById('groupModified').textContent = updated ? new Date(updated).toLocaleString() : 'N/A';
                 }
             } else {
-                if(currentGroup.id) btnManage.textContent = 'Edit';
-                // if(currentGroup.id) loadDashboardData(); // optimize: don't reload if just toggling view? actually safer to reload.
-                if(currentGroup.id) loadDashboardData();
+                if(currentGroup && currentGroup.id) loadDashboardData();
             }
         }
 
@@ -290,9 +293,9 @@ export const SCRIPTS = `
                 // RS Rank 1M (SVG from server)
                 '<td>' + (stock.rsRank1M || '') + '</td>',
                 // SMAs (Booleans from server)
-                '<td class="narrow-col">' + (stock.sma20 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>') + '</td>',
-                '<td class="narrow-col">' + (stock.sma50 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>') + '</td>',
-                '<td class="narrow-col">' + (stock.sma200 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>') + '</td>',
+                '<td class="narrow-col">' + (stock.sma20 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
+                '<td class="narrow-col">' + (stock.sma50 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
+                '<td class="narrow-col">' + (stock.sma200 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
                 '</tr>'
             ].join('');
             });
@@ -508,25 +511,16 @@ export const SCRIPTS = `
                 
                 if(!res.ok) showToast('Delete failed ' + res.status, 'error');
                 else {
-                    // Optimistic update
-                    groups = groups.filter(g => g.id !== idToDelete);
-                    renderSidebar();
                     showToast('Portfolio deleted', 'success');
-
-                    if (groups.length > 0) {
-                        selectGroup(groups[0]);
-                    } else {
-                        // Reset to empty state
-                        currentGroup = null;
-                        document.title = 'Dashboard';
-                        document.getElementById('pageTitle').textContent = 'Dashboard';
-                        document.getElementById('btnManage').style.display = 'none';
-                        setView('dashboard');
-                        renderSidebar();
-                        // Load empty data or show welcome?
-                        dashboardData = [];
-                        renderTable([]);
-                    }
+                    
+                    // Reset current group and return to Portfolios Board
+                    currentGroup = null;
+                    document.title = 'Brilliant Forecast Portfolios';
+                    document.getElementById('pageTitle').textContent = 'Brilliant Forecast Portfolios';
+                    
+                    // Return to portfolios view and reload data
+                    setView('portfolios');
+                    await loadPortfolios();
                 }
             } catch(e) { showToast('Error: ' + e, 'error'); }
         }
@@ -713,18 +707,21 @@ export const SCRIPTS = `
             document.querySelector('.btn-add').disabled = true;
 
             try {
-                const res = await fetch(\`/api/validate/\${symbol}\`);
+                // Cache bust to ensure we get full keys (cagr, etc)
+                const res = await fetch('/api/validate/' + symbol);
                 const data = await res.json();
+                // Handle Error wrapper
+                if(data.error) throw new Error(data.error);
                 
                 if (data.valid) {
                     localMembers.unshift({ symbol: data.symbol, allocation: 0 }); // Init with 0%
                     renderMembers();
                     checkDirty();
                     inp.value = '';
-                    showToast(\`Added \${data.symbol}\`, 'success');
+                    showToast('Added ' + data.symbol, 'success');
                     
                     // Trigger background refresh so data is ready on save
-                    fetch(\`/api/refresh/\${data.symbol}\`, { method: 'POST' }).catch(console.error);
+                    fetch('/api/refresh/' + data.symbol, { method: 'POST' }).catch(console.error);
                 } else {
                     showToast('Invalid symbol: ' + symbol, 'error');
                 }
@@ -861,4 +858,246 @@ export const SCRIPTS = `
             btn.textContent = originalText;
             loadDashboardData();
         }
+
+        // --- PORTFOLIO BOARD LOGIC ---
+
+        async function loadPortfolios() {
+            const loading = document.getElementById('loading');
+            if(loading) loading.style.display = 'flex';
+            try {
+                const res = await fetch('/api/portfolios?t=' + Date.now());
+                if(res.ok) {
+                    const response = await res.json();
+                    const data = Array.isArray(response) ? response : (response.data || []);
+                    
+                    // Update global groups list
+                    groups = data;
+                    
+                    // Apply initial sort (CAGR descending by default)
+                    groups.sort((a, b) => {
+                        const valA = parseFloat(a[portfolioSort.key]);
+                        const valB = parseFloat(b[portfolioSort.key]);
+                        const aInvalid = isNaN(valA) || a[portfolioSort.key] == null;
+                        const bInvalid = isNaN(valB) || b[portfolioSort.key] == null;
+                        if (aInvalid && bInvalid) return 0;
+                        if (aInvalid) return 1;
+                        if (bInvalid) return -1;
+                        return portfolioSort.dir === 'asc' ? valA - valB : valB - valA;
+                    });
+                    
+                    renderSidebar();
+                    renderPortfoliosBoard(groups);
+                }
+            } catch(e) {
+                console.error("Failed to load portfolios", e);
+            } finally {
+                if(loading) loading.style.display = 'none';
+            }
+        }
+
+        function renderPortfoliosBoard(data) {
+            const tbody = document.getElementById('portfoliosBody');
+            if(!tbody) return;
+            let rows = '';
+            
+            if(!data || data.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px;">No portfolios found. Create one!</td></tr>';
+                return;
+            }
+
+            // Helper function for color gradients
+            function getMetricStyle(value, type) {
+                if(value == null) return '';
+                
+                switch(type) {
+                    case 'cagr': // Higher is better, green for positive, red for negative
+                        if(value >= 20) return 'background: linear-gradient(90deg, #C8E6C9, #A5D6A7); color: #1B5E20;';
+                        if(value >= 10) return 'background: #E8F5E9; color: #2E7D32;';
+                        if(value >= 0) return 'background: #F1F8E9; color: #558B2F;';
+                        if(value >= -10) return 'background: #FFF3E0; color: #E65100;';
+                        return 'background: #FFEBEE; color: #C62828;';
+                    
+                    case 'stddev': // Lower is better (less volatility)
+                        if(value <= 10) return 'background: #E8F5E9; color: #2E7D32;';
+                        if(value <= 15) return 'background: #F1F8E9; color: #558B2F;';
+                        if(value <= 25) return 'background: #FFF8E1; color: #F57F17;';
+                        return 'background: #FFEBEE; color: #C62828;';
+                    
+                    case 'maxdd': // Just black text (always negative)
+                        return '';
+                    
+                    case 'sharpe': // Higher is better
+                    case 'sortino':
+                        if(value >= 2) return 'background: linear-gradient(90deg, #C8E6C9, #A5D6A7); color: #1B5E20;';
+                        if(value >= 1.5) return 'background: #E8F5E9; color: #2E7D32;';
+                        if(value >= 1) return 'background: #F1F8E9; color: #558B2F;';
+                        if(value >= 0.5) return 'background: #FFF8E1; color: #F57F17;';
+                        if(value >= 0) return 'background: #FFF3E0; color: #E65100;';
+                        return 'background: #FFEBEE; color: #C62828;';
+                    
+                    case 'corr': // Lower = more unique/diversified (preference varies)
+                        if(value <= 0.3) return 'background: #E8EAF6; color: #303F9F;'; // Low corr - purple (unique)
+                        if(value <= 0.5) return 'background: #E3F2FD; color: #1565C0;'; // Moderate
+                        if(value <= 0.7) return 'background: #ECEFF1; color: #546E7A;'; // Neutral
+                        return 'background: #FFF3E0; color: #E65100;'; // High corr - orange (market-like)
+                    
+                    default:
+                        return '';
+                }
+            }
+
+            // NOTE: Sorting is handled by sortPortfolios() before calling this function
+            // Do NOT add a default sort here as it would override user's selection
+
+            data.forEach(p => {
+                const cagr = p.cagr != null ? p.cagr.toFixed(2) + '%' : '-';
+                const stdDev = p.std_dev != null ? p.std_dev.toFixed(2) + '%' : '-';
+                const maxDD = p.max_drawdown != null ? p.max_drawdown.toFixed(2) + '%' : '-';
+                const sharpe = p.sharpe != null ? p.sharpe.toFixed(2) : '-';
+                const sortino = p.sortino != null ? p.sortino.toFixed(2) : '-';
+                const corr = p.correlation_spy != null ? p.correlation_spy.toFixed(2) : '-';
+                const created = p.created_at ? new Date(p.created_at).toLocaleDateString() : '-';
+                
+                // Escape name
+                const safeName = p.name.replace(/'/g, "\\\\'");
+
+                rows += \`<tr style="cursor:pointer; transition:background 0.2s; border-bottom:1px solid #eee;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='white'" onclick="selectPortfolio(\${p.id}, '\${safeName}')">
+                    <td class="sticky-col" style="font-weight:700; color:#333; padding:12px;">\${p.name}</td>
+                    <td style="text-align:center;">\${p.member_count || 0}</td>
+                    <td style="text-align:right; padding:8px; \${getMetricStyle(p.cagr, 'cagr')}">\${cagr}</td>
+                    <td style="text-align:right; padding:8px; \${getMetricStyle(p.std_dev, 'stddev')}">\${stdDev}</td>
+                    <td style="text-align:right; padding:8px; \${getMetricStyle(p.max_drawdown, 'maxdd')}">\${maxDD}</td>
+                    <td style="text-align:right; padding:8px; \${getMetricStyle(p.sharpe, 'sharpe')}">\${sharpe}</td>
+                    <td style="text-align:right; padding:8px; \${getMetricStyle(p.sortino, 'sortino')}">\${sortino}</td>
+                    <td style="text-align:right; padding:8px; \${getMetricStyle(p.correlation_spy, 'corr')}">\${corr}</td>
+                    <td style="font-size:0.8rem; color:#888; padding:8px;">\${created}</td>
+                </tr>\`;
+            });
+            tbody.innerHTML = rows;
+        }
+
+async function selectPortfolio(id, name) {
+    // Find group object from global list if exists, else mock it
+    let group = groups.find(g => g.id == id);
+    if (!group) {
+        // Should have been loaded by fetchGroups
+        group = { id: id, name: name };
+    }
+    await selectGroup(group);
+}
+
+function sortPortfolios(key) {
+    console.log("Sorting portfolios by:", key);
+    try {
+        // Toggle direction if same key, else default to desc
+        if(portfolioSort.key === key) {
+            portfolioSort.dir = portfolioSort.dir === 'desc' ? 'asc' : 'desc';
+        } else {
+            portfolioSort.key = key;
+            portfolioSort.dir = 'desc';
+        }
+        
+        // Update sort indicators
+        document.querySelectorAll('[id^="sort-p-"]').forEach(el => el.textContent = '');
+        const arrow = portfolioSort.dir === 'asc' ? '\u25B2' : '\u25BC';
+        const indicator = document.getElementById('sort-p-' + key);
+        if(indicator) indicator.textContent = arrow;
+        
+        // Sort and re-render
+        if(!groups || !Array.isArray(groups)) return;
+        
+        groups.sort((a, b) => {
+            const valA = parseFloat(a[key]);
+            const valB = parseFloat(b[key]);
+            
+            const aInvalid = isNaN(valA) || a[key] === null || a[key] === undefined;
+            const bInvalid = isNaN(valB) || b[key] === null || b[key] === undefined;
+            
+            // If both invalid, they are equal
+            if (aInvalid && bInvalid) return 0;
+            
+            // If one is invalid, it is "smaller" (goes to bottom in Desc, top in Asc)
+            // Wait, we want Nulls at BOTTOM in DESC?
+            // DESC: Large -> Small -> Null.
+            // ASC: Null -> Small -> Large.
+            // So Null is effectively -Infinity.
+            
+            if (aInvalid) return portfolioSort.dir === 'asc' ? -1 : 1; 
+            if (bInvalid) return portfolioSort.dir === 'asc' ? 1 : -1;
+            
+            // Normal number comparison
+            return portfolioSort.dir === 'asc' ? valA - valB : valB - valA;
+        });
+
+        renderPortfoliosBoard(groups);
+    } catch(e) {
+        console.error("Sort failed:", e);
+    }
+}
+
+async function recalcPortfolios() {
+    const btn = document.querySelector('button[onclick="recalcPortfolios()"]');
+    if (btn) btn.disabled = true;
+    try {
+        // If using simple toast from defined functions
+        // showToast("Recalculating..."); 
+        const res = await fetch('/api/admin/recalc-portfolio', { method: 'POST' });
+        const result = await res.json();
+        if (result.success) {
+            await loadPortfolios();
+            // showToast("Done", "success");
+        } else {
+            alert("Recalculation Failed");
+        }
+    } catch (e) {
+        alert("Error triggering recalc");
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+// --- INIT ---
+window.initDashboard = async function () {
+    const loading = document.getElementById('loading');
+    try {
+        console.log("INIT Starting...");
+        checkHealth(); // Run immediately for visual feedback
+        setInterval(checkHealth, 30000);
+
+        // Default view: Portfolios
+        setView('portfolios');
+        renderSidebar(); // Initial render (empty)
+        // Consolidated load (fetches data, updates groups, renders sidebar, renders board)
+        await loadPortfolios();
+    } catch (e) {
+        console.error("Init failed:", e);
+        // Show error in UI
+        const tbody = document.getElementById('portfoliosBody');
+        if(tbody) tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px; color:red;">Initialization Error. Please refresh.</td></tr>';
+    } finally {
+        // ALWAYS hide loading spinner
+        if(loading) loading.style.display = 'none';
+    }
+};
+
+// Make functions global for HTML access
+window.selectPortfolio = selectPortfolio;
+window.sortPortfolios = sortPortfolios;
+window.goHome = goHome;
+window.recalcPortfolios = recalcPortfolios;
+window.refreshCurrentGroup = refreshCurrentGroup;
+window.toggleManager = toggleManager;
+window.deleteGroup = deleteGroup;
+window.handleMainAction = handleMainAction;
+window.addMember = addMember;
+window.removeMember = removeMember;
+
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', window.initDashboard);
+} else {
+    window.initDashboard();
+}
 `;
+
+
+

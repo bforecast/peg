@@ -173,11 +173,67 @@ app.post('/api/import-superinvestor', async (c) => {
 
 // --- GROUP MANAGEMENT ---
 
-// List Groups
-app.get('/api/groups', async (c) => {
+// List Groups with Stats (Portfolios Board Data)
+// List Groups with Stats (Portfolios Board Data)
+app.get('/api/portfolios', async (c) => {
     try {
-        const { results } = await c.env.DB.prepare('SELECT * FROM groups ORDER BY created_at DESC').all();
+        // Join groups with portfolio_stats
+        // Also get member count for display
+        // SQLite doesn't support complex joins easily in D1 raw queries sometimes, but LEFT JOIN works.
+        // Explicitly prevent caching to ensure metrics appear
+        c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+        const { results } = await c.env.DB.prepare(`
+            SELECT 
+                g.id, g.name, g.description, g.created_at,
+                ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy, ps.updated_at as stats_updated_at,
+                (SELECT count(*) FROM group_members gm WHERE gm.group_id = g.id) as member_count
+            FROM groups g
+            LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
+            ORDER BY g.created_at DESC
+        `).all();
+
         return c.json(results || []);
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+app.get('/api/debug-db', async (c) => {
+    try {
+        c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+        const { results } = await c.env.DB.prepare('SELECT * FROM groups LIMIT 20').all();
+        return c.json({ count: results.length, rows: results });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// Recalculate Portfolio Stats (Admin)
+app.post('/api/admin/recalc-portfolio', async (c) => {
+    try {
+        const { calculatePortfolioStats } = await import('../portfolio');
+        const groupId = c.req.query('id'); // Optional: calculate for specific group
+
+        let targetGroups = [];
+        if (groupId) {
+            targetGroups.push({ id: parseInt(groupId) });
+        } else {
+            const { results } = await c.env.DB.prepare("SELECT id FROM groups").all();
+            targetGroups = results as { id: number }[];
+        }
+
+        const statsResults = [];
+        for (const g of targetGroups) {
+            try {
+                const res = await calculatePortfolioStats(c.env, g.id);
+                statsResults.push({ id: g.id, status: res ? 'ok' : 'failed', stats: res });
+            } catch (e: any) {
+                statsResults.push({ id: g.id, status: 'error', error: e.message });
+            }
+        }
+
+        return c.json({ success: true, results: statsResults });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     }

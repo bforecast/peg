@@ -30,8 +30,8 @@ export const STYLES = `
         
         /* Sticky Header */
         /* Sticky Header */
-        th { background: #F9F9F9; font-weight: 700; color: #555; cursor: pointer; user-select: none; font-size: 11px; white-space: nowrap; position: sticky; top: 0; z-index: 20; border-bottom: 2px solid #EEE; box-shadow: 0 2px 2px -1px rgba(0,0,0,0.1); } 
-        th:hover { background: #E0E0E0; }
+        th { background: #F9F9F9 !important; font-weight: 700; color: #555 !important; cursor: pointer; user-select: none; font-size: 13px; white-space: nowrap; position: sticky; top: 0; z-index: 20; border-bottom: 2px solid #EEE !important; border-top: none !important; box-shadow: none !important; } 
+        th:hover { background: #E0E0E0 !important; }
 
         /* Sticky Ticker Column */
         td:nth-child(1), th:nth-child(1) { position: sticky; left: 0; z-index: 30; border-right: 1px solid #EEE; }
@@ -115,4 +115,22 @@ export const STYLES = `
         .toast.success { background: #4CAF50; }
         .toast.error { background: #F44336; }
         .toast.info { background: #2196F3; }
+        
+        /* Portfolios Board Specific */
+        .portfolios-scroll-container { overflow: auto; max-height: calc(100vh - 150px); }
+        .portfolio-table { border-collapse: separate; border-spacing: 0; }
+        .portfolio-table th { background: #F5F5F5; position: sticky; top: 45px; z-index: 20; font-size: 0.75rem; padding: 10px 8px; white-space: nowrap; }
+        .portfolio-table th:hover { background: #E0E0E0; }
+        .portfolio-table td { padding: 8px; }
+        .portfolio-table .sticky-col { position: sticky; left: 0; z-index: 30; background: white; border-right: 2px solid #EEE; min-width: 150px; }
+        .portfolio-table th.sticky-col { z-index: 40; background: #F5F5F5; }
+        .portfolio-table tbody tr:hover .sticky-col { background: #f0f9ff; }
+        
+        /* FORCE WHITE HEADERS - Overriding artifacts */
+        th, .portfolio-table th, .sticky-col { background: #FFFFFF !important; background-color: #FFFFFF !important; color: #333 !important; }
+        th:hover, .portfolio-table th:hover { background: #F0F0F0 !important; }
+
+        /* FORCE STICKY HEADER LAYERING */
+        .portfolio-table th { top: 0 !important; z-index: 100 !important; }
+        .portfolio-table th.sticky-col { z-index: 110 !important; }
 `;

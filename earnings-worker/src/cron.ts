@@ -7,7 +7,8 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
     // 1. Get all unique active symbols from portfolios
     const { results } = await env.DB.prepare("SELECT DISTINCT symbol FROM group_members").all();
-    const symbols = results.map((r: any) => r.symbol);
+    // Always include SPY for benchmark stats
+    const symbols = [...new Set([...results.map((r: any) => r.symbol), 'SPY'])];
 
     console.log(`[Cron] Updating ${symbols.length} tracked symbols...`);
 
@@ -150,6 +151,26 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
             console.log('[Cron] ' + msg);
             await logCronStatus(env, 'SUCCESS', msg, details);
+
+            // --- Phase 3: Portfolio Stats Recalculation ---
+            // Only run if we did some updates or it's the "Final Safety Net" run (Midnight)
+            // Actually, let's run it if we have fresh data.
+            // Or simpler: Just run it. It's fast (aggregating local D1 data).
+
+            console.log('[Cron] Recalculating Portfolio Stats...');
+            const { results: groups } = await env.DB.prepare("SELECT id FROM groups").all();
+            if (groups && groups.length > 0) {
+                const { calculatePortfolioStats } = await import('./portfolio');
+                for (const g of groups) {
+                    try {
+                        const groupId = Number(g.id);
+                        await calculatePortfolioStats(env, groupId);
+                        console.log(`[Cron] Stats updated for Group ${groupId}`);
+                    } catch (e) {
+                        console.error(`[Cron] Stats failed for Group ${g.id}`, e);
+                    }
+                }
+            }
         } catch (e: any) {
             console.error('[Cron] Critical Error', e);
             await logCronStatus(env, 'FAILED', e.message, JSON.stringify(e));
