@@ -222,7 +222,10 @@ export const SCRIPTS = `
             data.forEach(stock => {
                 const alloc = parseFloat(stock.allocation) || 0; // Allocation percentage (0-100)
                 
-                // Calculate Growth
+                // Calculate Growth from Quote if available (fallback)
+                // Note: The backend might provide 'growth' or we calculate it here.
+                // Existing logic calculates it from epsCurrentYear/epsNextYear.
+                // If backend provides it, we could use it, but let's keep this calculation for now if not provided safely.
                 const epsC = parseFloat(stock.quote?.epsCurrentYear) || 0;
                 const epsN = parseFloat(stock.quote?.epsNextYear) || 0;
                 let growth = 0;
@@ -238,7 +241,7 @@ export const SCRIPTS = `
                 if(stock.dividendYield != null && alloc > 0) { wTotalYield += stock.dividendYield * alloc; totalAllocYield += alloc; }
                 
                 const psStyle = getGradientColor(stock.ps, minPS, maxPS, 255, 200, 100);
-                // Color by meaning: Green > 0, Red < 0 (Background)
+                
                 let growthStyle = ''; 
                 if (stock.growth > 0) growthStyle = 'background-color: #C8E6C9; color: black;'; // Light Green
                 if (stock.growth < 0) growthStyle = 'background-color: #FFCDD2; color: black;'; // Light Red
@@ -246,26 +249,22 @@ export const SCRIPTS = `
                 let peStyle = getGradientColor(stock.pe, minPE, maxPE, 255, 200, 100);
                 if (!stock.pe && stock.pe !== 0) peStyle = 'background-color: rgb(255, 180, 100); color: black;';
                 const pegStyle = getGradientColor(stock.peg, 0, 3, 255, 100, 100);
-                const ytdStyle = getGradientColor(stock.changeYTD, minYTD, maxYTD, 76, 175, 80);
-                const oneYStyle = getGradientColor(stock.change1Y, min1Y, max1Y, 76, 175, 80);
-                // Yield Style: 0% (White) -> 5% (Green)
+                let ytdStyle = '';
+                if (stock.changeYTD != null) {
+                     if (stock.changeYTD < 0) ytdStyle = 'background-color: #FFCDD2; color: black;';
+                     else ytdStyle = getGradientColor(stock.changeYTD, minYTD, maxYTD, 76, 175, 80);
+                }
+                
+                let oneYStyle = '';
+                if (stock.change1Y != null) {
+                    if (stock.change1Y < 0) oneYStyle = 'background-color: #FFCDD2; color: black;';
+                    else oneYStyle = getGradientColor(stock.change1Y, min1Y, max1Y, 76, 175, 80);
+                }
+                
                 const yieldPct = stock.dividendYield ? stock.dividendYield * 100 : 0;
                 const yieldStyle = getGradientColor(yieldPct, 0, 5, 76, 175, 80);
                 
                 const deltaHigh = stock.delta52wHigh || 0;
-                const deltaWidth = Math.min(Math.abs(deltaHigh) * 1.5, 50);
-                const deltaColor = Math.abs(deltaHigh) > 20 ? 'red' : '';
-                
-                const rankHistory = (stock.rsRankHistory || []).map(x => { const n = parseFloat(x); return isNaN(n) ? 0 : n; });
-                const maxR = rankHistory.length ? Math.max(...rankHistory) : 0;
-                
-                const rsBars = rankHistory.map((r,i) => {
-                   const h = 20, bw = 2, gap=1;
-                   const rh = Math.max((r/100)*h, 4);
-                   const x = i*(bw+gap);
-                   const col = (r >= maxR && maxR > 0) ? '#006400' : '#A5D6A7';
-                   return '<rect x="' + x + '" y="' + (h-rh) + '" width="' + bw + '" height="' + rh + '" style="fill:' + col + '"></rect>';
-                }).join('');
 
             rows += [
                 '<tr>',
@@ -280,14 +279,17 @@ export const SCRIPTS = `
                 '<td style="' + growthStyle + '">' + (stock.growth ? stock.growth.toFixed(1) + '%' : '-') + '</td>',
                 '<td style="' + pegStyle + '">' + (stock.peg ? stock.peg.toFixed(2) : '-') + '</td>',
                 '<td style="' + ytdStyle + '">' + (stock.changeYTD || 0).toFixed(0) + '%</td>',
-                '<td>' + createSparkline(stock.history) + '</td>',
+                // Chart 1Y (SVG from server)
+                '<td>' + (stock.chart1Y || '') + '</td>',
                 '<td style="' + oneYStyle + '">' + (stock.change1Y || 0).toFixed(0) + '%</td>',
                 '<td>',
                     '<div class="delta-bar-container">',
                         '<div>' + (deltaHigh >= 0 ? '&#9650;' : '&#9660;') + Math.abs(deltaHigh).toFixed(1) + '%</div>',
                     '</div>',
                 '</td>',
-                '<td><svg width="70" height="20">' + rsBars + '</svg></td>',
+                // RS Rank 1M (SVG from server)
+                '<td>' + (stock.rsRank1M || '') + '</td>',
+                // SMAs (Booleans from server)
                 '<td class="narrow-col">' + (stock.sma20 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>') + '</td>',
                 '<td class="narrow-col">' + (stock.sma50 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>') + '</td>',
                 '<td class="narrow-col">' + (stock.sma200 ? '<span style="color:#4CAF50">▲</span>' : '<span style="color:#F44336">▼</span>') + '</td>',
@@ -326,18 +328,6 @@ export const SCRIPTS = `
              if(n >= 1e12) return (n/1e12).toFixed(2) + 'T';
              if(n >= 1e9) return (n/1e9).toFixed(2) + 'B';
              return (n/1e6).toFixed(2) + 'M';
-        }
-        function createSparkline(pts) {
-            if(!pts || pts.length < 2) return '';
-            const min = Math.min(...pts), max = Math.max(...pts);
-            const w = 100, h = 30;
-            const d = pts.map((p,i) => {
-                const x = (i / (pts.length - 1)) * w;
-                const y = h - ((p - min) / (max - min)) * h;
-                return (i===0 ? 'M' : 'L') + \`\${x} \${y}\`;
-            }).join(' ');
-            const isDown = pts[pts.length-1] < pts[0];
-            return \`<svg class="sparkline \${isDown?'down':''}" viewBox="0 0 100 30"><path d="\${d}" stroke="\${isDown?'#F44336':'#4CAF50'}" fill="none" stroke-width="2"/></svg>\`;
         }
         
         // Modal / Group Ops

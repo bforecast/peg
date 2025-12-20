@@ -115,6 +115,7 @@ export interface YahooQuote {
 async function fetchQuotesInternal(symbols: string[]): Promise<YahooQuote[]> {
     if (!symbols.length) return [];
 
+    // Force refresh check: If we had a recent error, session might be null
     const session = await getYahooSession();
     if (!session) {
         console.error("Failed to get Yahoo Session for quotes");
@@ -137,6 +138,12 @@ async function fetchQuotesInternal(symbols: string[]): Promise<YahooQuote[]> {
                         'Cookie': session.cookie
                     }
                 });
+
+                if (res.status === 401 || res.status === 403) {
+                    console.warn(`[Yahoo] Session Expired/Invalid (${res.status}) for ${symbol}. Clearing session.`);
+                    yahooSession = null; // Force refresh on next call
+                    return null;
+                }
 
                 if (!res.ok) return null;
 

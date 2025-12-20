@@ -400,4 +400,47 @@ app.post('/api/refresh-batch', async (c) => {
     }
 });
 
+// Backfill Stats for ALL symbols (Internal Tool)
+app.post('/api/admin/backfill-stats', async (c) => {
+    try {
+        const { regenerateStats } = await import('../db');
+
+        // 1. Get all distinct symbols from stock_prices (so we only backfill where we have data)
+        const { results } = await c.env.DB.prepare('SELECT DISTINCT symbol FROM stock_prices').all();
+        const symbols = results.map((r: any) => r.symbol);
+
+        console.log(`[Backfill] Found ${symbols.length} symbols`);
+
+        let updated = 0;
+        let failed = 0;
+
+        // Process in chunks to avoid timeout if list is huge (though distinct symbols shouldn't be too many yet)
+        // Cloudflare Workers have CPU time limits, but IO wait time is more flexible.
+        // We'll process sequentially for safety.
+        for (const sym of symbols) {
+            try {
+                const success = await regenerateStats(c.env, sym);
+                if (success) updated++;
+                else failed++;
+            } catch (e) {
+                console.error(`Failed stats for ${sym}`, e);
+                failed++;
+            }
+        }
+
+        return c.json({
+            success: true,
+            total: symbols.length,
+            updated,
+            failed,
+            message: `Regenerated stats for ${updated} symbols`
+        });
+
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+
+
 export default app;
