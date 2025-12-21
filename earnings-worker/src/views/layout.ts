@@ -10,19 +10,22 @@ export const HTML = `<!DOCTYPE html>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>AI Earnings Beats (v2.19)</title>
+    <title>AI Earnings Beats (v2.20)</title>
     <style>${STYLES}</style>
 </head>
 <body class="desktop-hidden">
     <div id="mobileOverlay" onclick="toggleSidebar()"></div> 
-    <div id="sidebar">
+    <nav id="sidebar">
         <h2>
             <span onclick="toggleSidebar()" class="btn-mobile-toggle" style="display:inline-block; font-size:1rem; margin-right:10px; color:#555;">&#9776;</span>
-            My Portfolios
+            Brilliant Forecast
         </h2>
-        <ul class="group-list" id="groupList"></ul>
-        <button class="btn-new-group" onclick="openModal()"><span>+</span> Create New Portfolio</button>
-    </div>
+
+        <ul id="groupList" class="group-list">
+            <!-- Populated by JS -->
+        </ul>
+        <button class="btn-new-group" onclick="openModal()">+ New Portfolio</button>
+    </nav>
     <div id="main-content">
         <header>
             <div style="display:flex; align-items:center; gap: 12px;">
@@ -37,7 +40,7 @@ export const HTML = `<!DOCTYPE html>
             <div id="headerActions" style="display:flex; align-items:center; gap: 12px;">
                 <span id="healthBadge" class="health-badge" title="System Check Pending"></span>
                 <span id="lastUpdated" style="font-size: 0.75rem; color: #888; font-style: italic;"></span>
-                <button id="btnRefresh" onclick="refreshCurrentGroup()" style="padding: 6px 14px; border: 1px solid #2196F3; background: white; color: #2196F3; border-radius: 4px; cursor: pointer; font-weight: 500; transition: all 0.2s;">&#x21bb; Refresh</button>
+                <button onclick="openSettings()" style="padding: 6px 10px; border: 1px solid #DDD; background: white; color: #555; border-radius: 4px; cursor: pointer; font-size: 1.2rem; line-height: 1; transition: all 0.2s;" title="System Settings">&#9881;</button>
             </div>
         </header>
 
@@ -61,24 +64,22 @@ export const HTML = `<!DOCTYPE html>
                         </thead>
                         <tbody id="portfoliosBody"></tbody>
                     </table>
-                    <div style="margin-top: 20px; text-align: right; position:sticky; bottom:0; left:0; background:white; padding:10px 0;">
-                        <button onclick="recalcPortfolios()" style="padding: 6px 12px; font-size: 0.85rem; cursor: pointer;">&#x21bb; Recalculate All Metrics</button>
-                    </div>
+
                 </div>
             </div>
 
             <div id="view-dashboard" style="display: none;">
-                <div class="dashboard-container">
                     <!-- Portfolio Title Bar -->
-                    <div id="portfolioTitleBar" style="display:flex; justify-content:space-between; align-items:flex-start; padding:15px 0; margin-bottom:10px; border-bottom:1px solid #eee;">
+                    <div id="portfolioTitleBar" style="display:flex; justify-content:space-between; align-items:flex-start; padding:15px 0; margin-bottom:10px; border-bottom:1px solid #eee; margin-left: auto; margin-right: auto; width: 100%; max-width: 1400px;">
                         <div style="display:flex; flex-direction:column; gap:4px;">
                             <div style="display:flex; align-items:center; gap:15px;">
                                 <h2 id="portfolioTitle" style="margin:0; color:#333; font-size:1.3rem;"></h2>
                                 <button id="btnEditPortfolio" onclick="toggleManager()" style="padding:4px 12px; border:1px solid #2196F3; background:white; color:#2196F3; border-radius:4px; cursor:pointer; font-size:0.8rem;">&#9998; Edit</button>
                             </div>
-                            <div id="portfolioMemo" style="font-size:0.85rem; color:#666; max-width:600px; text-align:left;"></div>
+                            <div id="portfolioMemo" style="font-size:0.85rem; color:#666; text-align:left;"></div>
                         </div>
                     </div>
+                <div class="dashboard-container">
                     <table>
                         <thead>
                             <tr>
@@ -129,8 +130,10 @@ export const HTML = `<!DOCTYPE html>
                         </div>
 
                         <div style="margin-bottom:20px;">
-                            <label style="display:block; font-weight:600; color:#444; margin-bottom:8px;">Memo</label>
-                            <textarea id="editGroupMemo" class="input-field" rows="5" placeholder="Add notes here..." style="width:100%; box-sizing:border-box; font-family:inherit; resize:vertical;" oninput="checkDirty()"></textarea>
+                            <label style="display:block; font-weight:600; color:#444; margin-bottom:8px;">Memo
+                                <button onclick="parseMemoSymbols()" style="margin-left:8px; padding:2px 8px; font-size:0.8rem; background:#E3F2FD; color:#2196F3; border:1px solid #2196F3; border-radius:4px; cursor:pointer;" title="Extract symbols from memo (e.g. $AAPL)">$ Extract</button>
+                            </label>
+                            <textarea id="editGroupMemo" class="input-field" rows="5" placeholder="Add notes here... use $AAPL to tag stocks" style="width:100%; box-sizing:border-box; font-family:inherit; resize:vertical;" oninput="checkDirty()"></textarea>
                         </div>
 
                             <div style="font-size:0.85rem; color:#888;">
@@ -209,6 +212,29 @@ export const HTML = `<!DOCTYPE html>
             <div class="modal-footer">
                 <button onclick="closeDeleteModal()" style="padding: 8px 16px; cursor: pointer;">Cancel</button>
                 <button onclick="confirmDeleteGroup()" style="padding: 8px 16px; background: #F44336; color: white; border: none; cursor: pointer; border-radius: 4px;">Delete</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="settingsModal" class="modal">
+        <div class="modal-content" style="width: 320px;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:10px;">
+                <h3 style="margin:0;">System Settings</h3>
+                <span onclick="closeSettings()" style="cursor:pointer; font-size:1.5rem; color:#888;">&times;</span>
+            </div>
+            
+            <div style="display:flex; flex-direction:column; gap: 15px;">
+                <button id="btnRecalcSettings" onclick="recalcPortfolios()" style="padding: 12px; border: 1px solid #9C27B0; background: white; color: #9C27B0; border-radius: 6px; cursor: pointer; font-weight: 600; display:flex; align-items:center; justify-content:center; gap:8px;">
+                    <span>&#x2699;</span> Recalculate Metrics (1Y)
+                </button>
+                
+                <button id="btnRefreshSettings" onclick="refreshCurrentGroup(); closeSettings()" style="padding: 12px; border: 1px solid #2196F3; background: white; color: #2196F3; border-radius: 6px; cursor: pointer; font-weight: 600; display:flex; align-items:center; justify-content:center; gap:8px;">
+                     <span>&#x21bb;</span> Refresh Current View
+                </button>
+            </div>
+            
+            <div style="margin-top: 20px; font-size: 0.8rem; color: #999; text-align: center;">
+                Brilliant Forecast System v2.20
             </div>
         </div>
     </div>

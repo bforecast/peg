@@ -100,8 +100,17 @@ export const SCRIPTS = `
             
             document.getElementById('view-dashboard').style.display = view === 'dashboard' ? 'flex' : 'none';
             document.getElementById('view-manager').style.display = view === 'manager' ? 'block' : 'none';
-            document.getElementById('btnRefresh').style.display = view === 'manager' ? 'none' : 'inline-block';
+            const btnRef = document.getElementById('btnRefreshSettings');
+            if(btnRef) btnRef.style.display = view === 'manager' ? 'none' : 'flex';
             
+            if(view === 'portfolios') {
+                document.title = 'AI Earnings Beats (v2.20)';
+                const pt = document.getElementById('pageTitle');
+                if(pt) pt.textContent = 'Brilliant Forecast Portfolios';
+                const dm = document.getElementById('dashboardMemo');
+                if(dm) dm.textContent = '';
+            }
+
             if(currentView === 'manager') {
                 loadMembers();
                 // Load group details into inputs
@@ -270,35 +279,34 @@ export const SCRIPTS = `
                 const deltaHigh = stock.delta52wHigh || 0;
 
             rows += [
-                '<tr>',
-                '<td class="ticker-cell">',
+                "<tr style='transition:background 0.2s; border-bottom:1px solid #eee; cursor:pointer;'>",
+                '<td class="ticker-cell" style="padding: 8px;">',
                     '<span>' + stock.symbol + '</span>',
                 '</td>',
-                '<td style="text-align: center;" title="' + stock.name + '">' + parseFloat(stock.allocation || 0).toFixed(2) + '%</td>',
-                '<td>$' + (stock.price || 0).toFixed(2) + '</td>',
-                '<td style="' + yieldStyle + '">' + (stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : '-') + '</td>',
-                '<td style="' + psStyle + '">' + (stock.ps ? stock.ps.toFixed(2) : '-') + '</td>',
-                '<td style="' + peStyle + '">' + (stock.pe ? stock.pe.toFixed(2) : '-') + '</td>',
-                '<td style="' + growthStyle + '">' + (stock.growth ? stock.growth.toFixed(1) + '%' : '-') + '</td>',
-                '<td style="' + pegStyle + '">' + (stock.peg ? stock.peg.toFixed(2) : '-') + '</td>',
-                '<td style="' + ytdStyle + '">' + (stock.changeYTD || 0).toFixed(0) + '%</td>',
+                '<td style="text-align: center; padding: 8px;" title="' + stock.name + '">' + parseFloat(stock.allocation || 0).toFixed(2) + '%</td>',
+                '<td style="padding: 8px;">$' + (stock.price || 0).toFixed(2) + '</td>',
+                '<td style="' + yieldStyle + '; padding: 8px;">' + (stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : '-') + '</td>',
+                '<td style="' + psStyle + '; padding: 8px;">' + (stock.ps ? stock.ps.toFixed(2) : '-') + '</td>',
+                '<td style="' + peStyle + '; padding: 8px;">' + (stock.pe ? stock.pe.toFixed(2) : '-') + '</td>',
+                '<td style="' + growthStyle + '; padding: 8px;">' + (stock.growth ? stock.growth.toFixed(1) + '%' : '-') + '</td>',
+                '<td style="' + pegStyle + '; padding: 8px;">' + (stock.peg ? stock.peg.toFixed(2) : '-') + '</td>',
+                '<td style="' + ytdStyle + '; padding: 8px;">' + (stock.changeYTD || 0).toFixed(0) + '%</td>',
                 // Chart 1Y (SVG from server)
-                '<td>' + (stock.chart1Y || '') + '</td>',
-                '<td style="' + oneYStyle + '">' + (stock.change1Y || 0).toFixed(0) + '%</td>',
-                '<td>',
+                '<td style="padding: 8px;">' + (stock.chart1Y || '') + '</td>',
+                '<td style="' + oneYStyle + '; padding: 8px;">' + (stock.change1Y || 0).toFixed(0) + '%</td>',
+                '<td style="padding: 8px;">',
                     '<div class="delta-bar-container">',
                         '<div>' + (deltaHigh >= 0 ? '&#9650;' : '&#9660;') + Math.abs(deltaHigh).toFixed(1) + '%</div>',
                     '</div>',
                 '</td>',
                 // RS Rank 1M (SVG from server)
-                '<td>' + (stock.rsRank1M || '') + '</td>',
+                '<td style="padding: 8px;">' + (stock.rsRank1M || '') + '</td>',
                 // SMAs (Booleans from server)
-                '<td class="narrow-col">' + (stock.sma20 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
-                '<td class="narrow-col">' + (stock.sma50 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
-                '<td class="narrow-col">' + (stock.sma200 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
+                '<td class="narrow-col" style="padding: 8px;">' + (stock.sma20 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
+                '<td class="narrow-col" style="padding: 8px;">' + (stock.sma50 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
+                '<td class="narrow-col" style="padding: 8px;">' + (stock.sma200 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
                 '</tr>'
-            ].join('');
-            });
+            ].join('');            });
             tbody.innerHTML = rows;
             document.getElementById('tableFoot').style.display = 'table-header-group';
             
@@ -348,6 +356,19 @@ export const SCRIPTS = `
         function closeModal() { document.getElementById('groupModal').classList.remove('open'); }
         function openDeleteModal() { document.getElementById('deleteModal').classList.add('open'); }
         function closeDeleteModal() { document.getElementById('deleteModal').classList.remove('open'); }
+        
+        function openSettings() { 
+            const isHome = currentView === 'portfolios';
+            const btnRecalc = document.getElementById('btnRecalcSettings');
+            const btnRefresh = document.getElementById('btnRefreshSettings');
+            
+            if(btnRecalc) btnRecalc.style.display = isHome ? 'flex' : 'none';
+            if(btnRefresh) btnRefresh.style.display = isHome ? 'none' : 'flex';
+
+            document.getElementById('settingsModal').classList.add('open'); 
+        }
+        function closeSettings() { document.getElementById('settingsModal').classList.remove('open'); }
+
         
 
         let managersLoaded = false;
@@ -418,7 +439,7 @@ export const SCRIPTS = `
                 
                 showToast('Imported ' + result.name + ' (' + result.memberCount + ' stocks)', 'success');
                 closeModal();
-                await fetchGroups();
+                await loadPortfolios();
 
                 const newGroup = groups.find(g => g.id === result.id);
                 if (newGroup) {
@@ -476,7 +497,7 @@ export const SCRIPTS = `
                 const newGroup = await res.json();
                 closeModal();
                 document.getElementById('newGroupName').value = '';
-                await fetchGroups(); // refresh list
+                await loadPortfolios(); // refresh list
 
                 // Auto-redirect
                 if (newGroup.id) {
@@ -526,6 +547,101 @@ export const SCRIPTS = `
         }
 
         
+        async function parseMemoSymbols() {
+            const memo = document.getElementById('editGroupMemo').value;
+            if (!memo) return;
+            
+            // Manual Tokenizer to avoid Regex issues and find embedded symbols
+            const uniqueMatches = [];
+            let i = 0;
+            while (i < memo.length) {
+                if (memo[i] === '$') {
+                    let j = i + 1;
+                    // Scan forward for valid ticker characters: A-Z, 0-9, ., -
+                    while (j < memo.length) {
+                        const code = memo.charCodeAt(j);
+                        // A-Z (65-90), a-z (97-122), 0-9 (48-57), . (46), - (45)
+                        const isAlpha = (code >= 65 && code <= 90) || (code >= 97 && code <= 122);
+                        const isNum = (code >= 48 && code <= 57);
+                        const isSpecial = code === 46 || code === 45;
+                        
+                        if (isAlpha || isNum || isSpecial) {
+                            j++;
+                        } else {
+                            break;
+                        }
+                    }
+                    if (j > i + 1) {
+                         // Found a candidate
+                         const symbol = memo.substring(i + 1, j).toUpperCase();
+                         if (!uniqueMatches.includes(symbol)) {
+                             uniqueMatches.push(symbol);
+                         }
+                    }
+                    i = j;
+                } else {
+                    i++;
+                }
+            }
+
+            if (uniqueMatches.length === 0) {
+                showToast('No symbols found (use $SYMBOL)', 'info');
+                return;
+            }
+            
+            // Identify candidates not already in list
+            const candidates = [];
+            uniqueMatches.forEach(s => {
+                 if(!localMembers.some(lm => lm.symbol === s)) {
+                     candidates.push(s);
+                 }
+            });
+
+            if(candidates.length === 0) {
+                 showToast('Symbols already in list', 'info');
+                 return;
+            }
+
+            showToast('Validating ' + candidates.length + ' symbols...', 'info');
+
+            // Validate in parallel
+            let addedCount = 0;
+            let invalidCount = 0;
+            
+            const promises = candidates.map(async sym => {
+                try {
+                    const res = await fetch('/api/validate/' + sym);
+                    const data = await res.json();
+                    return data.valid ? { symbol: data.symbol, valid: true } : { symbol: sym, valid: false };
+                } catch(e) {
+                    return { symbol: sym, valid: false };
+                }
+            });
+
+            const results = await Promise.all(promises);
+            
+            results.forEach(r => {
+                if(r.valid) {
+                    if (!localMembers.some(lm => lm.symbol === r.symbol)) {
+                        localMembers.push({ symbol: r.symbol, allocation: 0 });
+                        addedCount++;
+                    }
+                } else {
+                    invalidCount++;
+                }
+            });
+            
+            if (addedCount > 0) {
+                localMembers.sort((a,b) => a.symbol.localeCompare(b.symbol));
+                renderMembers();
+                checkDirty();
+                const msg = invalidCount > 0 ? 'Added ' + addedCount + ', skipped ' + invalidCount + ' invalid' : 'Added ' + addedCount + ' symbols from memo';
+                showToast(msg, invalidCount > 0 ? 'warning' : 'success');
+            } else {
+                showToast(invalidCount > 0 ? 'No valid symbols found' : 'Symbols already in list', 'info');
+            }
+        }
+
         async function updateGroup() {
             if(!currentGroup.id) return;
             const name = document.getElementById('editGroupName').value;
@@ -539,13 +655,25 @@ export const SCRIPTS = `
                 });
                 if(res.ok) {
                     showToast('Saved successfully!', 'success');
-                    await fetchGroups(); 
+                    await loadPortfolios(); 
                     currentGroup.name = name;
                     currentGroup.description = description;
-                    document.title = name;
-                    document.getElementById('pageTitle').textContent = name;
-                    const memoEl = document.getElementById('dashboardMemo');
-                    if(memoEl) memoEl.textContent = description || '';
+                    const fullTitle = name + ' | Brilliant Forecast Portfolios';
+                    document.title = fullTitle;
+                    // User wants header to stay static "Brilliant Forecast Portfolios"
+                    const PTitle = document.getElementById('pageTitle');
+                    if(PTitle) PTitle.textContent = 'Brilliant Forecast Portfolios';
+                    
+                    // Update internal view memo, NOT global dashboardMemo
+                    const portfolioTitleEl = document.getElementById('portfolioTitle');
+                    if(portfolioTitleEl) portfolioTitleEl.textContent = name;
+                    
+                    const portfolioMemoEl = document.getElementById('portfolioMemo');
+                    if(portfolioMemoEl) portfolioMemoEl.textContent = description || '';
+
+                    // Ensure global memo is clear
+                    const globalMemo = document.getElementById('dashboardMemo');
+                    if(globalMemo) globalMemo.textContent = '';
                     document.getElementById('groupModified').textContent = new Date().toLocaleString();
                     
                     // Reset original state

@@ -130,6 +130,13 @@ export const STYLES = `
         th, .portfolio-table th, .sticky-col { background: #FFFFFF !important; background-color: #FFFFFF !important; color: #333 !important; }
         th:hover, .portfolio-table th:hover { background: #F0F0F0 !important; }
 
+
+        /* Global Table Hover */
+        tbody tr:hover { background-color: #f0f9ff !important; transition: background 0.2s; }
+        
+        /* Compact SVGs for Dashboard */
+        .dashboard-container table td svg { height: 25px; width: auto; vertical-align: middle; }
+
         /* FORCE STICKY HEADER LAYERING */
         .portfolio-table th { top: 0 !important; z-index: 100 !important; }
         .portfolio-table th.sticky-col { z-index: 110 !important; }

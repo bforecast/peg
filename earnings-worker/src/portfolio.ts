@@ -2,7 +2,13 @@ import { Bindings, StockPrice } from './types';
 import { calculateStats } from './stats';
 import { getESTDate } from './db';
 
-const START_DATE = "2020-01-01";
+// Helper to get date N days ago
+function getDateDaysAgo(days: number): string {
+    const d = new Date();
+    d.setDate(d.getDate() - days);
+    return d.toISOString().split('T')[0];
+}
+
 const BENCHMARK_SYMBOL = "SPY";
 const TRADING_DAYS_PER_YEAR = 252;
 const RISK_FREE_RATE = 0.04; // 4% approximation for Sharpe
@@ -19,6 +25,10 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     const targetAllocations = new Map<string, number>();
     members.forEach((m: any) => targetAllocations.set(m.symbol, Number(m.allocation) || 0));
 
+    // 2. Fetch History (Dynamic 1 Year window)
+    // We fetch a bit more than 252 days to ensure we have overlap, e.g. 370 calendar days
+    const startDate = getDateDaysAgo(370);
+
     // 2. Fetch History for ALL members + Benchmark
     const allSymbols = [...new Set([...symbols, BENCHMARK_SYMBOL])];
     const priceMap = new Map<string, StockPrice[]>();
@@ -28,7 +38,7 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     for (const sym of allSymbols) {
         const { results } = await env.DB.prepare(
             "SELECT date, close FROM stock_prices WHERE symbol = ? AND date >= ? ORDER BY date ASC"
-        ).bind(sym, START_DATE).all();
+        ).bind(sym, startDate).all();
 
         if (results && results.length > 0) {
             priceMap.set(sym, results as unknown as StockPrice[]);
@@ -43,15 +53,38 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     }
 
     // 3. Normalize Date Range
-    let commonStartDate = START_DATE;
+    let commonStartDate = startDate;
+
+    const validSymbols: string[] = [];
+    let validAllocationSum = 0;
 
     for (const sym of symbols) {
         const history = priceMap.get(sym);
-        if (!history || history.length === 0) return null; // Cannot calculate for missing data
+        if (!history || history.length === 0) {
+            console.warn(`[Portfolio Stats] Missing history for ${sym}, excluding from Group ${groupId} stats.`);
+            continue;
+        }
         if (history[0].date > commonStartDate) commonStartDate = history[0].date;
+        validSymbols.push(sym);
+        validAllocationSum += targetAllocations.get(sym) || 0;
     }
 
-    console.log(`[Portfolio Stats] Group ${groupId} Simulation Start: ${commonStartDate}`);
+    if (validSymbols.length === 0) {
+        console.error(`[Portfolio Stats] No valid symbols for Group ${groupId}`);
+        return null;
+    }
+
+    // Re-normalize allocations if some symbols were dropped
+    if (validAllocationSum < 99 && validAllocationSum > 0) {
+        const scale = 100 / validAllocationSum;
+        console.log(`[Portfolio Stats] Re-normalizing weights by ${scale.toFixed(2)} (Valid Alloc: ${validAllocationSum}%)`);
+        validSymbols.forEach(s => {
+            const old = targetAllocations.get(s) || 0;
+            targetAllocations.set(s, old * scale);
+        });
+    }
+
+    console.log(`[Portfolio Stats] Group ${groupId} Simulation Start: ${commonStartDate} (1Y Trailing)`);
 
     // Filter Benchmark to this start date
     const validSpy = spyPrices?.filter(p => p.date >= commonStartDate) || [];
@@ -63,7 +96,7 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     // Calculate Shares purchased on Day 0
     const shares = new Map<string, number>();
 
-    symbols.forEach(sym => {
+    validSymbols.forEach(sym => {
         const history = priceMap.get(sym)!;
         const startPrice = history[0].close || 0; // Robust null check
         const alloc = targetAllocations.get(sym) || 0;

@@ -29,6 +29,8 @@ app.get('/api/dashboard-data', async (c) => {
         ).first();
         const lastUpdated = lastUpdatedRow?.lastTime || null;
 
+        // Add Caching (1 min fresh, 10 min stale-while-revalidate)
+        c.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=600');
         return c.json({ lastUpdated, data });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
