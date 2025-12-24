@@ -69,7 +69,7 @@ app.get('/api/health', async (c) => {
     // 3. Cron Last Run
     try {
         const row = await c.env.DB.prepare('SELECT timestamp FROM cron_logs ORDER BY id DESC LIMIT 1').first() as unknown as { timestamp: string };
-        status.checks.cron = row ? `Last run: ${row.timestamp}` : 'Never ran';
+        status.checks.cron = row ? `${row.timestamp}` : 'Never ran';
     } catch (e) {
         status.checks.cron = 'Check failed';
     }
@@ -223,7 +223,8 @@ app.post('/api/admin/recalc-portfolio', async (c) => {
             targetGroups = results as { id: number }[];
         }
 
-        const statsResults = [];
+
+        const statsResults: any[] = [];
         for (const g of targetGroups) {
             try {
                 const res = await calculatePortfolioStats(c.env, g.id);

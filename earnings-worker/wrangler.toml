@@ -9,4 +9,4 @@ database_name = "earnings-db"
 database_id = "ead78c5a-59ee-46e8-9ae7-d8e02dfbc4bf"
 
 [triggers]
-crons = ["*/15 23 * * *", "*/15 0,1,2,3 * * *"]
+crons = ["*/5 23 * * *", "*/5 0,1,2,3 * * *"]

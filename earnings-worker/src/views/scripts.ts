@@ -958,10 +958,13 @@ export const SCRIPTS = `
                 return;
             }
 
-            const btn = document.getElementById('btnRefresh');
-            const originalText = btn.textContent;
-            btn.disabled = true;
-            btn.textContent = 'Refreshing...';
+            const btn = document.getElementById('btnRefreshSettings');
+            let originalText = '';
+            if(btn) {
+                originalText = btn.textContent;
+                btn.disabled = true;
+                btn.innerHTML = '<span>&#x21bb;</span> Refreshing...';
+            }
             
             let done = 0;
             const total = holdings.length;
@@ -982,8 +985,10 @@ export const SCRIPTS = `
             }
             
             showToast('Refresh Complete!', 'success');
-            btn.disabled = false;
-            btn.textContent = originalText;
+            if(btn) {
+                btn.disabled = false;
+                btn.textContent = originalText;
+            }
             loadDashboardData();
         }
 
@@ -1164,23 +1169,33 @@ function sortPortfolios(key) {
 }
 
 async function recalcPortfolios() {
-    const btn = document.querySelector('button[onclick="recalcPortfolios()"]');
-    if (btn) btn.disabled = true;
+    const btn = document.getElementById('btnRecalcSettings');
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>&#9203;</span> Processing...'; // Hourglass
+    } 
+
     try {
-        // If using simple toast from defined functions
-        // showToast("Recalculating..."); 
         const res = await fetch('/api/admin/recalc-portfolio', { method: 'POST' });
         const result = await res.json();
+        
         if (result.success) {
-            await loadPortfolios();
-            // showToast("Done", "success");
+            await loadPortfolios(); // Refresh data
+            // Use Toast instead of Alert to prevent blocking UI
+            if (window.showToast) window.showToast("Recalculation Complete! Metrics updated.", "success");
+            else console.log("Recalculation Complete");
         } else {
-            alert("Recalculation Failed");
+            if (window.showToast) window.showToast("Recalculation Failed: " + (result.error || 'Unknown'), "error");
+            else alert("Recalculation Failed");
         }
     } catch (e) {
-        alert("Error triggering recalc");
+        if (window.showToast) window.showToast("Error triggering recalc: " + e.message, "error");
+        else alert("Error: " + e.message);
     } finally {
-        if (btn) btn.disabled = false;
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = '<span>&#x2699;</span> Recalculate Metrics (1Y)';
+        }
     }
 }
 

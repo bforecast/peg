@@ -33,15 +33,31 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     const allSymbols = [...new Set([...symbols, BENCHMARK_SYMBOL])];
     const priceMap = new Map<string, StockPrice[]>();
 
-    // Optimization: Parallel Fetch from D1 (or Batch if implemented)
-    // For now, simple loop as we are inside a cron/admin task
-    for (const sym of allSymbols) {
-        const { results } = await env.DB.prepare(
-            "SELECT date, close FROM stock_prices WHERE symbol = ? AND date >= ? ORDER BY date ASC"
-        ).bind(sym, startDate).all();
+    // Optimization: Batch Fetch from D1
+    // SQLite limit is usually high (999 vars), but let's batch by 50 to be safe
+    const BATCH_SIZE = 50;
 
-        if (results && results.length > 0) {
-            priceMap.set(sym, results as unknown as StockPrice[]);
+    for (let i = 0; i < allSymbols.length; i += BATCH_SIZE) {
+        const batch = allSymbols.slice(i, i + BATCH_SIZE);
+        const placeholders = batch.map(() => '?').join(',');
+
+        try {
+            const query = `SELECT symbol, date, close FROM stock_prices WHERE symbol IN (${placeholders}) AND date >= ? ORDER BY date ASC`;
+            const { results } = await env.DB.prepare(query)
+                .bind(...batch, startDate)
+                .all();
+
+            if (results) {
+                // Group by symbol
+                results.forEach((row: any) => {
+                    if (!priceMap.has(row.symbol)) {
+                        priceMap.set(row.symbol, []);
+                    }
+                    priceMap.get(row.symbol)!.push({ date: row.date, close: row.close });
+                });
+            }
+        } catch (err) {
+            console.error("Error batch fetching prices:", err);
         }
     }
 
@@ -77,7 +93,7 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     // Re-normalize allocations if some symbols were dropped
     if (validAllocationSum < 99 && validAllocationSum > 0) {
         const scale = 100 / validAllocationSum;
-        console.log(`[Portfolio Stats] Re-normalizing weights by ${scale.toFixed(2)} (Valid Alloc: ${validAllocationSum}%)`);
+        console.log(`[Portfolio Stats]Re - normalizing weights by ${scale.toFixed(2)} (Valid Alloc: ${validAllocationSum}%)`);
         validSymbols.forEach(s => {
             const old = targetAllocations.get(s) || 0;
             targetAllocations.set(s, old * scale);
@@ -209,10 +225,10 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     // 6. Save to DB
     const updateTime = getESTDate();
     await env.DB.prepare(`
-        INSERT OR REPLACE INTO portfolio_stats (
-            group_id, cagr, std_dev, max_drawdown, sharpe, sortino, correlation_spy, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    `).bind(
+        INSERT OR REPLACE INTO portfolio_stats(
+                group_id, cagr, std_dev, max_drawdown, sharpe, sortino, correlation_spy, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                `).bind(
         groupId, cagr, stdDev, maxDD, sharpe, sortino, correlation, updateTime
     ).run();
 

@@ -219,18 +219,25 @@ export const HTML = `<!DOCTYPE html>
     <div id="settingsModal" class="modal">
         <div class="modal-content" style="width: 320px;">
             <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid #eee; padding-bottom:10px;">
-                <h3 style="margin:0;">System Settings</h3>
+                <h3 style="margin:0;">Settings</h3>
                 <span onclick="closeSettings()" style="cursor:pointer; font-size:1.5rem; color:#888;">&times;</span>
             </div>
             
             <div style="display:flex; flex-direction:column; gap: 15px;">
+                <!-- Frontpage Option 1: Recalculate -->
                 <button id="btnRecalcSettings" onclick="recalcPortfolios()" style="padding: 12px; border: 1px solid #9C27B0; background: white; color: #9C27B0; border-radius: 6px; cursor: pointer; font-weight: 600; display:flex; align-items:center; justify-content:center; gap:8px;">
                     <span>&#x2699;</span> Recalculate Metrics (1Y)
                 </button>
                 
+                <!-- Holding Page Option 1: Refresh -->
                 <button id="btnRefreshSettings" onclick="refreshCurrentGroup(); closeSettings()" style="padding: 12px; border: 1px solid #2196F3; background: white; color: #2196F3; border-radius: 6px; cursor: pointer; font-weight: 600; display:flex; align-items:center; justify-content:center; gap:8px;">
                      <span>&#x21bb;</span> Refresh Current View
                 </button>
+
+                <!-- Common Option 2: Cron Page -->
+                <a href="/status" style="text-decoration:none; padding: 12px; border: 1px solid #4CAF50; background: white; color: #4CAF50; border-radius: 6px; cursor: pointer; font-weight: 600; display:flex; align-items:center; justify-content:center; gap:8px;">
+                    <span>&#128202;</span> View System Status
+                </a>
             </div>
             
             <div style="margin-top: 20px; font-size: 0.8rem; color: #999; text-align: center;">

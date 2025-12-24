@@ -15,7 +15,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
     // 2. Run updates in a background promise (keep worker alive)
     ctx.waitUntil((async () => {
         try {
-            await logCronStatus(env, 'STARTED', `Processing ${symbols.length} portfolio symbols`);
+            // Moved logging down to include progress details
 
             // --- Smart Resume Logic ---
             // 1. Define "Fresh" based on Market Close
@@ -80,6 +80,8 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
             console.log(`[Smart Resume] Cutoff: ${cutoffTime}. Total: ${symbols.length}, Fresh: ${freshSymbols.length}, Pending: ${pendingSymbols.length}`);
 
+            await logCronStatus(env, 'STARTED', `Resuming: ${pendingSymbols.length} left (Total ${symbols.length})`);
+
             if (pendingSymbols.length === 0) {
                 const msg = `All ${symbols.length} symbols already updated today (after ${cutoffTime})`;
                 console.log(`[Cron] ${msg}`);
@@ -89,7 +91,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
             // --- Execution ---
 
-            const MAX_UPDATES_PER_RUN = 30; // Limit processing to avoid CPU timeout on free tier
+            const MAX_UPDATES_PER_RUN = 10; // Reduced to 10 based on observation (15 max success)
             const symbolsToProcess = pendingSymbols.slice(0, MAX_UPDATES_PER_RUN);
 
             if (symbolsToProcess.length < pendingSymbols.length) {
@@ -150,7 +152,10 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             const details = failedCount > 0 ? `Failed: ${failedSymbols.join(', ')}` : 'Clean run';
 
             console.log('[Cron] ' + msg);
-            await logCronStatus(env, 'SUCCESS', msg, details);
+
+            // Use WARNING status if we had failures but didn't crash
+            const status = failedCount > 0 ? 'WARNING' : 'SUCCESS';
+            await logCronStatus(env, status, msg, details);
 
             // --- Phase 3: Portfolio Stats Recalculation ---
             // Only run if we did some updates or it's the "Final Safety Net" run (Midnight)

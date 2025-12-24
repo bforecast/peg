@@ -4,6 +4,20 @@
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
+async function fetchWithTimeout(url: string, options: any = {}, timeout = 5000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(id);
+        return response;
+    } catch (e) {
+        clearTimeout(id);
+        throw e;
+    }
+}
+
+
 let yahooSession: { cookie: string, crumb: string } | null = null;
 let sessionPromise: Promise<{ cookie: string, crumb: string } | null> | null = null;
 
@@ -14,16 +28,17 @@ async function getYahooSession(): Promise<{ cookie: string, crumb: string } | nu
     sessionPromise = (async () => {
         try {
             // 1. Get Cookie
-            const r1 = await fetch('https://fc.yahoo.com', { headers: { 'User-Agent': USER_AGENT } });
+            // 1. Get Cookie
+            const r1 = await fetchWithTimeout('https://fc.yahoo.com', { headers: { 'User-Agent': USER_AGENT } }, 5000);
             const cookieHeader = r1.headers.get('set-cookie');
 
             if (!cookieHeader) return null;
             const cookie = cookieHeader.split(';')[0];
 
             // 2. Get Crumb
-            const r2 = await fetch('https://query1.finance.yahoo.com/v1/test/getcrumb', {
+            const r2 = await fetchWithTimeout('https://query1.finance.yahoo.com/v1/test/getcrumb', {
                 headers: { 'User-Agent': USER_AGENT, 'Cookie': cookie }
-            });
+            }, 5000);
 
             if (!r2.ok) return null;
 
@@ -65,7 +80,7 @@ export async function fetchCurrentEarnings(symbol: string): Promise<YahooEarning
     }
 
     try {
-        const response = await fetch(url, { headers });
+        const response = await fetchWithTimeout(url, { headers }, 8000);
 
         if (!response.ok) {
             return { error: `HTTP Error: ${response.status}` };
@@ -132,12 +147,12 @@ async function fetchQuotesInternal(symbols: string[]): Promise<YahooQuote[]> {
             const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail,financialData,price,earningsTrend&crumb=${session.crumb}`;
 
             try {
-                const res = await fetch(url, {
+                const res = await fetchWithTimeout(url, {
                     headers: {
                         'User-Agent': USER_AGENT,
                         'Cookie': session.cookie
                     }
-                });
+                }, 10000);
 
                 if (res.status === 401 || res.status === 403) {
                     console.warn(`[Yahoo] Session Expired/Invalid (${res.status}) for ${symbol}. Clearing session.`);
@@ -255,9 +270,9 @@ export async function fetchPriceHistory(symbol: string): Promise<any[]> {
 
         const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?symbol=${symbol}&period1=${period1}&period2=${period2}&interval=1d&crumb=${crumb}`;
 
-        const response = await fetch(url, {
+        const response = await fetchWithTimeout(url, {
             headers: { 'User-Agent': USER_AGENT, 'Cookie': cookie }
-        });
+        }, 10000);
 
         if (!response.ok) {
             console.error(`Yahoo History Error for ${symbol}: ${response.status} ${response.statusText}`);
