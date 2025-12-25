@@ -38,7 +38,7 @@ export const HTML = `<!DOCTYPE html>
                 </div>
             </div>
             <div id="headerActions" style="display:flex; align-items:center; gap: 12px;">
-                <span id="healthBadge" class="health-badge" title="System Check Pending"></span>
+
                 <span id="lastUpdated" style="font-size: 0.75rem; color: #888; font-style: italic;"></span>
                 <button onclick="openSettings()" style="padding: 6px 10px; border: 1px solid #DDD; background: white; color: #555; border-radius: 4px; cursor: pointer; font-size: 1.2rem; line-height: 1; transition: all 0.2s;" title="System Settings">&#9881;</button>
             </div>

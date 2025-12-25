@@ -1,0 +1,22 @@
+{
+    "compilerOptions": {
+        "target": "esnext",
+        "module": "esnext",
+        "lib": [
+            "esnext",
+            "webworker"
+        ],
+        "types": [
+            "@cloudflare/workers-types",
+            "@cloudflare/vitest-pool-workers"
+        ],
+        "moduleResolution": "bundler",
+        "strict": true,
+        "skipLibCheck": true,
+        "noEmit": true
+    },
+    "include": [
+        "src/**/*",
+        "tests/**/*"
+    ]
+}

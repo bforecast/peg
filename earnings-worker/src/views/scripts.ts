@@ -14,23 +14,8 @@ export const SCRIPTS = `
         // Removed conflicting window.load listener
 
 
-        async function checkHealth() {
-             const badge = document.getElementById('healthBadge');
-             if(!badge) return;
-             try {
-                 const res = await fetch('/api/health?t=' + Date.now()); // Cache bust
-                 if(res.ok) {
-                     badge.classList.add('ok');
-                     badge.title = 'System Healthy';
-                 } else {
-                     badge.classList.add('error');
-                     badge.title = 'System Error';
-                 }
-             } catch(e) {
-                 badge.classList.add('error');
-                 badge.title = 'Connection Error';
-             }
-        }
+
+
 
 
 
@@ -1204,8 +1189,7 @@ window.initDashboard = async function () {
     const loading = document.getElementById('loading');
     try {
         console.log("INIT Starting...");
-        checkHealth(); // Run immediately for visual feedback
-        setInterval(checkHealth, 30000);
+        // Health badge removed - status available at /status page
 
         // Default view: Portfolios
         setView('portfolios');

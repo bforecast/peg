@@ -1,0 +1,22 @@
+{
+    "name": "earnings-worker",
+    "version": "0.0.1",
+    "private": true,
+    "scripts": {
+        "deploy": "wrangler deploy",
+        "dev": "wrangler dev",
+        "start": "wrangler dev",
+        "build:client": "npx tsx scripts/build-client.ts"
+    },
+    "devDependencies": {
+        "@cloudflare/vitest-pool-workers": "^0.10.15",
+        "@cloudflare/workers-types": "^4.20240117.0",
+        "esbuild": "^0.27.1",
+        "typescript": "^5.0.4",
+        "vitest": "^2.1.9",
+        "wrangler": "^4.55.0"
+    },
+    "dependencies": {
+        "hono": "^4.0.0"
+    }
+}

@@ -46,6 +46,57 @@ app.get('/api/cron-logs', async (c) => {
     }
 });
 
+// Cron Summary Stats (Status Page)
+app.get('/api/cron-summary', async (c) => {
+    try {
+        c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+
+        const now = new Date();
+        const past24h = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+        // Dynamic Cutoff for EST
+        const options: Intl.DateTimeFormatOptions = {
+            timeZone: "America/New_York",
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', second: '2-digit',
+            hour12: false
+        };
+        const parts = new Intl.DateTimeFormat('en-US', options).formatToParts(past24h);
+        const p = (type: string) => parts.find(x => x.type === type)?.value || '00';
+        const cutoff = `${p('year')}-${p('month')}-${p('day')} ${p('hour')}:${p('minute')}:${p('second')}`;
+
+        // 1. Total Tracked (Match Cron Logic: Portfolio + SPY)
+        const { results } = await c.env.DB.prepare('SELECT DISTINCT symbol FROM group_members').all();
+        const trackedSet = new Set([...results.map((r: any) => r.symbol), 'SPY']);
+        const total = trackedSet.size;
+
+        // 2. Updated in last 24h
+        const { count: quotes } = await c.env.DB.prepare('SELECT count(*) as count FROM stock_quotes WHERE updated_at >= ?').bind(cutoff).first() as any;
+        const { count: stats } = await c.env.DB.prepare('SELECT count(*) as count FROM stock_stats WHERE updated_at >= ?').bind(cutoff).first() as any;
+
+        // 3. Last Success
+        const lastSuccess = await c.env.DB.prepare("SELECT timestamp, message FROM cron_logs WHERE status='SUCCESS' ORDER BY id DESC LIMIT 1").first() as any;
+
+        // 4. Success Rate
+        const logs = await c.env.DB.prepare("SELECT status FROM cron_logs WHERE timestamp >= ?").bind(cutoff).all();
+        const logResults = logs.results as any[];
+        const totalRuns = logResults.length;
+        const successRuns = logResults.filter(l => l.status === 'SUCCESS' || l.status === 'SKIPPED').length;
+        const rate = totalRuns > 0 ? Math.round((successRuns / totalRuns) * 100) : 100;
+
+        return c.json({
+            totalTracked: total,
+            quotesUpdated: quotes,
+            statsProcessed: stats,
+            successRate: rate,
+            lastCompletion: lastSuccess ? lastSuccess.timestamp : 'Never',
+            cutoffTime: cutoff
+        });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
 // Health Check
 app.get('/api/health', async (c) => {
     const deep = c.req.query('deep') === 'true';
@@ -263,6 +314,42 @@ app.delete('/api/groups/:id', async (c) => {
         const id = c.req.param('id');
         await c.env.DB.prepare('DELETE FROM groups WHERE id = ?').bind(id).run();
         return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// Force Run Cron (Debugging/Manual Fix)
+app.post('/api/admin/force-run-cron', async (c) => {
+    try {
+        const { scheduled } = await import('../cron');
+        // Mock event/ctx
+        const event: any = { cron: 'MANUAL', type: 'scheduled', scheduledTime: Date.now() };
+        const ctx: any = {
+            waitUntil: (promise: Promise<any>) => {
+                // We want to wait for it here to report result
+                return promise;
+            }
+        };
+
+        // We can't await ctx.waitUntil inside scheduled easily without changing signature
+        // But scheduled calls ctx.waitUntil with the meaningful work.
+        // We can capture the promise passed to ctx.waitUntil.
+        let workerPromise: Promise<void> | null = null;
+        const captureCtx: any = {
+            waitUntil: (p: Promise<void>) => { workerPromise = p; }
+        };
+
+        await scheduled(event, c.env, captureCtx);
+
+        if (workerPromise) {
+            // DO NOT AWAIT. Pass to real executionCtx to keep alive.
+            c.executionCtx.waitUntil(workerPromise);
+            return c.json({ success: true, message: 'Cron job started in background.' });
+        } else {
+            return c.json({ success: false, message: 'Cron job started but no work promise captured.' });
+        }
+
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     }

@@ -1,0 +1,12 @@
+name = "earnings-worker"
+main = "src/main.ts"
+routes = ["peg.bforecast.com/*"]
+compatibility_date = "2024-01-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "earnings-db"
+database_id = "ead78c5a-59ee-46e8-9ae7-d8e02dfbc4bf"
+
+[triggers]
+crons = ["0 23 * * *", "30 23 * * *"]

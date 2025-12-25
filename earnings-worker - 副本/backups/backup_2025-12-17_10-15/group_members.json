@@ -1,0 +1,941 @@
+[
+  {
+    "results": [
+      {
+        "group_id": 17,
+        "symbol": "NVDA",
+        "added_at": "2025-12-14 10:02:34",
+        "allocation": 33.78
+      },
+      {
+        "group_id": 17,
+        "symbol": "QQQ",
+        "added_at": "2025-12-14 10:02:34",
+        "allocation": 28.84
+      },
+      {
+        "group_id": 17,
+        "symbol": "IAU",
+        "added_at": "2025-12-14 10:02:34",
+        "allocation": 26.08
+      },
+      {
+        "group_id": 33,
+        "symbol": "GOOGL",
+        "added_at": "2025-12-14 15:18:32",
+        "allocation": 19.14
+      },
+      {
+        "group_id": 33,
+        "symbol": "PDD",
+        "added_at": "2025-12-14 15:18:32",
+        "allocation": 18.85
+      },
+      {
+        "group_id": 33,
+        "symbol": "GOOG",
+        "added_at": "2025-12-14 15:18:32",
+        "allocation": 18.48
+      },
+      {
+        "group_id": 33,
+        "symbol": "BAC",
+        "added_at": "2025-12-14 15:18:32",
+        "allocation": 16.66
+      },
+      {
+        "group_id": 33,
+        "symbol": "BRK-B",
+        "added_at": "2025-12-14 15:18:32",
+        "allocation": 13.97
+      },
+      {
+        "group_id": 33,
+        "symbol": "EWBC",
+        "added_at": "2025-12-14 15:18:32",
+        "allocation": 9.15
+      },
+      {
+        "group_id": 33,
+        "symbol": "OXY",
+        "added_at": "2025-12-14 15:18:32",
+        "allocation": 2.15
+      },
+      {
+        "group_id": 33,
+        "symbol": "AAPL",
+        "added_at": "2025-12-14 15:18:32",
+        "allocation": 0.87
+      },
+      {
+        "group_id": 33,
+        "symbol": "SOC",
+        "added_at": "2025-12-14 15:18:32",
+        "allocation": 0.73
+      },
+      {
+        "group_id": 38,
+        "symbol": "AAPL",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 22.69
+      },
+      {
+        "group_id": 38,
+        "symbol": "AXP",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 18.84
+      },
+      {
+        "group_id": 38,
+        "symbol": "BAC",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 10.96
+      },
+      {
+        "group_id": 38,
+        "symbol": "KO",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 9.92
+      },
+      {
+        "group_id": 38,
+        "symbol": "CVX",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 7.09
+      },
+      {
+        "group_id": 38,
+        "symbol": "OXY",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 4.68
+      },
+      {
+        "group_id": 38,
+        "symbol": "MCO",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 4.4
+      },
+      {
+        "group_id": 38,
+        "symbol": "CB",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 3.31
+      },
+      {
+        "group_id": 38,
+        "symbol": "KHC",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 3.17
+      },
+      {
+        "group_id": 38,
+        "symbol": "GOOGL",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 1.62
+      },
+      {
+        "group_id": 38,
+        "symbol": "DVA",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 1.6
+      },
+      {
+        "group_id": 38,
+        "symbol": "KR",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 1.26
+      },
+      {
+        "group_id": 38,
+        "symbol": "SIRI",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 1.09
+      },
+      {
+        "group_id": 38,
+        "symbol": "V",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 1.06
+      },
+      {
+        "group_id": 38,
+        "symbol": "VRSN",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 0.94
+      },
+      {
+        "group_id": 38,
+        "symbol": "MA",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 0.85
+      },
+      {
+        "group_id": 38,
+        "symbol": "AMZN",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 0.82
+      },
+      {
+        "group_id": 38,
+        "symbol": "STZ",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 0.68
+      },
+      {
+        "group_id": 38,
+        "symbol": "UNH",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 0.65
+      },
+      {
+        "group_id": 38,
+        "symbol": "COF",
+        "added_at": "2025-12-14 16:23:25",
+        "allocation": 0.57
+      },
+      {
+        "group_id": 39,
+        "symbol": "NBR",
+        "added_at": "2025-12-14 17:13:24",
+        "allocation": 10.11
+      },
+      {
+        "group_id": 39,
+        "symbol": "LNC",
+        "added_at": "2025-12-14 17:13:24",
+        "allocation": 7.72
+      },
+      {
+        "group_id": 39,
+        "symbol": "GTN",
+        "added_at": "2025-12-14 17:13:24",
+        "allocation": 7.56
+      },
+      {
+        "group_id": 39,
+        "symbol": "QUAD",
+        "added_at": "2025-12-14 17:13:24",
+        "allocation": 6.03
+      },
+      {
+        "group_id": 39,
+        "symbol": "BFH",
+        "added_at": "2025-12-14 17:13:24",
+        "allocation": 5.53
+      },
+      {
+        "group_id": 39,
+        "symbol": "TDAY",
+        "added_at": "2025-12-14 17:13:24",
+        "allocation": 5.16
+      },
+      {
+        "group_id": 39,
+        "symbol": "CNDT",
+        "added_at": "2025-12-14 17:13:24",
+        "allocation": 4.15
+      },
+      {
+        "group_id": 39,
+        "symbol": "AXL",
+        "added_at": "2025-12-14 17:13:24",
+        "allocation": 3.79
+      },
+      {
+        "group_id": 39,
+        "symbol": "JELD",
+        "added_at": "2025-12-14 17:13:24",
+        "allocation": 3.73
+      },
+      {
+        "group_id": 39,
+        "symbol": "JXN",
+        "added_at": "2025-12-14 17:13:24",
+        "allocation": 3.49
+      },
+      {
+        "group_id": 40,
+        "symbol": "UBER",
+        "added_at": "2025-12-15 09:47:07",
+        "allocation": 20.25
+      },
+      {
+        "group_id": 40,
+        "symbol": "BN",
+        "added_at": "2025-12-15 09:47:07",
+        "allocation": 19.21
+      },
+      {
+        "group_id": 40,
+        "symbol": "HHH",
+        "added_at": "2025-12-15 09:47:07",
+        "allocation": 10.58
+      },
+      {
+        "group_id": 40,
+        "symbol": "GOOG",
+        "added_at": "2025-12-15 09:47:07",
+        "allocation": 10.52
+      },
+      {
+        "group_id": 40,
+        "symbol": "QSR",
+        "added_at": "2025-12-15 09:47:07",
+        "allocation": 10.04
+      },
+      {
+        "group_id": 40,
+        "symbol": "AMZN",
+        "added_at": "2025-12-15 09:47:07",
+        "allocation": 8.73
+      },
+      {
+        "group_id": 40,
+        "symbol": "GOOGL",
+        "added_at": "2025-12-15 09:47:07",
+        "allocation": 8.04
+      },
+      {
+        "group_id": 40,
+        "symbol": "CMG",
+        "added_at": "2025-12-15 09:47:07",
+        "allocation": 5.77
+      },
+      {
+        "group_id": 40,
+        "symbol": "HLT",
+        "added_at": "2025-12-15 09:47:07",
+        "allocation": 5.37
+      },
+      {
+        "group_id": 40,
+        "symbol": "SEG",
+        "added_at": "2025-12-15 09:47:07",
+        "allocation": 0.79
+      },
+      {
+        "group_id": 41,
+        "symbol": "BRK-B",
+        "added_at": "2025-12-15 09:50:03",
+        "allocation": 29.91
+      },
+      {
+        "group_id": 41,
+        "symbol": "WM",
+        "added_at": "2025-12-15 09:50:03",
+        "allocation": 17.47
+      },
+      {
+        "group_id": 41,
+        "symbol": "CNI",
+        "added_at": "2025-12-15 09:50:03",
+        "allocation": 13.36
+      },
+      {
+        "group_id": 41,
+        "symbol": "MSFT",
+        "added_at": "2025-12-15 09:50:03",
+        "allocation": 13.01
+      },
+      {
+        "group_id": 41,
+        "symbol": "CAT",
+        "added_at": "2025-12-15 09:50:03",
+        "allocation": 8.29
+      },
+      {
+        "group_id": 41,
+        "symbol": "DE",
+        "added_at": "2025-12-15 09:50:03",
+        "allocation": 4.45
+      },
+      {
+        "group_id": 41,
+        "symbol": "ECL",
+        "added_at": "2025-12-15 09:50:03",
+        "allocation": 3.91
+      },
+      {
+        "group_id": 41,
+        "symbol": "WMT",
+        "added_at": "2025-12-15 09:50:03",
+        "allocation": 2.36
+      },
+      {
+        "group_id": 41,
+        "symbol": "FDX",
+        "added_at": "2025-12-15 09:50:03",
+        "allocation": 1.54
+      },
+      {
+        "group_id": 41,
+        "symbol": "KOF",
+        "added_at": "2025-12-15 09:50:03",
+        "allocation": 1.41
+      },
+      {
+        "group_id": 15,
+        "symbol": "SNDK",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "LITE",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "WDC",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "CLS",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "STX",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "CIEN",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "FN",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "SANM",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "CRDO",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "VICR",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "COHR",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "APH",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "AVGO",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "GOOGL",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "TER",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "NVT",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "VRT",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "TSM",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "ALAB",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 15,
+        "symbol": "NVDA",
+        "added_at": "2025-12-15 14:18:48",
+        "allocation": 5
+      },
+      {
+        "group_id": 43,
+        "symbol": "BRK-B",
+        "added_at": "2025-12-15 17:18:57",
+        "allocation": 10
+      },
+      {
+        "group_id": 43,
+        "symbol": "UBER",
+        "added_at": "2025-12-15 17:18:57",
+        "allocation": 10
+      },
+      {
+        "group_id": 43,
+        "symbol": "SLB",
+        "added_at": "2025-12-15 17:18:57",
+        "allocation": 10
+      },
+      {
+        "group_id": 43,
+        "symbol": "MRNA",
+        "added_at": "2025-12-15 17:18:57",
+        "allocation": 10
+      },
+      {
+        "group_id": 43,
+        "symbol": "LVMUY",
+        "added_at": "2025-12-15 17:18:57",
+        "allocation": 10
+      },
+      {
+        "group_id": 43,
+        "symbol": "EG",
+        "added_at": "2025-12-15 17:18:57",
+        "allocation": 10
+      },
+      {
+        "group_id": 43,
+        "symbol": "C",
+        "added_at": "2025-12-15 17:18:57",
+        "allocation": 10
+      },
+      {
+        "group_id": 43,
+        "symbol": "ASML",
+        "added_at": "2025-12-15 17:18:57",
+        "allocation": 10
+      },
+      {
+        "group_id": 43,
+        "symbol": "GOOGL",
+        "added_at": "2025-12-15 17:18:57",
+        "allocation": 10
+      },
+      {
+        "group_id": 43,
+        "symbol": "BABA",
+        "added_at": "2025-12-15 17:18:57",
+        "allocation": 10
+      },
+      {
+        "group_id": 44,
+        "symbol": "XOVR",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.7
+      },
+      {
+        "group_id": 44,
+        "symbol": "DXYZ",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.7
+      },
+      {
+        "group_id": 44,
+        "symbol": "BAC",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.7
+      },
+      {
+        "group_id": 44,
+        "symbol": "GOOGL",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.69
+      },
+      {
+        "group_id": 44,
+        "symbol": "QCOM",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.69
+      },
+      {
+        "group_id": 44,
+        "symbol": "TMUS",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.69
+      },
+      {
+        "group_id": 44,
+        "symbol": "AMZN",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.69
+      },
+      {
+        "group_id": 44,
+        "symbol": "SATS",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.69
+      },
+      {
+        "group_id": 44,
+        "symbol": "PL",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.69
+      },
+      {
+        "group_id": 44,
+        "symbol": "ASTS",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.69
+      },
+      {
+        "group_id": 44,
+        "symbol": "FLY",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.69
+      },
+      {
+        "group_id": 44,
+        "symbol": "RKLB",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.69
+      },
+      {
+        "group_id": 44,
+        "symbol": "TSLA",
+        "added_at": "2025-12-16 05:12:33",
+        "allocation": 7.69
+      },
+      {
+        "group_id": 45,
+        "symbol": "MSFT",
+        "added_at": "2025-12-16 05:31:56",
+        "allocation": 16.67
+      },
+      {
+        "group_id": 45,
+        "symbol": "XOM",
+        "added_at": "2025-12-16 05:31:56",
+        "allocation": 16.67
+      },
+      {
+        "group_id": 45,
+        "symbol": "JPM",
+        "added_at": "2025-12-16 05:31:56",
+        "allocation": 16.67
+      },
+      {
+        "group_id": 45,
+        "symbol": "HD",
+        "added_at": "2025-12-16 05:31:56",
+        "allocation": 16.67
+      },
+      {
+        "group_id": 45,
+        "symbol": "CVX",
+        "added_at": "2025-12-16 05:31:56",
+        "allocation": 16.66
+      },
+      {
+        "group_id": 45,
+        "symbol": "ABBV",
+        "added_at": "2025-12-16 05:31:56",
+        "allocation": 16.66
+      },
+      {
+        "group_id": 42,
+        "symbol": "DIS",
+        "added_at": "2025-12-16 11:06:11",
+        "allocation": 10
+      },
+      {
+        "group_id": 42,
+        "symbol": "V",
+        "added_at": "2025-12-16 11:06:11",
+        "allocation": 10
+      },
+      {
+        "group_id": 42,
+        "symbol": "SLG",
+        "added_at": "2025-12-16 11:06:11",
+        "allocation": 10
+      },
+      {
+        "group_id": 42,
+        "symbol": "MSGS",
+        "added_at": "2025-12-16 11:06:11",
+        "allocation": 10
+      },
+      {
+        "group_id": 42,
+        "symbol": "FLUT",
+        "added_at": "2025-12-16 11:06:11",
+        "allocation": 10
+      },
+      {
+        "group_id": 42,
+        "symbol": "FRFHF",
+        "added_at": "2025-12-16 11:06:11",
+        "allocation": 10
+      },
+      {
+        "group_id": 42,
+        "symbol": "XOM",
+        "added_at": "2025-12-16 11:06:11",
+        "allocation": 10
+      },
+      {
+        "group_id": 42,
+        "symbol": "CMCSA",
+        "added_at": "2025-12-16 11:06:11",
+        "allocation": 10
+      },
+      {
+        "group_id": 42,
+        "symbol": "BMY",
+        "added_at": "2025-12-16 11:06:11",
+        "allocation": 10
+      },
+      {
+        "group_id": 42,
+        "symbol": "AMZN",
+        "added_at": "2025-12-16 11:06:11",
+        "allocation": 10
+      },
+      {
+        "group_id": 18,
+        "symbol": "BEKE",
+        "added_at": "2025-12-16 13:06:17",
+        "allocation": 11.12
+      },
+      {
+        "group_id": 18,
+        "symbol": "WMT",
+        "added_at": "2025-12-16 13:06:17",
+        "allocation": 11.11
+      },
+      {
+        "group_id": 18,
+        "symbol": "BABA",
+        "added_at": "2025-12-16 13:06:17",
+        "allocation": 11.11
+      },
+      {
+        "group_id": 18,
+        "symbol": "PLTR",
+        "added_at": "2025-12-16 13:06:17",
+        "allocation": 11.11
+      },
+      {
+        "group_id": 18,
+        "symbol": "MSFT",
+        "added_at": "2025-12-16 13:06:17",
+        "allocation": 11.11
+      },
+      {
+        "group_id": 18,
+        "symbol": "GOOG",
+        "added_at": "2025-12-16 13:06:17",
+        "allocation": 11.11
+      },
+      {
+        "group_id": 18,
+        "symbol": "NVDA",
+        "added_at": "2025-12-16 13:06:17",
+        "allocation": 11.11
+      },
+      {
+        "group_id": 18,
+        "symbol": "TCEHY",
+        "added_at": "2025-12-16 13:06:17",
+        "allocation": 11.11
+      },
+      {
+        "group_id": 18,
+        "symbol": "TSLA",
+        "added_at": "2025-12-16 13:06:17",
+        "allocation": 11.11
+      },
+      {
+        "group_id": 46,
+        "symbol": "AVGO",
+        "added_at": "2025-12-16 16:02:18",
+        "allocation": 10
+      },
+      {
+        "group_id": 46,
+        "symbol": "TSM",
+        "added_at": "2025-12-16 16:02:18",
+        "allocation": 10
+      },
+      {
+        "group_id": 46,
+        "symbol": "MCD",
+        "added_at": "2025-12-16 16:02:18",
+        "allocation": 10
+      },
+      {
+        "group_id": 46,
+        "symbol": "CRM",
+        "added_at": "2025-12-16 16:02:18",
+        "allocation": 10
+      },
+      {
+        "group_id": 46,
+        "symbol": "AXP",
+        "added_at": "2025-12-16 16:02:18",
+        "allocation": 10
+      },
+      {
+        "group_id": 46,
+        "symbol": "ASML",
+        "added_at": "2025-12-16 16:02:18",
+        "allocation": 10
+      },
+      {
+        "group_id": 46,
+        "symbol": "PLTR",
+        "added_at": "2025-12-16 16:02:18",
+        "allocation": 10
+      },
+      {
+        "group_id": 46,
+        "symbol": "MA",
+        "added_at": "2025-12-16 16:02:18",
+        "allocation": 10
+      },
+      {
+        "group_id": 46,
+        "symbol": "V",
+        "added_at": "2025-12-16 16:02:18",
+        "allocation": 10
+      },
+      {
+        "group_id": 46,
+        "symbol": "LLY",
+        "added_at": "2025-12-16 16:02:18",
+        "allocation": 10
+      },
+      {
+        "group_id": 47,
+        "symbol": "BABA",
+        "added_at": "2025-12-16 16:16:35",
+        "allocation": 15.61
+      },
+      {
+        "group_id": 47,
+        "symbol": "AMZN",
+        "added_at": "2025-12-16 16:16:35",
+        "allocation": 7.43
+      },
+      {
+        "group_id": 47,
+        "symbol": "WHR",
+        "added_at": "2025-12-16 16:16:35",
+        "allocation": 5.85
+      },
+      {
+        "group_id": 47,
+        "symbol": "NVDA",
+        "added_at": "2025-12-16 16:16:35",
+        "allocation": 4.8
+      },
+      {
+        "group_id": 47,
+        "symbol": "GOOG",
+        "added_at": "2025-12-16 16:16:35",
+        "allocation": 4.58
+      },
+      {
+        "group_id": 47,
+        "symbol": "KWEB",
+        "added_at": "2025-12-16 16:16:35",
+        "allocation": 4.21
+      },
+      {
+        "group_id": 47,
+        "symbol": "NRG",
+        "added_at": "2025-12-16 16:16:35",
+        "allocation": 4.1
+      },
+      {
+        "group_id": 47,
+        "symbol": "TSM",
+        "added_at": "2025-12-16 16:16:35",
+        "allocation": 4.01
+      },
+      {
+        "group_id": 47,
+        "symbol": "META",
+        "added_at": "2025-12-16 16:16:35",
+        "allocation": 3.68
+      },
+      {
+        "group_id": 47,
+        "symbol": "VST",
+        "added_at": "2025-12-16 16:16:35",
+        "allocation": 3.3
+      },
+      {
+        "group_id": 48,
+        "symbol": "PATH",
+        "added_at": "2025-12-16 16:29:57",
+        "allocation": 33.34
+      },
+      {
+        "group_id": 48,
+        "symbol": "PLTR",
+        "added_at": "2025-12-16 16:29:57",
+        "allocation": 33.33
+      },
+      {
+        "group_id": 48,
+        "symbol": "NOW",
+        "added_at": "2025-12-16 16:29:57",
+        "allocation": 33.33
+      }
+    ],
+    "success": true,
+    "meta": {
+      "served_by": "v3-prod",
+      "served_by_region": "WNAM",
+      "served_by_primary": true,
+      "timings": {
+        "sql_duration_ms": 0.7771
+      },
+      "duration": 0.7771,
+      "changes": 0,
+      "last_row_id": 0,
+      "changed_db": false,
+      "size_after": 40947712,
+      "rows_read": 153,
+      "rows_written": 0,
+      "total_attempts": 1
+    }
+  }
+]

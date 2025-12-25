@@ -63,8 +63,7 @@ export const SETTINGS_HTML = `<!DOCTYPE html>
 </head>
 <body>
     <div class="header">
-        <h1>Forward PEG Analysis - System Status</h1>
-        <a href="/" class="btn-back">← Back to Dashboard</a>
+        <a href="/" style="text-decoration: none; color: white;"><h1>Brilliant Forecast Portfolios</h1></a>
     </div>
 
     <div class="container">
@@ -101,10 +100,7 @@ export const SETTINGS_HTML = `<!DOCTYPE html>
                     <div class="stat-num" id="successRate">-</div>
                     <div class="stat-sub">JOB SUCCESS RATE</div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-num" id="completionTime" style="color: #1D9BF0;">-</div>
-                    <div class="stat-sub">COMPLETION TIME</div>
-                </div>
+
             </div>
 
         </div>
@@ -210,7 +206,7 @@ export const SETTINGS_HTML = `<!DOCTYPE html>
             rateEl.textContent = data.successRate + '%';
             rateEl.style.color = data.successRate == 100 ? '#00BA7C' : (data.successRate > 90 ? '#FFD400' : '#F91880');
 
-            document.getElementById('completionTime').textContent = data.lastCompletion || '-';
+
         }
 
         function renderLogs(logs) {
@@ -228,7 +224,7 @@ export const SETTINGS_HTML = `<!DOCTYPE html>
                 if (log.status === 'STARTED') statusClass = 'started';
                 
                 tr.innerHTML = \`
-                    <td><span class="msg-text">\${log.timestamp.split(' ')[1]}</span></td>
+                    <td><span class="msg-text">\${log.timestamp} EST</span></td>
                     <td><span class="badge \${statusClass}">\${log.status}</span></td>
                     <td class="msg-text">\${log.message}</td>
                     <td class="detail-text">\${log.details || '-'}</td>

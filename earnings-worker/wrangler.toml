@@ -9,4 +9,6 @@ database_name = "earnings-db"
 database_id = "ead78c5a-59ee-46e8-9ae7-d8e02dfbc4bf"
 
 [triggers]
-crons = ["*/5 23 * * *", "*/5 0,1,2,3 * * *"]
+# Every 5 minutes, 5-7 PM EST (22:00-23:59 UTC), Mon-Fri
+# Processes 10 symbols per tick, ~17 ticks to complete 165 symbols
+crons = ["*/5 22-23 * * 1-5"]

@@ -4,6 +4,7 @@ import { logCronStatus, saveQuotesToDB, updatePrices, updateTicker, getESTDate }
 
 export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
     console.log('Scheduled Update Triggered');
+    const runStart = Date.now();
 
     // 1. Get all unique active symbols from portfolios
     const { results } = await env.DB.prepare("SELECT DISTINCT symbol FROM group_members").all();
@@ -15,167 +16,185 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
     // 2. Run updates in a background promise (keep worker alive)
     ctx.waitUntil((async () => {
         try {
-            // Moved logging down to include progress details
-
             // --- Smart Resume Logic ---
-            // 1. Define "Fresh" based on Market Close
-            // If Weekday (Mon-Fri): Fresh if updated after 16:00 EST Today.
-            // If Weekend (Sat-Sun): Fresh if updated after 16:00 EST *Last Friday*.
-
             const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
-            const dayOfWeek = now.getDay(); // 0=Sun, 6=Sat
+            const dayOfWeek = now.getDay();
             const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
             let cutoffTime = "";
+            const pad = (n: number) => n.toString().padStart(2, '0');
 
             if (isWeekend) {
-                // Calculate last Friday
-                const dist = (dayOfWeek + 7 - 5) % 7; // Distance to Friday (Sun=0->2 days ago, Sat=6->1 day ago)
-                // Actually easier: just subtract days
                 const daysToSubtract = dayOfWeek === 0 ? 2 : 1;
                 const lastFriday = new Date(now);
                 lastFriday.setDate(now.getDate() - daysToSubtract);
-
-                // Format YYYY-MM-DD
-                const pad = (n: number) => n.toString().padStart(2, '0');
                 const lastFridayStr = `${lastFriday.getFullYear()}-${pad(lastFriday.getMonth() + 1)}-${pad(lastFriday.getDate())}`;
-
                 cutoffTime = `${lastFridayStr} 16:00:00`;
-                console.log(`[Cron] It's the Weekend. Checking freshness against Friday Close: ${cutoffTime}`);
             } else {
-                // Weekday (Mon-Fri)
-                // If it's before 16:00 EST, we should check against *Yesterday* 16:00 EST
-                // If it's after 16:00 EST, we check against *Today* 16:00 EST
-
-                const currentHour = now.getHours(); // 0-23 in EST (via toLocaleString setup above?)
-                // Wait, 'now' is constructed from toLocaleString string, so getHours() returns EST hour.
-
+                const currentHour = now.getHours();
                 if (currentHour < 16) {
-                    // Start of day (00:00 - 15:59): Market hasn't closed yet today.
-                    // We want data from Yesterday Close.
                     const yesterday = new Date(now);
                     yesterday.setDate(now.getDate() - 1);
-
-                    const pad = (n: number) => n.toString().padStart(2, '0');
                     const yStr = `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`;
                     cutoffTime = `${yStr} 16:00:00`;
-                    console.log(`[Cron] Early Morning Run (${currentHour}:xx). Checking vs Yesterday Close: ${cutoffTime}`);
                 } else {
-                    // Late day (16:00 - 23:59): Market Closed today.
-                    // We want data from Today Close.
-                    const todayStr = getESTDate(); // YYYY-MM-DD
+                    const todayStr = getESTDate();
                     cutoffTime = `${todayStr} 16:00:00`;
-                    console.log(`[Cron] Post-Market Run. Checking vs Today Close: ${cutoffTime}`);
                 }
             }
 
-            // 2. Find stocks already updated after cutoff
-            // Note: DB stores EST strings, so direct string comparison works
+            // Check stock_stats for freshness (final output)
             const { results: freshRows } = await env.DB.prepare(
-                "SELECT symbol FROM stock_quotes WHERE updated_at > ?"
+                "SELECT symbol FROM stock_stats WHERE updated_at > ?"
             ).bind(cutoffTime).all();
 
             const freshSymbols = freshRows.map((r: any) => r.symbol);
             const pendingSymbols = symbols.filter(s => !freshSymbols.includes(s));
 
-            console.log(`[Smart Resume] Cutoff: ${cutoffTime}. Total: ${symbols.length}, Fresh: ${freshSymbols.length}, Pending: ${pendingSymbols.length}`);
-
-            await logCronStatus(env, 'STARTED', `Resuming: ${pendingSymbols.length} left (Total ${symbols.length})`);
+            // ============================================================
+            // PHASE 1: INITIALIZATION
+            // ============================================================
+            const initDuration = Date.now() - runStart;
+            await logCronStatus(env, 'PHASE',
+                `[1/5] Init: ${symbols.length} total, ${freshSymbols.length} fresh, ${pendingSymbols.length} pending`,
+                `Duration: ${initDuration}ms | Cutoff: ${cutoffTime}`
+            );
 
             if (pendingSymbols.length === 0) {
-                const msg = `All ${symbols.length} symbols already updated today (after ${cutoffTime})`;
-                console.log(`[Cron] ${msg}`);
-                await logCronStatus(env, 'SKIPPED', msg);
+                await logCronStatus(env, 'SKIPPED',
+                    `All ${symbols.length} symbols up-to-date`,
+                    `Duration: ${initDuration}ms`
+                );
                 return;
             }
 
-            // --- Execution ---
-
-            const MAX_UPDATES_PER_RUN = 10; // Reduced to 10 based on observation (15 max success)
+            // ============================================================
+            // PHASE 2: FETCH QUOTES
+            // ============================================================
+            const MAX_UPDATES_PER_RUN = 10; // Reduced for free tier
+            const BATCH_SIZE = 10;
             const symbolsToProcess = pendingSymbols.slice(0, MAX_UPDATES_PER_RUN);
 
-            if (symbolsToProcess.length < pendingSymbols.length) {
-                console.log(`[Cron] Rate Limiting: Processing first ${symbolsToProcess.length} of ${pendingSymbols.length} pending symbols.`);
-            }
+            const quoteStart = Date.now();
+            let quotesCount = 0;
+            let quoteErrors: string[] = [];
 
-            const BATCH_SIZE = 5;
-            let successCount = 0;
-            let failedCount = 0;
-            const failedSymbols: string[] = [];
-
-            // Only process pending (limited subset)
             for (let i = 0; i < symbolsToProcess.length; i += BATCH_SIZE) {
                 const batch = symbolsToProcess.slice(i, i + BATCH_SIZE);
                 try {
                     const quotes = await fetchQuotes(batch);
-
                     if (quotes && quotes.length > 0) {
                         await saveQuotesToDB(env, quotes);
-
-                        // Calculate stats
-                        const batchSuccess = quotes.map(q => q.symbol);
-                        successCount += batchSuccess.length;
-
-                        const batchFailed = batch.filter(s => !batchSuccess.includes(s));
-                        if (batchFailed.length > 0) {
-                            failedCount += batchFailed.length;
-                            failedSymbols.push(...batchFailed);
-                        }
+                        quotesCount += quotes.length;
+                        const failed = batch.filter(s => !quotes.find(q => q.symbol === s));
+                        if (failed.length > 0) quoteErrors.push(...failed);
                     } else {
-                        // All failed
-                        failedCount += batch.length;
-                        failedSymbols.push(...batch);
+                        quoteErrors.push(...batch);
                     }
-                } catch (e) {
-                    console.error(`[Cron] Error updating quotes for batch ${batch.join(',')}`, e);
-                    failedCount += batch.length;
-                    failedSymbols.push(...batch);
+                } catch (e: any) {
+                    quoteErrors.push(...batch);
+                    console.error(`[Cron] Quote fetch error: ${e.message}`);
                 }
-
-                // Update secondary tables (Prices/Tickers) for *all* in batch (fallback possibility?)
-                // Actually, if quote fetch failed, price update might still work via Yahoo? 
-                // Let's run it for all to be safe.
-                await Promise.all(batch.map(async (symbol) => {
-                    try {
-                        await updatePrices(env, symbol);
-                        await updateTicker(env, symbol);
-                    } catch (e) {
-                        // failing secondary updates isn't critical for the "Main Cron Status"
-                        console.error(`Update failed for ${symbol}`, e);
-                    }
-                }));
-
-                await new Promise(r => setTimeout(r, 1000));
             }
 
-            const msg = `Result: ${successCount} updated, ${failedCount} failed, ${freshSymbols.length} skipped.`;
-            const details = failedCount > 0 ? `Failed: ${failedSymbols.join(', ')}` : 'Clean run';
+            const quoteDuration = Date.now() - quoteStart;
+            await logCronStatus(env, 'PHASE',
+                `[2/5] Fetch Quotes: ${quotesCount} fetched, ${quoteErrors.length} failed`,
+                `Duration: ${quoteDuration}ms | Symbols: ${symbolsToProcess.join(',')}`
+            );
 
-            console.log('[Cron] ' + msg);
+            // ============================================================
+            // PHASE 3: UPDATE PRICES & STATS
+            // ============================================================
+            const priceStart = Date.now();
+            let pricesCount = 0;
+            let statsCount = 0;
+            let priceErrors: string[] = [];
 
-            // Use WARNING status if we had failures but didn't crash
-            const status = failedCount > 0 ? 'WARNING' : 'SUCCESS';
-            await logCronStatus(env, status, msg, details);
+            for (const symbol of symbolsToProcess) {
+                try {
+                    const priceRes = await updatePrices(env, symbol);
+                    if (priceRes && priceRes.count > 0) pricesCount++;
+                    // Note: updatePrices also updates stock_stats
 
-            // --- Phase 3: Portfolio Stats Recalculation ---
-            // Only run if we did some updates or it's the "Final Safety Net" run (Midnight)
-            // Actually, let's run it if we have fresh data.
-            // Or simpler: Just run it. It's fast (aggregating local D1 data).
+                    const tickerRes = await updateTicker(env, symbol);
+                    if (tickerRes && tickerRes.count > 0) statsCount++;
+                } catch (e: any) {
+                    priceErrors.push(symbol);
+                    console.error(`[Cron] Price/Stats error for ${symbol}: ${e.message}`);
+                }
+            }
 
-            console.log('[Cron] Recalculating Portfolio Stats...');
-            const { results: groups } = await env.DB.prepare("SELECT id FROM groups").all();
+            const priceDuration = Date.now() - priceStart;
+            await logCronStatus(env, 'PHASE',
+                `[3/5] Update Prices: ${pricesCount} prices, ${statsCount} earnings | ${priceErrors.length} errors`,
+                `Duration: ${priceDuration}ms${priceErrors.length > 0 ? ' | Failed: ' + priceErrors.join(',') : ''}`
+            );
+
+            // ============================================================
+            // PHASE 4: PORTFOLIO STATS
+            // ============================================================
+            const portfolioStart = Date.now();
+            const { results: groups } = await env.DB.prepare("SELECT id, name FROM groups").all();
+            let portfolioCount = 0;
+            let portfolioErrors: string[] = [];
+
             if (groups && groups.length > 0) {
                 const { calculatePortfolioStats } = await import('./portfolio');
-                for (const g of groups) {
+                for (const g of groups as any[]) {
                     try {
-                        const groupId = Number(g.id);
-                        await calculatePortfolioStats(env, groupId);
-                        console.log(`[Cron] Stats updated for Group ${groupId}`);
-                    } catch (e) {
-                        console.error(`[Cron] Stats failed for Group ${g.id}`, e);
+                        await calculatePortfolioStats(env, g.id);
+                        portfolioCount++;
+                    } catch (e: any) {
+                        portfolioErrors.push(g.name || `ID:${g.id}`);
+                        console.error(`[Cron] Portfolio stats error for ${g.name}: ${e.message}`);
                     }
                 }
             }
+
+            const portfolioDuration = Date.now() - portfolioStart;
+            await logCronStatus(env, 'PHASE',
+                `[4/5] Portfolio Stats: ${portfolioCount}/${groups?.length || 0} recalculated`,
+                `Duration: ${portfolioDuration}ms${portfolioErrors.length > 0 ? ' | Failed: ' + portfolioErrors.join(',') : ''}`
+            );
+
+            // ============================================================
+            // PHASE 5: VERIFICATION
+            // ============================================================
+            const verifyStart = Date.now();
+            const { results: gapRows } = await env.DB.prepare(`
+                SELECT q.symbol FROM stock_quotes q
+                LEFT JOIN stock_stats s ON q.symbol = s.symbol
+                WHERE q.updated_at > ? AND (s.updated_at IS NULL OR s.updated_at <= ?)
+            `).bind(cutoffTime, cutoffTime).all();
+
+            const gapSymbols = gapRows.map((r: any) => r.symbol);
+            const verifyDuration = Date.now() - verifyStart;
+
+            if (gapSymbols.length > 0) {
+                await logCronStatus(env, 'WARNING',
+                    `[5/5] Verification: ${gapSymbols.length} Quote/Stats gaps`,
+                    `Duration: ${verifyDuration}ms | Gaps: ${gapSymbols.join(',')}`
+                );
+            } else {
+                await logCronStatus(env, 'PHASE',
+                    `[5/5] Verification: PASSED (0 gaps)`,
+                    `Duration: ${verifyDuration}ms`
+                );
+            }
+
+            // ============================================================
+            // FINAL SUMMARY
+            // ============================================================
+            const totalDuration = Date.now() - runStart;
+            const hasErrors = quoteErrors.length > 0 || priceErrors.length > 0 || portfolioErrors.length > 0 || gapSymbols.length > 0;
+            const finalStatus = hasErrors ? 'WARNING' : 'SUCCESS';
+
+            await logCronStatus(env, finalStatus,
+                `Run Complete: ${quotesCount} quotes, ${pricesCount} prices, ${portfolioCount} portfolios`,
+                `Total: ${totalDuration}ms | Pending: ${pendingSymbols.length - symbolsToProcess.length} remaining`
+            );
+
         } catch (e: any) {
             console.error('[Cron] Critical Error', e);
             await logCronStatus(env, 'FAILED', e.message, JSON.stringify(e));

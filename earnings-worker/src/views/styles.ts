@@ -46,11 +46,8 @@ export const STYLES = `
         th.narrow-col, td.narrow-col { width: 25px; padding: 6px 2px; font-size: 0.75rem; }
         .company-cell { max-width: 120px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
         
-        /* Health Badge */
-        .health-badge { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background-color: #FF9800; margin-right: 5px; cursor: help; } /* Default Orange (Pending) */
-        .health-badge.ok { background-color: #4CAF50; }
-        .health-badge.error { background-color: #F44336; }
-        
+
+
         
         /* Manager View Styles */
         .manager-header { display: flex; gap: 10px; margin-bottom: 20px; }
