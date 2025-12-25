@@ -40,15 +40,22 @@ export const SCRIPTS = `
             document.title = 'Brilliant Forecast Portfolios';
             document.getElementById('pageTitle').textContent = 'Brilliant Forecast Portfolios';
             document.getElementById('dashboardMemo').textContent = '';
+            // Update URL to home
+            history.pushState(null, '', '/');
             setView('portfolios');
             await loadPortfolios();
         }
 
-        async function selectGroup(group) {
+        async function selectGroup(group, skipPushState) {
             if (!group) return; 
             currentGroup = group;
             // Browser tab title only - NOT the main h1 header
             document.title = currentGroup.name + ' | Brilliant Forecast Portfolios';
+            
+            // Update URL to portfolio sublink
+            if (!skipPushState) {
+                history.pushState({ portfolioId: group.id }, '', '/portfolio/' + group.id);
+            }
             
             // Populate new portfolio title bar elements inside dashboard view
             const portfolioTitleEl = document.getElementById('portfolioTitle');
@@ -89,7 +96,7 @@ export const SCRIPTS = `
             if(btnRef) btnRef.style.display = view === 'manager' ? 'none' : 'flex';
             
             if(view === 'portfolios') {
-                document.title = 'AI Earnings Beats (v2.20)';
+                document.title = 'Brilliant Forecast Portfolios';
                 const pt = document.getElementById('pageTitle');
                 if(pt) pt.textContent = 'Brilliant Forecast Portfolios';
                 const dm = document.getElementById('dashboardMemo');
@@ -266,7 +273,7 @@ export const SCRIPTS = `
             rows += [
                 "<tr style='transition:background 0.2s; border-bottom:1px solid #eee; cursor:pointer;'>",
                 '<td class="ticker-cell" style="padding: 8px;">',
-                    '<span>' + stock.symbol + '</span>',
+                    '<a href="/stock/' + stock.symbol + '" style="color:#2196F3; text-decoration:none; font-weight:600;">' + stock.symbol + '</a>',
                 '</td>',
                 '<td style="text-align: center; padding: 8px;" title="' + stock.name + '">' + parseFloat(stock.allocation || 0).toFixed(2) + '%</td>',
                 '<td style="padding: 8px;">$' + (stock.price || 0).toFixed(2) + '</td>',
@@ -1068,6 +1075,7 @@ export const SCRIPTS = `
             // Do NOT add a default sort here as it would override user's selection
 
             data.forEach(p => {
+                const change1d = p.change_1d != null ? p.change_1d.toFixed(2) + '%' : '-';
                 const cagr = p.cagr != null ? p.cagr.toFixed(2) + '%' : '-';
                 const stdDev = p.std_dev != null ? p.std_dev.toFixed(2) + '%' : '-';
                 const maxDD = p.max_drawdown != null ? p.max_drawdown.toFixed(2) + '%' : '-';
@@ -1082,6 +1090,7 @@ export const SCRIPTS = `
                 rows += \`<tr style="cursor:pointer; transition:background 0.2s; border-bottom:1px solid #eee;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='white'" onclick="selectPortfolio(\${p.id}, '\${safeName}')">
                     <td class="sticky-col" style="font-weight:700; color:#333; padding:12px;">\${p.name}</td>
                     <td style="text-align:center;">\${p.member_count || 0}</td>
+                    <td style="text-align:right; padding:8px; \${getMetricStyle(p.change_1d, 'cagr')}">\${change1d}</td>
                     <td style="text-align:right; padding:8px; \${getMetricStyle(p.cagr, 'cagr')}">\${cagr}</td>
                     <td style="text-align:right; padding:8px; \${getMetricStyle(p.std_dev, 'stddev')}">\${stdDev}</td>
                     <td style="text-align:right; padding:8px; \${getMetricStyle(p.max_drawdown, 'maxdd')}">\${maxDD}</td>
@@ -1191,11 +1200,41 @@ window.initDashboard = async function () {
         console.log("INIT Starting...");
         // Health badge removed - status available at /status page
 
-        // Default view: Portfolios
-        setView('portfolios');
-        renderSidebar(); // Initial render (empty)
-        // Consolidated load (fetches data, updates groups, renders sidebar, renders board)
+        // Load portfolios first (needed for URL-based selection)
         await loadPortfolios();
+        renderSidebar();
+        
+        // Check if URL contains portfolio ID
+        const pathMatch = window.location.pathname.match(/^\\/portfolio\\/(\\d+)/);
+        if (pathMatch) {
+            const portfolioId = parseInt(pathMatch[1]);
+            const targetGroup = groups.find(g => g.id === portfolioId);
+            if (targetGroup) {
+                await selectGroup(targetGroup, true); // skipPushState since we're loading from URL
+            } else {
+                // Portfolio not found, go home
+                setView('portfolios');
+            }
+        } else {
+            // Default view: Portfolios
+            setView('portfolios');
+        }
+        
+        // Handle browser back/forward
+        window.addEventListener('popstate', async () => {
+            const pathMatch = window.location.pathname.match(/^\\/portfolio\\/(\\d+)/);
+            if (pathMatch) {
+                const portfolioId = parseInt(pathMatch[1]);
+                const targetGroup = groups.find(g => g.id === portfolioId);
+                if (targetGroup) {
+                    await selectGroup(targetGroup, true);
+                }
+            } else {
+                currentGroup = null;
+                setView('portfolios');
+                await loadPortfolios();
+            }
+        });
     } catch (e) {
         console.error("Init failed:", e);
         // Show error in UI

@@ -10,7 +10,8 @@ export const HTML = `<!DOCTYPE html>
     <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
     <meta http-equiv="Pragma" content="no-cache">
     <meta http-equiv="Expires" content="0">
-    <title>AI Earnings Beats (v2.20)</title>
+    <title>Brilliant Forecast Portfolios</title>
+    <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <style>${STYLES}</style>
 </head>
 <body class="desktop-hidden">
@@ -39,7 +40,7 @@ export const HTML = `<!DOCTYPE html>
             </div>
             <div id="headerActions" style="display:flex; align-items:center; gap: 12px;">
 
-                <span id="lastUpdated" style="font-size: 0.75rem; color: #888; font-style: italic;"></span>
+
                 <button onclick="openSettings()" style="padding: 6px 10px; border: 1px solid #DDD; background: white; color: #555; border-radius: 4px; cursor: pointer; font-size: 1.2rem; line-height: 1; transition: all 0.2s;" title="System Settings">&#9881;</button>
             </div>
         </header>
@@ -53,6 +54,7 @@ export const HTML = `<!DOCTYPE html>
                             <tr>
                                 <th class="sticky-col">Portfolio Name</th>
                                 <th onclick="window.sortPortfolios('member_count')" style="cursor:pointer;">Holdings <span id="sort-p-member_count"></span></th>
+                                <th onclick="window.sortPortfolios('change_1d')" style="cursor:pointer;" title="1-Day Change">% 1D <span id="sort-p-change_1d"></span></th>
                                 <th onclick="window.sortPortfolios('cagr')" style="cursor:pointer;" title="Annualized Return">CAGR <span id="sort-p-cagr"></span></th>
                                 <th onclick="window.sortPortfolios('std_dev')" style="cursor:pointer;" title="Annualized Volatility">Std Dev <span id="sort-p-std_dev"></span></th>
                                 <th onclick="window.sortPortfolios('max_drawdown')" style="cursor:pointer;">Max DD <span id="sort-p-max_drawdown"></span></th>

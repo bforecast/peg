@@ -237,7 +237,7 @@ app.get('/api/portfolios', async (c) => {
         const { results } = await c.env.DB.prepare(`
             SELECT 
                 g.id, g.name, g.description, g.created_at,
-                ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy, ps.updated_at as stats_updated_at,
+                ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy, ps.change_1d, ps.updated_at as stats_updated_at,
                 (SELECT count(*) FROM group_members gm WHERE gm.group_id = g.id) as member_count
             FROM groups g
             LEFT JOIN portfolio_stats ps ON g.id = ps.group_id

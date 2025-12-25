@@ -222,15 +222,25 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     // Fix: Using daily std dev for correlation calculation
     const correlation = cov / (stdDaily * stdBench);
 
+    // H. 1-Day Change (from last 2 days of portfolio curve)
+    let change1D = 0;
+    if (portfolioCurve.length >= 2) {
+        const lastVal = portfolioCurve[portfolioCurve.length - 1].value;
+        const prevVal = portfolioCurve[portfolioCurve.length - 2].value;
+        if (prevVal > 0) {
+            change1D = ((lastVal - prevVal) / prevVal) * 100; // Percentage
+        }
+    }
+
     // 6. Save to DB
     const updateTime = getESTDate();
     await env.DB.prepare(`
         INSERT OR REPLACE INTO portfolio_stats(
-                group_id, cagr, std_dev, max_drawdown, sharpe, sortino, correlation_spy, updated_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?)
+                group_id, cagr, std_dev, max_drawdown, sharpe, sortino, correlation_spy, change_1d, updated_at
+            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).bind(
-        groupId, cagr, stdDev, maxDD, sharpe, sortino, correlation, updateTime
+        groupId, cagr, stdDev, maxDD, sharpe, sortino, correlation, change1D, updateTime
     ).run();
 
-    return { cagr, stdDev, maxDD, sharpe, sortino, correlation };
+    return { cagr, stdDev, maxDD, sharpe, sortino, correlation, change1D };
 }
