@@ -55,19 +55,19 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             // ============================================================
             // PHASE 1: INITIALIZATION
             // ============================================================
+
+            // If all symbols are already fresh, silently return without logging
+            // This prevents excessive SKIPPED logs after a successful full update
+            if (pendingSymbols.length === 0) {
+                console.log(`[Cron] All ${symbols.length} symbols up-to-date, skipping silently`);
+                return;
+            }
+
             const initDuration = Date.now() - runStart;
             await logCronStatus(env, 'SETUP',
                 `[1/4] Init: ${symbols.length} total, ${freshSymbols.length} fresh, ${pendingSymbols.length} pending`,
                 `Duration: ${initDuration}ms | Cutoff: ${cutoffTime}`
             );
-
-            if (pendingSymbols.length === 0) {
-                await logCronStatus(env, 'SKIPPED',
-                    `All ${symbols.length} symbols up-to-date`,
-                    `Duration: ${initDuration}ms`
-                );
-                return;
-            }
 
 
             // ============================================================
