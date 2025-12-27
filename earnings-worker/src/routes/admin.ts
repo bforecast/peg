@@ -84,13 +84,31 @@ app.get('/api/cron-summary', async (c) => {
         const successRuns = logResults.filter(l => l.status === 'SUCCESS' || l.status === 'SKIPPED').length;
         const rate = totalRuns > 0 ? Math.round((successRuns / totalRuns) * 100) : 100;
 
+        // 5. Last Portfolio Stats Recalculation
+        const lastPortfolio = await c.env.DB.prepare(
+            "SELECT timestamp, message, details FROM cron_logs WHERE status='STATS' AND message LIKE '%recalculated (FINAL)%' ORDER BY id DESC LIMIT 1"
+        ).first() as any;
+
+        let portfolioInfo = null;
+        if (lastPortfolio) {
+            // Extract "22/22 recalculated" from message like "[3/4] Portfolio Stats: 22/22 recalculated (FINAL)"
+            const match = lastPortfolio.message.match(/(\d+)\/(\d+) recalculated/);
+            portfolioInfo = {
+                timestamp: lastPortfolio.timestamp,
+                success: match ? parseInt(match[1]) : 0,
+                total: match ? parseInt(match[2]) : 0,
+                details: lastPortfolio.details
+            };
+        }
+
         return c.json({
             totalTracked: total,
             quotesUpdated: quotes,
             statsProcessed: stats,
             successRate: rate,
             lastCompletion: lastSuccess ? lastSuccess.timestamp : 'Never',
-            cutoffTime: cutoff
+            cutoffTime: cutoff,
+            portfolioStats: portfolioInfo
         });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);

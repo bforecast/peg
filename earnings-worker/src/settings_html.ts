@@ -100,6 +100,10 @@ export const SETTINGS_HTML = `<!DOCTYPE html>
                     <div class="stat-num" id="successRate">-</div>
                     <div class="stat-sub">JOB SUCCESS RATE</div>
                 </div>
+                <div class="stat-item">
+                    <div class="stat-num" id="portfolioStats">-</div>
+                    <div class="stat-sub" id="portfolioTime">PORTFOLIOS RECALCULATED</div>
+                </div>
 
             </div>
 
@@ -206,6 +210,19 @@ export const SETTINGS_HTML = `<!DOCTYPE html>
             rateEl.textContent = data.successRate + '%';
             rateEl.style.color = data.successRate == 100 ? '#00BA7C' : (data.successRate > 90 ? '#FFD400' : '#F91880');
 
+            // Portfolio Stats
+            const pEl = document.getElementById('portfolioStats');
+            const pTimeEl = document.getElementById('portfolioTime');
+            if (data.portfolioStats) {
+                const ps = data.portfolioStats;
+                pEl.textContent = ps.success + ' of ' + ps.total;
+                pEl.style.color = ps.success === ps.total ? '#00BA7C' : '#F91880';
+                pTimeEl.textContent = 'PORTFOLIOS @ ' + ps.timestamp;
+            } else {
+                pEl.textContent = 'Not yet';
+                pEl.style.color = '#536471';
+                pTimeEl.textContent = 'PORTFOLIOS RECALCULATED';
+            }
 
         }
 
