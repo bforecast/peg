@@ -1,6 +1,6 @@
 name = "earnings-worker"
 main = "src/main.ts"
-routes = ["peg.bforecast.com/*"]
+routes = ["pf.bforecast.com/*"]
 compatibility_date = "2024-01-01"
 
 [[d1_databases]]
@@ -9,6 +9,7 @@ database_name = "earnings-db"
 database_id = "ead78c5a-59ee-46e8-9ae7-d8e02dfbc4bf"
 
 [triggers]
-# Every 5 minutes, 5-7 PM EST (22:00-23:59 UTC), Mon-Fri
-# Processes 10 symbols per tick, ~17 ticks to complete 165 symbols
-crons = ["*/5 22-23 * * 1-5"]
+# Every 1 minute, 5-7 PM EST (22:00-23:59 UTC), Mon-Fri
+# Processes 10 symbols per tick (approx 10-15s duration).
+# 120 ticks/window = 1200 symbols capacity. Optimized after Phase 2 refactor.
+crons = ["*/1 22-23 * * 1-5"]

@@ -355,6 +355,290 @@ app.post('/api/admin/force-run-cron', async (c) => {
     }
 });
 
+// Manual Trigger for Cron Job (Synchronous - Full Evaluation)
+// Supports query params: force=true (ignore freshness), limit=N (max symbols), symbols=X,Y,Z (specific symbols)
+app.post('/api/admin/trigger-cron', async (c) => {
+    const runStart = Date.now();
+    const report: any = {
+        trigger: 'MANUAL',
+        startTime: new Date().toISOString(),
+        phases: {},
+        summary: {}
+    };
+
+    try {
+        const { fetchQuotes } = await import('../yahoo_finance');
+        const { logCronStatus, saveQuotesToDB, updatePrices, updateTicker, getESTDate } = await import('../db');
+
+        // Parse query parameters
+        const forceRun = c.req.query('force') === 'true';
+        const limitParam = c.req.query('limit');
+        const symbolsParam = c.req.query('symbols');
+
+        // 1. Get all unique active symbols from portfolios
+        const { results } = await c.env.DB.prepare("SELECT DISTINCT symbol FROM group_members").all();
+        const allSymbols = [...new Set([...results.map((r: any) => r.symbol), 'SPY'])];
+
+        // Allow filtering to specific symbols
+        let symbols = allSymbols;
+        if (symbolsParam) {
+            const requested = symbolsParam.toUpperCase().split(',').map(s => s.trim());
+            symbols = allSymbols.filter(s => requested.includes(s));
+            if (symbols.length === 0) symbols = requested; // Allow testing non-portfolio symbols
+        }
+
+        report.totalSymbols = allSymbols.length;
+        report.targetSymbols = symbols.length;
+
+        // 2. Smart Resume Logic (Skip if forceRun)
+        const now = new Date(new Date().toLocaleString("en-US", { timeZone: "America/New_York" }));
+        const dayOfWeek = now.getDay();
+        const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+        const pad = (n: number) => n.toString().padStart(2, '0');
+
+        let cutoffTime = "";
+        if (isWeekend) {
+            const daysToSubtract = dayOfWeek === 0 ? 2 : 1;
+            const lastFriday = new Date(now);
+            lastFriday.setDate(now.getDate() - daysToSubtract);
+            const lastFridayStr = `${lastFriday.getFullYear()}-${pad(lastFriday.getMonth() + 1)}-${pad(lastFriday.getDate())}`;
+            cutoffTime = `${lastFridayStr} 16:00:00`;
+        } else {
+            const currentHour = now.getHours();
+            if (currentHour < 16) {
+                const yesterday = new Date(now);
+                yesterday.setDate(now.getDate() - 1);
+                const yStr = `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`;
+                cutoffTime = `${yStr} 16:00:00`;
+            } else {
+                const todayStr = getESTDate();
+                cutoffTime = `${todayStr} 16:00:00`;
+            }
+        }
+
+        report.cutoffTime = cutoffTime;
+        report.forceRun = forceRun;
+        report.isWeekend = isWeekend;
+        report.estTime = now.toISOString();
+
+        // Check freshness
+        let pendingSymbols = symbols;
+        if (!forceRun) {
+            const { results: freshRows } = await c.env.DB.prepare(
+                "SELECT symbol FROM stock_stats WHERE updated_at > ?"
+            ).bind(cutoffTime).all();
+            const freshSymbols = freshRows.map((r: any) => r.symbol);
+            pendingSymbols = symbols.filter(s => !freshSymbols.includes(s));
+            report.freshSymbols = freshSymbols.length;
+        }
+
+        report.pendingSymbols = pendingSymbols.length;
+
+        // Phase 1: Initialization
+        const initDuration = Date.now() - runStart;
+        report.phases.init = {
+            duration: initDuration,
+            status: 'OK',
+            details: `${symbols.length} total, ${pendingSymbols.length} pending`
+        };
+
+        await logCronStatus(c.env, 'TRIGGER',
+            `[MANUAL] Init: ${symbols.length} total, ${pendingSymbols.length} pending, force=${forceRun}`,
+            `Cutoff: ${cutoffTime}`
+        );
+
+        if (pendingSymbols.length === 0 && !forceRun) {
+            report.summary = { status: 'SKIPPED', message: 'All symbols up-to-date' };
+            return c.json(report);
+        }
+
+        // Apply limit
+        const maxUpdates = limitParam ? parseInt(limitParam) : pendingSymbols.length;
+        const symbolsToProcess = pendingSymbols.slice(0, maxUpdates);
+        report.symbolsToProcess = symbolsToProcess;
+
+        // Phase 2: Fetch Quotes
+        const quoteStart = Date.now();
+        let quotesCount = 0;
+        let quoteErrors: string[] = [];
+
+        try {
+            const quotes = await fetchQuotes(symbolsToProcess);
+            if (quotes && quotes.length > 0) {
+                await saveQuotesToDB(c.env, quotes);
+                quotesCount = quotes.length;
+                const failed = symbolsToProcess.filter(s => !quotes.find(q => q.symbol === s));
+                if (failed.length > 0) quoteErrors.push(...failed);
+            } else {
+                quoteErrors.push(...symbolsToProcess);
+            }
+        } catch (e: any) {
+            quoteErrors.push(...symbolsToProcess);
+            report.phases.quotes = { error: e.message };
+        }
+
+        const quoteDuration = Date.now() - quoteStart;
+        report.phases.quotes = {
+            duration: quoteDuration,
+            status: quoteErrors.length === 0 ? 'OK' : 'PARTIAL',
+            fetched: quotesCount,
+            failed: quoteErrors,
+            symbols: symbolsToProcess
+        };
+
+        await logCronStatus(c.env, 'TRIGGER',
+            `[MANUAL] Quotes: ${quotesCount} fetched, ${quoteErrors.length} failed`,
+            `Duration: ${quoteDuration}ms | Symbols: ${symbolsToProcess.join(',')}`
+        );
+
+        // Phase 3: Update Prices & Stats
+        const priceStart = Date.now();
+        let pricesCount = 0;
+        let statsCount = 0;
+        let priceErrors: string[] = [];
+        const priceDetails: any[] = [];
+
+        for (const symbol of symbolsToProcess) {
+            const symStart = Date.now();
+            try {
+                const priceRes = await updatePrices(c.env, symbol);
+                if (priceRes && priceRes.count > 0) pricesCount++;
+
+                const tickerRes = await updateTicker(c.env, symbol);
+                if (tickerRes && tickerRes.count > 0) statsCount++;
+
+                priceDetails.push({
+                    symbol,
+                    duration: Date.now() - symStart,
+                    status: 'OK',
+                    priceCount: priceRes?.count || 0,
+                    tickerCount: tickerRes?.count || 0
+                });
+            } catch (e: any) {
+                priceErrors.push(symbol);
+                priceDetails.push({
+                    symbol,
+                    duration: Date.now() - symStart,
+                    status: 'ERROR',
+                    error: e.message
+                });
+            }
+        }
+
+        const priceDuration = Date.now() - priceStart;
+        report.phases.prices = {
+            duration: priceDuration,
+            status: priceErrors.length === 0 ? 'OK' : 'PARTIAL',
+            pricesUpdated: pricesCount,
+            statsUpdated: statsCount,
+            failed: priceErrors,
+            details: priceDetails
+        };
+
+        await logCronStatus(c.env, 'TRIGGER',
+            `[MANUAL] Prices: ${pricesCount} prices, ${statsCount} earnings | ${priceErrors.length} errors`,
+            `Duration: ${priceDuration}ms`
+        );
+
+        // Phase 4: Portfolio Stats
+        const portfolioStart = Date.now();
+        const { results: groups } = await c.env.DB.prepare("SELECT id, name FROM groups").all();
+        let portfolioCount = 0;
+        let portfolioErrors: string[] = [];
+        const portfolioDetails: any[] = [];
+
+        if (groups && groups.length > 0) {
+            const { calculatePortfolioStats } = await import('../portfolio');
+            for (const g of groups as any[]) {
+                const gStart = Date.now();
+                try {
+                    const stats = await calculatePortfolioStats(c.env, g.id);
+                    portfolioCount++;
+                    portfolioDetails.push({
+                        id: g.id,
+                        name: g.name,
+                        duration: Date.now() - gStart,
+                        status: 'OK',
+                        stats: stats ? { cagr: stats.cagr, sharpe: stats.sharpe } : null
+                    });
+                } catch (e: any) {
+                    portfolioErrors.push(g.name || `ID:${g.id}`);
+                    portfolioDetails.push({
+                        id: g.id,
+                        name: g.name,
+                        duration: Date.now() - gStart,
+                        status: 'ERROR',
+                        error: e.message
+                    });
+                }
+            }
+        }
+
+        const portfolioDuration = Date.now() - portfolioStart;
+        report.phases.portfolio = {
+            duration: portfolioDuration,
+            status: portfolioErrors.length === 0 ? 'OK' : 'PARTIAL',
+            updated: portfolioCount,
+            total: groups?.length || 0,
+            failed: portfolioErrors,
+            details: portfolioDetails
+        };
+
+        await logCronStatus(c.env, 'TRIGGER',
+            `[MANUAL] Portfolio: ${portfolioCount}/${groups?.length || 0} recalculated`,
+            `Duration: ${portfolioDuration}ms`
+        );
+
+        // Phase 5: Verification
+        const verifyStart = Date.now();
+        const { results: gapRows } = await c.env.DB.prepare(`
+            SELECT q.symbol FROM stock_quotes q
+            LEFT JOIN stock_stats s ON q.symbol = s.symbol
+            WHERE q.updated_at > ? AND (s.updated_at IS NULL OR s.updated_at <= ?)
+        `).bind(cutoffTime, cutoffTime).all();
+
+        const gapSymbols = gapRows.map((r: any) => r.symbol);
+        const verifyDuration = Date.now() - verifyStart;
+        report.phases.verify = {
+            duration: verifyDuration,
+            status: gapSymbols.length === 0 ? 'OK' : 'WARNING',
+            gaps: gapSymbols
+        };
+
+        // Final Summary
+        const totalDuration = Date.now() - runStart;
+        const hasErrors = quoteErrors.length > 0 || priceErrors.length > 0 || portfolioErrors.length > 0 || gapSymbols.length > 0;
+
+        report.summary = {
+            status: hasErrors ? 'WARNING' : 'SUCCESS',
+            totalDuration,
+            quotesProcessed: quotesCount,
+            pricesProcessed: pricesCount,
+            portfoliosProcessed: portfolioCount,
+            remainingPending: pendingSymbols.length - symbolsToProcess.length,
+            errors: {
+                quotes: quoteErrors,
+                prices: priceErrors,
+                portfolios: portfolioErrors,
+                gaps: gapSymbols
+            }
+        };
+
+        await logCronStatus(c.env, hasErrors ? 'WARNING' : 'SUCCESS',
+            `[MANUAL] Complete: ${quotesCount} quotes, ${pricesCount} prices, ${portfolioCount} portfolios`,
+            `Total: ${totalDuration}ms`
+        );
+
+        return c.json(report);
+
+    } catch (e: any) {
+        report.summary = { status: 'FAILED', error: e.message, stack: e.stack };
+        const { logCronStatus } = await import('../db');
+        await logCronStatus(c.env, 'FAILED', `[MANUAL] Critical Error: ${e.message}`, e.stack);
+        return c.json(report, 500);
+    }
+});
+
 // Update Group (Batch)
 app.put('/api/groups/:id', async (c) => {
     try {
@@ -586,5 +870,26 @@ app.post('/api/admin/backfill-stats', async (c) => {
 });
 
 
+
+// Debug Date & Logging
+app.get('/api/debug-date', async (c) => {
+    try {
+        const { getESTDate, getESTTimestamp, logCronStatus } = await import('../db');
+        const estDate = getESTDate();
+        const estTime = getESTTimestamp();
+
+        // Try writing a log
+        await logCronStatus(c.env, 'DEBUG', 'Testing Logging', `Date: ${estDate}, Time: ${estTime}`);
+
+        return c.json({
+            success: true,
+            estDate,
+            estTime,
+            message: 'Log attempt made. Check cron_logs.'
+        });
+    } catch (e: any) {
+        return c.json({ error: e.message, stack: e.stack }, 500);
+    }
+});
 
 export default app;

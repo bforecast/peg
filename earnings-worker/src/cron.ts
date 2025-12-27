@@ -1,6 +1,7 @@
 import { Bindings } from './types';
 import { fetchQuotes } from './yahoo_finance';
-import { logCronStatus, saveQuotesToDB, updatePrices, updateTicker, getESTDate } from './db';
+import { logCronStatus, saveQuotesToDB, getESTDate, getESTTimestamp } from './db';
+import { calculateStats } from './stats';
 
 export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
     console.log('Scheduled Update Triggered');
@@ -55,8 +56,8 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             // PHASE 1: INITIALIZATION
             // ============================================================
             const initDuration = Date.now() - runStart;
-            await logCronStatus(env, 'PHASE',
-                `[1/5] Init: ${symbols.length} total, ${freshSymbols.length} fresh, ${pendingSymbols.length} pending`,
+            await logCronStatus(env, 'SETUP',
+                `[1/4] Init: ${symbols.length} total, ${freshSymbols.length} fresh, ${pendingSymbols.length} pending`,
                 `Duration: ${initDuration}ms | Cutoff: ${cutoffTime}`
             );
 
@@ -68,117 +69,165 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                 return;
             }
 
+
             // ============================================================
-            // PHASE 2: FETCH QUOTES
+            // PHASE 2: FETCH QUOTES & UPDATE PRICES
             // ============================================================
-            const MAX_UPDATES_PER_RUN = 10; // Reduced for free tier
-            const BATCH_SIZE = 10;
+            const MAX_UPDATES_PER_RUN = 10; // Increased to 10 after optimization (execution time ~6-10s)
             const symbolsToProcess = pendingSymbols.slice(0, MAX_UPDATES_PER_RUN);
 
             const quoteStart = Date.now();
             let quotesCount = 0;
             let quoteErrors: string[] = [];
+            let pricesUpdated = 0;
+            let statsUpdated = 0;
 
-            for (let i = 0; i < symbolsToProcess.length; i += BATCH_SIZE) {
-                const batch = symbolsToProcess.slice(i, i + BATCH_SIZE);
-                try {
-                    const quotes = await fetchQuotes(batch);
-                    if (quotes && quotes.length > 0) {
-                        await saveQuotesToDB(env, quotes);
-                        quotesCount += quotes.length;
-                        const failed = batch.filter(s => !quotes.find(q => q.symbol === s));
-                        if (failed.length > 0) quoteErrors.push(...failed);
-                    } else {
-                        quoteErrors.push(...batch);
+            // Fetch all selected symbols in one go (Yahoo batch supports this easily)
+            try {
+                const quotes = await fetchQuotes(symbolsToProcess);
+                if (quotes && quotes.length > 0) {
+                    // 1. Save to stock_quotes (existing logic)
+                    await saveQuotesToDB(env, quotes);
+                    quotesCount += quotes.length;
+
+                    // 2. NEW: Insert today's price into stock_prices for each symbol
+                    const dateStr = getESTDate();
+                    const updatedAt = getESTTimestamp();
+
+                    for (const q of quotes) {
+                        if (q.regularMarketPrice && q.regularMarketPrice > 0) {
+                            try {
+                                // Insert today's price (using current quote price as close)
+                                await env.DB.prepare(`
+                                    INSERT OR REPLACE INTO stock_prices (symbol, date, close, open, high, low, volume, updated_at)
+                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                `).bind(
+                                    q.symbol,
+                                    dateStr,
+                                    q.regularMarketPrice,
+                                    null, null, null, null,  // OHLV not available from quote, but close is enough
+                                    updatedAt
+                                ).run();
+                                pricesUpdated++;
+
+                                // 3. Recalculate stats using existing price history + new price
+                                const { results: history } = await env.DB.prepare(
+                                    `SELECT date, close FROM stock_prices WHERE symbol = ? ORDER BY date DESC LIMIT 400`
+                                ).bind(q.symbol).all();
+
+                                if (history && history.length > 0) {
+                                    const pricesAsc = (history as unknown as { date: string; close: number }[]).reverse();
+                                    const stats = calculateStats(q.symbol, pricesAsc);
+
+                                    if (stats) {
+                                        await env.DB.prepare(`
+                                            INSERT OR REPLACE INTO stock_stats (
+                                                symbol, change_ytd, change_1y, delta_52w_high, 
+                                                sma_20, sma_50, sma_200, 
+                                                chart_1y, rs_rank_1m, updated_at
+                                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                        `).bind(
+                                            stats.symbol, stats.changeYTD, stats.change1Y, stats.delta52wHigh,
+                                            stats.sma20, stats.sma50, stats.sma200,
+                                            stats.chart1Y, stats.rsRank1M, updatedAt
+                                        ).run();
+                                        statsUpdated++;
+                                    }
+                                }
+                            } catch (e: any) {
+                                console.error(`[Cron] Price/Stats insert error for ${q.symbol}: ${e.message}`);
+                            }
+                        }
                     }
-                } catch (e: any) {
-                    quoteErrors.push(...batch);
-                    console.error(`[Cron] Quote fetch error: ${e.message}`);
+
+                    const failed = symbolsToProcess.filter(s => !quotes.find(q => q.symbol === s));
+                    if (failed.length > 0) quoteErrors.push(...failed);
+                } else {
+                    quoteErrors.push(...symbolsToProcess);
                 }
+            } catch (e: any) {
+                quoteErrors.push(...symbolsToProcess);
+                console.error(`[Cron] Quote fetch error: ${e.message}`);
             }
 
             const quoteDuration = Date.now() - quoteStart;
-            await logCronStatus(env, 'PHASE',
-                `[2/5] Fetch Quotes: ${quotesCount} fetched, ${quoteErrors.length} failed`,
+            await logCronStatus(env, 'QUOTES',
+                `[2/4] Fetch Quotes & Prices: ${quotesCount} quotes, ${pricesUpdated} prices, ${statsUpdated} stats`,
                 `Duration: ${quoteDuration}ms | Symbols: ${symbolsToProcess.join(',')}`
             );
 
-            // ============================================================
-            // PHASE 3: UPDATE PRICES & STATS
-            // ============================================================
-            const priceStart = Date.now();
-            let pricesCount = 0;
-            let statsCount = 0;
-            let priceErrors: string[] = [];
-
-            for (const symbol of symbolsToProcess) {
-                try {
-                    const priceRes = await updatePrices(env, symbol);
-                    if (priceRes && priceRes.count > 0) pricesCount++;
-                    // Note: updatePrices also updates stock_stats
-
-                    const tickerRes = await updateTicker(env, symbol);
-                    if (tickerRes && tickerRes.count > 0) statsCount++;
-                } catch (e: any) {
-                    priceErrors.push(symbol);
-                    console.error(`[Cron] Price/Stats error for ${symbol}: ${e.message}`);
-                }
-            }
-
-            const priceDuration = Date.now() - priceStart;
-            await logCronStatus(env, 'PHASE',
-                `[3/5] Update Prices: ${pricesCount} prices, ${statsCount} earnings | ${priceErrors.length} errors`,
-                `Duration: ${priceDuration}ms${priceErrors.length > 0 ? ' | Failed: ' + priceErrors.join(',') : ''}`
-            );
+            // NOTE: Phase 3 (Update Earnings) was removed because EPS estimates are already
+            // fetched in Phase 2 via fetchQuotes (earningsTrend module) and saved to stock_quotes.
 
             // ============================================================
-            // PHASE 4: PORTFOLIO STATS
+            // PHASE 4: PORTFOLIO STATS (Only when all symbols are updated)
             // ============================================================
             const portfolioStart = Date.now();
-            const { results: groups } = await env.DB.prepare("SELECT id, name FROM groups").all();
+            const remainingPending = pendingSymbols.length - symbolsToProcess.length;
             let portfolioCount = 0;
             let portfolioErrors: string[] = [];
 
-            if (groups && groups.length > 0) {
-                const { calculatePortfolioStats } = await import('./portfolio');
-                for (const g of groups as any[]) {
-                    try {
-                        await calculatePortfolioStats(env, g.id);
-                        portfolioCount++;
-                    } catch (e: any) {
-                        portfolioErrors.push(g.name || `ID:${g.id}`);
-                        console.error(`[Cron] Portfolio stats error for ${g.name}: ${e.message}`);
+            // Only recalculate portfolio stats when ALL pending symbols have been processed
+            if (remainingPending === 0) {
+                const { results: groups } = await env.DB.prepare("SELECT id, name FROM groups").all();
+
+                if (groups && groups.length > 0) {
+                    const { calculatePortfolioStats } = await import('./portfolio');
+                    for (const g of groups as any[]) {
+                        try {
+                            await calculatePortfolioStats(env, g.id);
+                            portfolioCount++;
+                        } catch (e: any) {
+                            portfolioErrors.push(g.name || `ID:${g.id}`);
+                            console.error(`[Cron] Portfolio stats error for ${g.name}: ${e.message}`);
+                        }
                     }
                 }
+
+                const portfolioDuration = Date.now() - portfolioStart;
+                await logCronStatus(env, 'STATS',
+                    `[3/4] Portfolio Stats: ${portfolioCount}/${groups?.length || 0} recalculated (FINAL)`,
+                    `Duration: ${portfolioDuration}ms${portfolioErrors.length > 0 ? ' | Failed: ' + portfolioErrors.join(',') : ''}`
+                );
+            } else {
+                await logCronStatus(env, 'STATS',
+                    `[3/4] Portfolio Stats: SKIPPED (${remainingPending} symbols still pending)`,
+                    `Duration: 0ms`
+                );
             }
 
-            const portfolioDuration = Date.now() - portfolioStart;
-            await logCronStatus(env, 'PHASE',
-                `[4/5] Portfolio Stats: ${portfolioCount}/${groups?.length || 0} recalculated`,
-                `Duration: ${portfolioDuration}ms${portfolioErrors.length > 0 ? ' | Failed: ' + portfolioErrors.join(',') : ''}`
-            );
-
             // ============================================================
-            // PHASE 5: VERIFICATION
+            // PHASE 5: VERIFICATION (Only meaningful when all symbols processed)
             // ============================================================
             const verifyStart = Date.now();
-            const { results: gapRows } = await env.DB.prepare(`
-                SELECT q.symbol FROM stock_quotes q
-                LEFT JOIN stock_stats s ON q.symbol = s.symbol
-                WHERE q.updated_at > ? AND (s.updated_at IS NULL OR s.updated_at <= ?)
-            `).bind(cutoffTime, cutoffTime).all();
+            let gapSymbols: string[] = [];
 
-            const gapSymbols = gapRows.map((r: any) => r.symbol);
+            // Only run gap check when all symbols are processed (remainingPending === 0)
+            if (remainingPending === 0) {
+                const { results: gapRows } = await env.DB.prepare(`
+                    SELECT q.symbol FROM stock_quotes q
+                    LEFT JOIN stock_stats s ON q.symbol = s.symbol
+                    WHERE q.updated_at > ? AND (s.updated_at IS NULL OR s.updated_at <= ?)
+                `).bind(cutoffTime, cutoffTime).all();
+
+                gapSymbols = gapRows.map((r: any) => r.symbol);
+            }
+
             const verifyDuration = Date.now() - verifyStart;
 
-            if (gapSymbols.length > 0) {
+            if (remainingPending > 0) {
+                await logCronStatus(env, 'VERIFY',
+                    `[4/4] Verification: SKIPPED (${remainingPending} symbols still pending)`,
+                    `Duration: ${verifyDuration}ms`
+                );
+            } else if (gapSymbols.length > 0) {
                 await logCronStatus(env, 'WARNING',
-                    `[5/5] Verification: ${gapSymbols.length} Quote/Stats gaps`,
+                    `[4/4] Verification: ${gapSymbols.length} Quote/Stats gaps`,
                     `Duration: ${verifyDuration}ms | Gaps: ${gapSymbols.join(',')}`
                 );
             } else {
-                await logCronStatus(env, 'PHASE',
-                    `[5/5] Verification: PASSED (0 gaps)`,
+                await logCronStatus(env, 'VERIFY',
+                    `[4/4] Verification: PASSED (0 gaps)`,
                     `Duration: ${verifyDuration}ms`
                 );
             }
@@ -187,12 +236,12 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             // FINAL SUMMARY
             // ============================================================
             const totalDuration = Date.now() - runStart;
-            const hasErrors = quoteErrors.length > 0 || priceErrors.length > 0 || portfolioErrors.length > 0 || gapSymbols.length > 0;
+            const hasErrors = quoteErrors.length > 0 || portfolioErrors.length > 0 || (remainingPending === 0 && gapSymbols.length > 0);
             const finalStatus = hasErrors ? 'WARNING' : 'SUCCESS';
 
             await logCronStatus(env, finalStatus,
-                `Run Complete: ${quotesCount} quotes, ${pricesCount} prices, ${portfolioCount} portfolios`,
-                `Total: ${totalDuration}ms | Pending: ${pendingSymbols.length - symbolsToProcess.length} remaining`
+                `Run Complete: ${quotesCount} quotes, ${pricesUpdated} prices, ${statsUpdated} stats`,
+                `Total: ${totalDuration}ms | Pending: ${remainingPending} remaining`
             );
 
         } catch (e: any) {
