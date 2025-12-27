@@ -21,7 +21,7 @@ app.get('/peg', (c) => {
 // Serve System Settings UI
 app.get('/status', async (c) => {
     // Import on demand to avoid circular dependencies if any
-    const { SETTINGS_HTML } = await import('../settings_html');
+    const { SETTINGS_HTML } = await import('../status_html');
     return c.html(SETTINGS_HTML);
 });
 

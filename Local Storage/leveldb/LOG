@@ -1,0 +1,44 @@
+2025/12/26-23:56:00.676 48e8 Reusing MANIFEST D:\AntigravityProjects\forward_peg_system\Local Storage\leveldb/MANIFEST-000001
+2025/12/26-23:56:00.680 48e8 Recovering log #37
+2025/12/26-23:56:00.680 48e8 Level-0 table #39: started
+2025/12/26-23:56:00.704 48e8 Level-0 table #39: 32482 bytes OK
+2025/12/26-23:56:00.732 48e8 Delete type=0 #37
+2025/12/26-23:56:00.733 c9c Compacting 4@0 + 1@1 files
+2025/12/26-23:56:00.754 c9c Generated table #41@0: 6 keys, 32712 bytes
+2025/12/26-23:56:00.754 c9c Compacted 4@0 + 1@1 files => 32712 bytes
+2025/12/26-23:56:00.774 c9c compacted to: files[ 0 1 0 0 0 0 0 ]
+2025/12/26-23:56:00.774 c9c Delete type=2 #30
+2025/12/26-23:56:00.774 c9c Delete type=2 #32
+2025/12/26-23:56:00.775 c9c Delete type=2 #34
+2025/12/26-23:56:00.775 c9c Delete type=2 #36
+2025/12/26-23:56:00.775 c9c Delete type=2 #39
+2025/12/26-23:57:00.740 c9c Level-0 table #43: started
+2025/12/26-23:57:00.765 c9c Level-0 table #43: 33154 bytes OK
+2025/12/26-23:57:00.781 c9c Delete type=0 #40
+2025/12/26-23:58:01.458 c9c Level-0 table #45: started
+2025/12/26-23:58:01.532 c9c Level-0 table #45: 32312 bytes OK
+2025/12/26-23:58:01.564 c9c Delete type=0 #42
+2025/12/26-23:59:01.462 c9c Level-0 table #47: started
+2025/12/26-23:59:01.505 c9c Level-0 table #47: 32783 bytes OK
+2025/12/26-23:59:01.521 c9c Delete type=0 #44
+2025/12/27-00:00:01.460 c9c Level-0 table #49: started
+2025/12/27-00:00:01.529 c9c Level-0 table #49: 32566 bytes OK
+2025/12/27-00:00:01.554 c9c Delete type=0 #46
+2025/12/27-00:00:01.555 c9c Compacting 4@0 + 1@1 files
+2025/12/27-00:00:01.587 c9c Generated table #50@0: 6 keys, 32784 bytes
+2025/12/27-00:00:01.587 c9c Compacted 4@0 + 1@1 files => 32784 bytes
+2025/12/27-00:00:01.612 c9c compacted to: files[ 0 1 0 0 0 0 0 ]
+2025/12/27-00:00:01.613 c9c Delete type=2 #41
+2025/12/27-00:00:01.613 c9c Delete type=2 #43
+2025/12/27-00:00:01.613 c9c Delete type=2 #45
+2025/12/27-00:00:01.613 c9c Delete type=2 #47
+2025/12/27-00:00:01.613 c9c Delete type=2 #49
+2025/12/27-00:01:01.468 c9c Level-0 table #52: started
+2025/12/27-00:01:01.528 c9c Level-0 table #52: 32762 bytes OK
+2025/12/27-00:01:01.561 c9c Delete type=0 #48
+2025/12/27-00:02:01.465 c9c Level-0 table #54: started
+2025/12/27-00:02:01.532 c9c Level-0 table #54: 33539 bytes OK
+2025/12/27-00:02:01.561 c9c Delete type=0 #51
+2025/12/27-00:03:01.458 c9c Level-0 table #56: started
+2025/12/27-00:03:01.516 c9c Level-0 table #56: 32614 bytes OK
+2025/12/27-00:03:01.535 c9c Delete type=0 #53
