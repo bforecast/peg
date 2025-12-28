@@ -683,6 +683,23 @@ app.put('/api/groups/:id', async (c) => {
         statements.push(c.env.DB.prepare(query).bind(...params));
 
         if (Array.isArray(members)) {
+            // Validation: Ensure all symbols exist and have price data
+            if (members.length > 0) {
+                const symbolsToCheck = members.map((mem: any) =>
+                    (typeof mem === 'string' ? mem : mem.symbol).trim().toUpperCase()
+                );
+                const uniqueSymbols = [...new Set(symbolsToCheck)] as string[];
+
+                // Verify with Yahoo Finance
+                const validQuotes = await fetchQuotes(uniqueSymbols);
+                const validSet = new Set(validQuotes.filter(q => q.regularMarketPrice && q.regularMarketPrice > 0).map(q => q.symbol));
+
+                const invalid = uniqueSymbols.filter(s => !validSet.has(s));
+                if (invalid.length > 0) {
+                    return c.json({ error: `Validation Failed: Symbols [${invalid.join(', ')}] not found or have no price data.` }, 400);
+                }
+            }
+
             statements.push(c.env.DB.prepare('DELETE FROM group_members WHERE group_id = ?').bind(id));
 
             const insertStmt = c.env.DB.prepare('INSERT INTO group_members (group_id, symbol, allocation) VALUES (?, ?, ?)');
