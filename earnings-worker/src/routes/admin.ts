@@ -375,7 +375,7 @@ app.post('/api/admin/force-run-cron', async (c) => {
 
 // Manual Trigger for Cron Job (Synchronous - Full Evaluation)
 // Supports query params: force=true (ignore freshness), limit=N (max symbols), symbols=X,Y,Z (specific symbols)
-app.post('/api/admin/trigger-cron', async (c) => {
+app.on(['GET', 'POST'], '/api/admin/trigger-cron', async (c) => {
     const runStart = Date.now();
     const report: any = {
         trigger: 'MANUAL',
