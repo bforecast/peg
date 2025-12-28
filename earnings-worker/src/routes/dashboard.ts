@@ -74,10 +74,14 @@ app.get('/api/stock-details/:symbol', async (c) => {
 
         // 1. Get Quote & Metrics
         const quote = await c.env.DB.prepare('SELECT * FROM stock_quotes WHERE symbol = ?').bind(symbol).first();
+        const stats = await c.env.DB.prepare('SELECT * FROM stock_stats WHERE symbol = ?').bind(symbol).first();
 
         if (!quote) {
             return c.json({ error: 'Stock not found' }, 404);
         }
+
+        // Merge stats into quote for frontend convenience
+        const mergedQuote = { ...quote, ...stats };
 
         // 2. Get Price History (Last 370 days for full year chart)
         // Get date 1 year ago
@@ -104,7 +108,7 @@ app.get('/api/stock-details/:symbol', async (c) => {
         `).bind(symbol).all();
 
         return c.json({
-            quote,
+            quote: mergedQuote,
             history: history || [],
             earnings: earnings || [],
             holdings: holdings || []

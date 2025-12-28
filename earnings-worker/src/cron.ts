@@ -1,6 +1,6 @@
 import { Bindings } from './types';
 import { fetchQuotes } from './yahoo_finance';
-import { logCronStatus, saveQuotesToDB, getESTDate, getESTTimestamp } from './db';
+import { logCronStatus, saveQuotesToDB, getLastTradingDate, getESTDate, getESTTimestamp } from './db';
 import { calculateStats } from './stats';
 
 export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
@@ -39,7 +39,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     const yStr = `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`;
                     cutoffTime = `${yStr} 16:00:00`;
                 } else {
-                    const todayStr = getESTDate();
+                    const todayStr = getLastTradingDate();
                     cutoffTime = `${todayStr} 16:00:00`;
                 }
             }
@@ -91,7 +91,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     quotesCount += quotes.length;
 
                     // 2. NEW: Insert today's price into stock_prices for each symbol
-                    const dateStr = getESTDate();
+                    const dateStr = getLastTradingDate();
                     const updatedAt = getESTTimestamp();
 
                     for (const q of quotes) {
@@ -105,7 +105,10 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                                     q.symbol,
                                     dateStr,
                                     q.regularMarketPrice,
-                                    null, null, null, null,  // OHLV not available from quote, but close is enough
+                                    q.regularMarketOpen || null,
+                                    q.regularMarketDayHigh || null,
+                                    q.regularMarketDayLow || null,
+                                    q.regularMarketVolume || null,
                                     updatedAt
                                 ).run();
                                 pricesUpdated++;

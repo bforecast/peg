@@ -12,6 +12,38 @@ export function getESTDate(): string {
     return now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
+// Helper to get the last trading date (handles weekends and pre-market)
+export function getLastTradingDate(): string {
+    const now = new Date();
+    const estStr = now.toLocaleString("en-US", { timeZone: "America/New_York", hour12: false });
+    const est = new Date(estStr);
+
+    const dayOfWeek = est.getDay(); // 0=Sun, 6=Sat
+    const hour = est.getHours();
+
+    let tradingDate = new Date(est);
+
+    if (dayOfWeek === 0) {
+        // Sunday -> Friday
+        tradingDate.setDate(est.getDate() - 2);
+    } else if (dayOfWeek === 6) {
+        // Saturday -> Friday
+        tradingDate.setDate(est.getDate() - 1);
+    } else if (hour < 16) {
+        // Weekday before market close -> previous trading day
+        if (dayOfWeek === 1) {
+            // Monday before close -> Friday
+            tradingDate.setDate(est.getDate() - 3);
+        } else {
+            tradingDate.setDate(est.getDate() - 1);
+        }
+    }
+    // else: Weekday after market close -> today (already set)
+
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    return `${tradingDate.getFullYear()}-${pad(tradingDate.getMonth() + 1)}-${pad(tradingDate.getDate())}`;
+}
+
 // Helper for EST Timestamp (YYYY-MM-DD HH:MM:SS)
 export function getESTTimestamp(): string {
     const now = new Date();
@@ -202,7 +234,7 @@ export async function updateTicker(env: Bindings, symbol: string) {
 }
 
 export async function saveQuotesToDB(env: Bindings, quotes: YahooQuote[]) {
-    const dateStr = getESTDate();
+    const dateStr = getLastTradingDate();
     const updatedAt = getESTTimestamp();
 
     const stmt = env.DB.prepare(`
@@ -449,9 +481,12 @@ export async function getDashboardData(env: Bindings, groupId?: string) {
             ps: quote?.priceToSalesTrailing12Months || null,
             pe: quote?.trailingPE || null,
             peg: (() => {
-                if (quote?.epsCurrentYear && quote?.epsNextYear && quote?.epsCurrentYear !== 0 && quote?.trailingPE) {
-                    const growth = ((quote.epsNextYear - quote.epsCurrentYear) / quote.epsCurrentYear) * 100;
-                    if (growth > 0) return quote.trailingPE / growth;
+                const epsC = quote?.epsCurrentYear;
+                const epsN = quote?.epsNextYear;
+                // Fix: Use Forward PE like the Stock Page, and Math.abs for growth denominator
+                if (epsC && epsN && epsC !== 0 && quote?.forwardPE) {
+                    const growth = ((epsN - epsC) / Math.abs(epsC)) * 100;
+                    if (growth > 0 && quote.forwardPE > 0) return quote.forwardPE / growth;
                 }
                 return null;
             })(),

@@ -29,8 +29,8 @@ export const STOCK_HTML = `<!DOCTYPE html>
         
         /* Header */
         header {
-            background: #111;
-            color: white;
+            background: white;
+            color: #333;
             padding: 12px 20px;
             display: flex;
             align-items: center;
@@ -40,7 +40,7 @@ export const STOCK_HTML = `<!DOCTYPE html>
         .logo { 
             font-weight: 700; 
             text-decoration: none; 
-            color: white; 
+            color: #333; 
             font-size: 1.1rem;
             display: flex;
             align-items: center;
@@ -71,6 +71,7 @@ export const STOCK_HTML = `<!DOCTYPE html>
             .container { 
                 display: flex !important; 
                 flex-direction: column !important; 
+                padding: 0 10px;
             }
             .chart-section { order: 1; }
             .metrics-section { order: 2; }
@@ -93,10 +94,9 @@ export const STOCK_HTML = `<!DOCTYPE html>
             .badge-container { width: auto; margin-left: 0; display:flex; align-items:center; }
             
             /* Flatten Metrics Grid if needed */
-            .metrics-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+            /* Removed flattening to force horizontal scroll for 4 cols */
         }
         @media (max-width: 480px) {
-            .metrics-grid { grid-template-columns: 1fr; }
             .ticker { font-size: 2rem; }
         }
 
@@ -148,14 +148,26 @@ export const STOCK_HTML = `<!DOCTYPE html>
         }
 
         /* Metrics Grid */
+        .metrics-grid-wrapper {
+            position: relative;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch; /* Smooth scroll */
+            margin: 0 -15px; /* Negative margin to pull to edges on mobile */
+            padding: 0 15px; /* Padding to compensate */
+        }
+        @media (max-width: 1024px) {
+            .metrics-grid-wrapper { margin: 0; padding: 0; }
+        }
+
         .metrics-grid {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
             gap: 1px;
             background: var(--border-color); /* For grid border effect */
             border-radius: 8px;
             overflow: hidden;
             border: 1px solid var(--border-color);
+            min-width: 600px; /* Force scroll on small screens */
         }
         .metric-item {
             background: white;
@@ -201,7 +213,6 @@ export const STOCK_HTML = `<!DOCTYPE html>
 
 <header>
     <a href="/" class="logo">
-        <svg  xmlns="http://www.w3.org/2000/svg"  width="24"  height="24"  viewBox="0 0 24 24"  fill="none"  stroke="currentColor"  stroke-width="2"  stroke-linecap="round"  stroke-linejoin="round"  class="icon icon-tabler icons-tabler-outline icon-tabler-chart-line"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M4 19l16 0" /><path d="M4 15l4 -6l4 2l4 -5l4 4" /></svg>
         Brilliant Forecast Portfolios
     </a>
 </header>
@@ -290,60 +301,95 @@ export const STOCK_HTML = `<!DOCTYPE html>
         const ytdChange = startOfYearPrice ? ((q.price - startOfYearPrice) / startOfYearPrice) * 100 : 0;
         const ytdColor = ytdChange >= 0 ? GREEN : RED;
 
-        // 3. Metrics Grid (Valuation Left, Stats Right)
-        // We arrange them in pairs: [Valuation Item, Stats Item] so they fill Row 1, Row 2...
+        // 3. Metrics Grid (Valuation Left 2 Cols, Stats Right 2 Cols)
+        const change1Y = q.change_1y || 0;
+        const color1Y = change1Y >= 0 ? GREEN : RED;
+        
+        // Helper for SMA Arrows
+        const getSmaDisplay = (price, sma) => {
+            if (!sma) return '-';
+            const isBullish = price >= sma;
+            const color = isBullish ? GREEN : RED;
+            const arrow = isBullish ? '&#9650;' : '&#9660;';
+            return '<span style="color:' + color + '; margin-right:4px;">' + arrow + '</span>' + fmtNum(sma);
+        };
+
         const metricsHtml = \`
             <div class="card metrics-section">
                 <h3>Valuation & Stats</h3>
-                <div class="metrics-grid">
-                    <!-- Row 1 -->
-                    <div class="metric-item">
-                        <span class="metric-label">Market Cap</span>
-                        <span class="metric-value">\$\${fmtNum(q.market_cap / 1000000000, 2, 'B')}</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">EPS (TTM)</span>
-                         <span class="metric-value">\$\${fmtNum(q.eps_current_year)}</span>
-                    </div>
+                <div class="metrics-grid-wrapper">
+                    <div class="metrics-grid">
+                        <!-- Row 1 -->
+                        <div class="metric-item">
+                            <span class="metric-label">Market Cap</span>
+                            <span class="metric-value">\$\${fmtNum(q.market_cap / 1000000000, 2, 'B')}</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">EPS (TTM)</span>
+                             <span class="metric-value">\$\${fmtNum(q.eps_current_year)}</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">% 1Y</span>
+                            <span class="metric-value" style="color:\${color1Y} !important">\${fmtNum(change1Y, 1, '%')}</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">% YTD</span>
+                            <span class="metric-value" style="color:\${ytdColor} !important">\${fmtNum(ytdChange, 2, '%')}</span>
+                        </div>
 
-                    <!-- Row 2 -->
-                    <div class="metric-item">
-                        <span class="metric-label">Forward PE</span>
-                        <span class="metric-value">\${fmtNum(q.forward_pe)}</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">% YTD</span>
-                        <span class="metric-value" style="color:\${ytdColor} !important">\${fmtNum(ytdChange, 2, '%')}</span>
-                    </div>
+                        <!-- Row 2 -->
+                        <div class="metric-item">
+                            <span class="metric-label">Trailing PE</span>
+                            <span class="metric-value">\${fmtNum(q.pe_ratio)}</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Forward PE</span>
+                            <span class="metric-value">\${fmtNum(q.forward_pe)}</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">RS Rank 1M</span>
+                             <span class="metric-value">\${q.rs_rank_1m || '-'}</span>
+                        </div>
+                         <div class="metric-item">
+                            <span class="metric-label">52W High</span>
+                             <span class="metric-value">\${fmtNum(q.fifty_two_week_high)}</span>
+                        </div>
 
-                    <!-- Row 3 -->
-                    <div class="metric-item">
-                        <span class="metric-label">Trailing PE</span>
-                        <span class="metric-value">\${fmtNum(q.pe_ratio)}</span>
-                    </div>
-                    <div class="metric-item">
-                        <span class="metric-label">52W High</span>
-                         <span class="metric-value">\${fmtNum(q.fifty_two_week_high)}</span>
-                    </div>
+                        <!-- Row 3 -->
+                        <div class="metric-item">
+                            <span class="metric-label">% Growth</span>
+                            <span class="metric-value" style="color:\${growth>0?GREEN:RED}">\${fmtNum(growth, 1, '%')}</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">Forward PEG</span>
+                            <span class="metric-value" style="color:#0c7abf">\${peg ? peg.toFixed(2) : '-'}</span>
+                        </div>
+                         <div class="metric-item">
+                            <span class="metric-label">% 52w High</span>
+                             <span class="metric-value" style="color:red">\${fmtNum(offHigh, 2, '%')}</span>
+                        </div>
+                         <div class="metric-item">
+                            <span class="metric-label">20 SMA</span>
+                            <span class="metric-value">\${getSmaDisplay(q.price, q.sma_20)}</span>
+                        </div>
 
-                    <!-- Row 4 -->
-                    <div class="metric-item">
-                        <span class="metric-label">PEG Ratio</span>
-                        <span class="metric-value" style="color:#0c7abf">\${peg ? peg.toFixed(2) : '-'}</span>
-                    </div>
-                     <div class="metric-item">
-                        <span class="metric-label">% 52w High</span>
-                         <span class="metric-value" style="color:red">\${fmtNum(offHigh, 2, '%')}</span>
-                    </div>
-
-                    <!-- Row 5 -->
-                    <div class="metric-item">
-                        <span class="metric-label">PS Ratio</span>
-                        <span class="metric-value">\${fmtNum(q.ps_ratio)}</span>
-                    </div>
-                     <div class="metric-item">
-                        <span class="metric-label">Div Yield</span>
-                         <span class="metric-value">\${fmtNum(divYield, 2, '%')}</span>
+                        <!-- Row 4 -->
+                        <div class="metric-item">
+                            <span class="metric-label">PS Ratio</span>
+                            <span class="metric-value">\${fmtNum(q.ps_ratio)}</span>
+                        </div>
+                         <div class="metric-item">
+                            <span class="metric-label">Div Yield</span>
+                             <span class="metric-value">\${fmtNum(divYield, 2, '%')}</span>
+                        </div>
+                        <div class="metric-item">
+                            <span class="metric-label">50 SMA</span>
+                            <span class="metric-value">\${getSmaDisplay(q.price, q.sma_50)}</span>
+                        </div>
+                         <div class="metric-item">
+                            <span class="metric-label">200 SMA</span>
+                             <span class="metric-value">\${getSmaDisplay(q.price, q.sma_200)}</span>
+                        </div>
                     </div>
                 </div>
             </div>

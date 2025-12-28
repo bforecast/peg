@@ -124,6 +124,10 @@ export interface YahooQuote {
     epsCurrentYear?: number;
     epsNextYear?: number;
     dividendYield?: number;
+    regularMarketOpen?: number;
+    regularMarketDayHigh?: number;
+    regularMarketDayLow?: number;
+    regularMarketVolume?: number;
 }
 
 // Internal: Fetches a batch of symbols without retries
@@ -205,7 +209,11 @@ async function fetchQuotesInternal(symbols: string[]): Promise<YahooQuote[]> {
                     regularMarketChangePercent: price.regularMarketChangePercent?.raw || 0,
                     epsCurrentYear,
                     epsNextYear,
-                    dividendYield: summary.dividendYield?.raw || 0
+                    dividendYield: summary.dividendYield?.raw || 0,
+                    regularMarketOpen: price.regularMarketOpen?.raw || summary.open?.raw,
+                    regularMarketDayHigh: price.regularMarketDayHigh?.raw || summary.dayHigh?.raw,
+                    regularMarketDayLow: price.regularMarketDayLow?.raw || summary.dayLow?.raw,
+                    regularMarketVolume: price.regularMarketVolume?.raw || summary.volume?.raw,
                 };
 
             } catch (e) {
