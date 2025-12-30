@@ -26,11 +26,11 @@ export const STYLES = `
         
         table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
         th, td { padding: 6px 6px; text-align: center; border-bottom: 1px solid #EEE; font-weight: 600; }
-        th:nth-child(1), td:nth-child(1), th:nth-child(2), td:nth-child(2) { text-align: left; }
+        td:nth-child(1), th:nth-child(2), td:nth-child(2) { text-align: left; }
         
         /* Sticky Header */
         /* Sticky Header */
-        th { background: #F9F9F9 !important; font-weight: 700; color: #555 !important; cursor: pointer; user-select: none; font-size: 13px; white-space: nowrap; position: sticky; top: 0; z-index: 20; border-bottom: 2px solid #EEE !important; border-top: none !important; box-shadow: none !important; } 
+        th { background: #F9F9F9 !important; font-weight: 700; color: #555 !important; cursor: pointer; user-select: none; font-size: 1rem; white-space: nowrap; position: sticky; top: 0; z-index: 20; border-bottom: 2px solid #EEE !important; border-top: none !important; box-shadow: none !important; } 
         th:hover { background: #E0E0E0 !important; }
 
         /* Sticky Ticker Column */
@@ -116,7 +116,7 @@ export const STYLES = `
         /* Portfolios Board Specific */
         .portfolios-scroll-container { overflow: auto; max-height: calc(100vh - 150px); }
         .portfolio-table { border-collapse: separate; border-spacing: 0; }
-        .portfolio-table th { background: #F5F5F5; position: sticky; top: 45px; z-index: 20; font-size: 0.75rem; padding: 10px 8px; white-space: nowrap; }
+        .portfolio-table th { background: #F5F5F5; position: sticky; top: 45px; z-index: 20; font-size: 1rem; padding: 10px 8px; white-space: nowrap; }
         .portfolio-table th:hover { background: #E0E0E0; }
         .portfolio-table td { padding: 8px; }
         .portfolio-table .sticky-col { position: sticky; left: 0; z-index: 30; background: white; border-right: 2px solid #EEE; min-width: 150px; }
@@ -137,4 +137,58 @@ export const STYLES = `
         /* FORCE STICKY HEADER LAYERING */
         .portfolio-table th { top: 0 !important; z-index: 100 !important; }
         .portfolio-table th.sticky-col { z-index: 110 !important; }
+
+        /* Sidebar Redesign Styles */
+        .category-header {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 12px 15px; cursor: pointer; color: #444; font-weight: 600; font-size: 0.95rem;
+            transition: background 0.2s; border-radius: 6px; margin-top: 5px;
+        }
+        .category-header:hover { background: #E0E0E0; }
+        .category-header svg { width: 18px; height: 18px; fill: currentColor; opacity: 0.7; }
+        .category-title { display: flex; align-items: center; gap: 10px; }
+        .category-arrow { transition: transform 0.2s; font-size: 0.8rem; opacity: 0.5; }
+        .category-header.collapsed .category-arrow { transform: rotate(-90deg); }
+        
+        .category-list { list-style: none; padding: 0; margin: 0; overflow: hidden; transition: max-height 0.3s ease-out; }
+        .category-list.collapsed { max-height: 0; }
+        
+        /* Indent sub-items */
+        .category-list .group-item {
+            padding-left: 42px; /* 15px pad + 18px icon + 10px gap */
+            font-size: 0.9rem;
+            margin-bottom: 2px;
+            padding-top: 8px; padding-bottom: 8px;
+        }
+        /* Collapsible Memo Styles */
+        .memo-container {
+            max-height: 4.5em; /* Approx 3 lines */
+            overflow: hidden;
+            position: relative;
+            cursor: pointer;
+            transition: max-height 0.4s ease-out;
+            line-height: 1.5;
+        }
+        .memo-container.expanded {
+            max-height: 1000px; /* Large enough to show all */
+            transition: max-height 0.6s ease-in;
+        }
+        .memo-container::after {
+            content: '';
+            position: absolute;
+            bottom: 0; right: 0; left: 0;
+            height: 2em;
+            background: linear-gradient(to bottom, transparent, white);
+            pointer-events: none;
+            opacity: 1;
+            transition: opacity 0.3s;
+        }
+        .memo-container.expanded::after {
+            opacity: 0;
+            pointer-events: none;
+        }
+        /* Mobile adjustment for fade color matching background if needed */
+        @media (max-width: 768px) {
+             /* Assuming white background, logic holds */
+        }
 `;

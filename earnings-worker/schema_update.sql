@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS groups (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
     description TEXT,
+    type TEXT,
+    reference TEXT,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 

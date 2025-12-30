@@ -19,7 +19,6 @@ export const HTML = `<!DOCTYPE html>
     <nav id="sidebar">
         <h2>
             <span onclick="toggleSidebar()" class="btn-mobile-toggle" style="display:inline-block; font-size:1rem; margin-right:10px; color:#555;">&#9776;</span>
-            Brilliant Forecast
         </h2>
 
         <ul id="groupList" class="group-list">
@@ -53,6 +52,7 @@ export const HTML = `<!DOCTYPE html>
                         <thead>
                             <tr>
                                 <th class="sticky-col">Portfolio Name</th>
+                                <th onclick="window.sortPortfolios('type')" style="cursor:pointer; text-align:center;">Type <span id="sort-p-type"></span></th>
                                 <th onclick="window.sortPortfolios('member_count')" style="cursor:pointer;">Holdings <span id="sort-p-member_count"></span></th>
                                 <th onclick="window.sortPortfolios('change_1d')" style="cursor:pointer;" title="1-Day Change">% 1D <span id="sort-p-change_1d"></span></th>
                                 <th onclick="window.sortPortfolios('cagr')" style="cursor:pointer;" title="Annualized Return">CAGR <span id="sort-p-cagr"></span></th>
@@ -73,13 +73,11 @@ export const HTML = `<!DOCTYPE html>
             <div id="view-dashboard" style="display: none;">
                     <!-- Portfolio Title Bar -->
                     <div id="portfolioTitleBar" style="display:flex; justify-content:space-between; align-items:flex-start; padding:15px 0; margin-bottom:10px; border-bottom:1px solid #eee; margin-left: auto; margin-right: auto; width: 100%; max-width: 1400px;">
-                        <div style="display:flex; flex-direction:column; gap:4px;">
-                            <div style="display:flex; align-items:center; gap:15px;">
-                                <h2 id="portfolioTitle" style="margin:0; color:#333; font-size:1.3rem;"></h2>
-                                <button id="btnEditPortfolio" onclick="toggleManager()" style="padding:4px 12px; border:1px solid #2196F3; background:white; color:#2196F3; border-radius:4px; cursor:pointer; font-size:0.8rem;">&#9998; Edit</button>
-                            </div>
-                            <div id="portfolioMemo" style="font-size:0.85rem; color:#666; text-align:left;"></div>
+                        <div style="display:flex; flex-direction:column; gap:4px; flex-grow: 1;">
+                            <h2 id="portfolioTitle" style="margin:0; color:#333; font-size:1.3rem;"></h2>
+                            <div id="portfolioMemo" style="font-size:0.85rem; color:#666; text-align:left; margin-top: 4px;"></div>
                         </div>
+                        <button id="btnEditPortfolio" onclick="toggleManager()" style="padding:4px 12px; border:1px solid #2196F3; background:white; color:#2196F3; border-radius:4px; cursor:pointer; font-size:0.8rem; margin-left:15px; flex-shrink: 0;">&#9998; Edit</button>
                     </div>
                 <div class="dashboard-container">
                     <table>
@@ -136,6 +134,24 @@ export const HTML = `<!DOCTYPE html>
                                 <button onclick="parseMemoSymbols()" style="margin-left:8px; padding:2px 8px; font-size:0.8rem; background:#E3F2FD; color:#2196F3; border:1px solid #2196F3; border-radius:4px; cursor:pointer;" title="Extract symbols from memo (e.g. $AAPL)">$ Extract</button>
                             </label>
                             <textarea id="editGroupMemo" class="input-field" rows="5" placeholder="Add notes here... use $AAPL to tag stocks" style="width:100%; box-sizing:border-box; font-family:inherit; resize:vertical;" oninput="checkDirty()"></textarea>
+                        </div>
+                        
+                        <div style="margin-bottom:20px; display:flex; gap:15px;">
+                             <div style="flex:1;">
+                                 <label style="display:block; font-weight:600; color:#444; margin-bottom:8px;">Portfolio Type</label>
+                                 <select id="editGroupType" class="input-field" style="width:100%; box-sizing:border-box;" onchange="checkDirty()">
+                                     <option value="">Personal</option>
+                                     <option value="SuperInvestor">SuperInvestor</option>
+                                     <option value="ETF">ETF</option>
+                                     <option value="MutualFund">Mutual Fund</option>
+                                     <option value="Index">Index</option>
+                                     <option value="X">X</option>
+                                 </select>
+                             </div>
+                             <div style="flex:2;">
+                                 <label style="display:block; font-weight:600; color:#444; margin-bottom:8px;">Reference URL</label>
+                                 <input type="text" id="editGroupRef" class="input-field" placeholder="https://..." oninput="checkDirty()" style="width:100%; box-sizing:border-box;">
+                             </div>
                         </div>
 
                             <div style="font-size:0.85rem; color:#888;">

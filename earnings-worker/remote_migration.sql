@@ -1,0 +1,2 @@
+ALTER TABLE groups ADD COLUMN type TEXT;
+ALTER TABLE groups ADD COLUMN reference TEXT;

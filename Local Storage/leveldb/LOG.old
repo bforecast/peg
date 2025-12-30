@@ -1,5 +1,167 @@
-2025/12/26-23:55:21.956 99c Reusing MANIFEST D:\AntigravityProjects\forward_peg_system\Local Storage\leveldb/MANIFEST-000001
-2025/12/26-23:55:21.961 99c Recovering log #33
-2025/12/26-23:55:21.961 99c Level-0 table #36: started
-2025/12/26-23:55:22.001 99c Level-0 table #36: 32614 bytes OK
-2025/12/26-23:55:22.033 99c Delete type=0 #33
+2025/12/28-22:33:07.495 41d4 Reusing MANIFEST D:\AntigravityProjects\forward_peg_system\Local Storage\leveldb/MANIFEST-000001
+2025/12/28-22:33:07.499 41d4 Recovering log #397
+2025/12/28-22:33:07.499 41d4 Level-0 table #400: started
+2025/12/28-22:33:07.527 41d4 Level-0 table #400: 32491 bytes OK
+2025/12/28-22:33:07.549 41d4 Delete type=0 #397
+2025/12/28-22:34:07.554 1a7c Level-0 table #403: started
+2025/12/28-22:34:07.589 1a7c Level-0 table #403: 32525 bytes OK
+2025/12/28-22:34:07.614 1a7c Delete type=0 #401
+2025/12/28-22:35:08.234 1a7c Level-0 table #405: started
+2025/12/28-22:35:08.302 1a7c Level-0 table #405: 32962 bytes OK
+2025/12/28-22:35:08.331 1a7c Delete type=0 #402
+2025/12/28-22:35:08.331 1a7c Compacting 4@0 + 1@1 files
+2025/12/28-22:35:08.370 1a7c Generated table #406@0: 6 keys, 33058 bytes
+2025/12/28-22:35:08.371 1a7c Compacted 4@0 + 1@1 files => 33058 bytes
+2025/12/28-22:35:08.406 1a7c compacted to: files[ 0 1 0 0 0 0 0 ]
+2025/12/28-22:35:08.407 1a7c Delete type=2 #396
+2025/12/28-22:35:08.407 1a7c Delete type=2 #398
+2025/12/28-22:35:08.407 1a7c Delete type=2 #400
+2025/12/28-22:35:08.407 1a7c Delete type=2 #403
+2025/12/28-22:35:08.407 1a7c Delete type=2 #405
+2025/12/28-22:36:08.232 1a7c Level-0 table #408: started
+2025/12/28-22:36:08.270 1a7c Level-0 table #408: 32709 bytes OK
+2025/12/28-22:36:08.298 1a7c Delete type=0 #404
+2025/12/28-22:37:08.237 1a7c Level-0 table #410: started
+2025/12/28-22:37:08.299 1a7c Level-0 table #410: 32800 bytes OK
+2025/12/28-22:37:08.322 1a7c Delete type=0 #407
+2025/12/28-22:38:08.241 1a7c Level-0 table #412: started
+2025/12/28-22:38:08.295 1a7c Level-0 table #412: 32381 bytes OK
+2025/12/28-22:38:08.321 1a7c Delete type=0 #409
+2025/12/28-22:39:08.242 1a7c Level-0 table #414: started
+2025/12/28-22:39:08.294 1a7c Level-0 table #414: 32780 bytes OK
+2025/12/28-22:39:08.320 1a7c Delete type=0 #411
+2025/12/28-22:39:08.320 1a7c Compacting 4@0 + 1@1 files
+2025/12/28-22:39:08.365 1a7c Generated table #415@0: 6 keys, 32990 bytes
+2025/12/28-22:39:08.365 1a7c Compacted 4@0 + 1@1 files => 32990 bytes
+2025/12/28-22:39:08.387 1a7c compacted to: files[ 0 1 0 0 0 0 0 ]
+2025/12/28-22:39:08.387 1a7c Delete type=2 #406
+2025/12/28-22:39:08.387 1a7c Delete type=2 #408
+2025/12/28-22:39:08.387 1a7c Delete type=2 #410
+2025/12/28-22:39:08.387 1a7c Delete type=2 #412
+2025/12/28-22:39:08.387 1a7c Delete type=2 #414
+2025/12/28-22:40:08.240 1a7c Level-0 table #417: started
+2025/12/28-22:40:08.278 1a7c Level-0 table #417: 32852 bytes OK
+2025/12/28-22:40:08.303 1a7c Delete type=0 #413
+2025/12/28-22:41:08.231 1a7c Level-0 table #419: started
+2025/12/28-22:41:08.262 1a7c Level-0 table #419: 33144 bytes OK
+2025/12/28-22:41:08.284 1a7c Delete type=0 #416
+2025/12/28-22:42:08.234 1a7c Level-0 table #421: started
+2025/12/28-22:42:08.285 1a7c Level-0 table #421: 32224 bytes OK
+2025/12/28-22:42:08.309 1a7c Delete type=0 #418
+2025/12/28-22:43:08.232 1a7c Level-0 table #423: started
+2025/12/28-22:43:08.270 1a7c Level-0 table #423: 32748 bytes OK
+2025/12/28-22:43:08.300 1a7c Delete type=0 #420
+2025/12/28-22:43:08.301 1a7c Compacting 4@0 + 1@1 files
+2025/12/28-22:43:08.337 1a7c Generated table #424@0: 6 keys, 32973 bytes
+2025/12/28-22:43:08.337 1a7c Compacted 4@0 + 1@1 files => 32973 bytes
+2025/12/28-22:43:08.366 1a7c compacted to: files[ 0 1 0 0 0 0 0 ]
+2025/12/28-22:43:08.366 1a7c Delete type=2 #415
+2025/12/28-22:43:08.366 1a7c Delete type=2 #417
+2025/12/28-22:43:08.366 1a7c Delete type=2 #419
+2025/12/28-22:43:08.367 1a7c Delete type=2 #421
+2025/12/28-22:43:08.367 1a7c Delete type=2 #423
+2025/12/28-22:44:08.241 1a7c Level-0 table #426: started
+2025/12/28-22:44:08.284 1a7c Level-0 table #426: 32821 bytes OK
+2025/12/28-22:44:08.390 1a7c Delete type=0 #422
+2025/12/28-22:45:08.232 1a7c Level-0 table #428: started
+2025/12/28-22:45:08.259 1a7c Level-0 table #428: 32652 bytes OK
+2025/12/28-22:45:08.281 1a7c Delete type=0 #425
+2025/12/28-22:46:08.235 1a7c Level-0 table #430: started
+2025/12/28-22:46:08.274 1a7c Level-0 table #430: 32785 bytes OK
+2025/12/28-22:46:08.296 1a7c Delete type=0 #427
+2025/12/28-22:47:08.232 1a7c Level-0 table #432: started
+2025/12/28-22:47:08.272 1a7c Level-0 table #432: 32523 bytes OK
+2025/12/28-22:47:08.294 1a7c Delete type=0 #429
+2025/12/28-22:47:08.295 1a7c Compacting 4@0 + 1@1 files
+2025/12/28-22:47:08.331 1a7c Generated table #433@0: 6 keys, 32827 bytes
+2025/12/28-22:47:08.331 1a7c Compacted 4@0 + 1@1 files => 32827 bytes
+2025/12/28-22:47:08.352 1a7c compacted to: files[ 0 1 0 0 0 0 0 ]
+2025/12/28-22:47:08.353 1a7c Delete type=2 #424
+2025/12/28-22:47:08.353 1a7c Delete type=2 #426
+2025/12/28-22:47:08.353 1a7c Delete type=2 #428
+2025/12/28-22:47:08.353 1a7c Delete type=2 #430
+2025/12/28-22:47:08.353 1a7c Delete type=2 #432
+2025/12/28-22:48:08.241 1a7c Level-0 table #435: started
+2025/12/28-22:48:08.264 1a7c Level-0 table #435: 32347 bytes OK
+2025/12/28-22:48:08.304 1a7c Delete type=0 #431
+2025/12/28-22:49:08.235 1a7c Level-0 table #437: started
+2025/12/28-22:49:08.270 1a7c Level-0 table #437: 32988 bytes OK
+2025/12/28-22:49:08.292 1a7c Delete type=0 #434
+2025/12/28-22:50:08.239 1a7c Level-0 table #439: started
+2025/12/28-22:50:08.278 1a7c Level-0 table #439: 32285 bytes OK
+2025/12/28-22:50:08.300 1a7c Delete type=0 #436
+2025/12/28-22:51:08.240 1a7c Level-0 table #441: started
+2025/12/28-22:51:08.288 1a7c Level-0 table #441: 33416 bytes OK
+2025/12/28-22:51:08.316 1a7c Delete type=0 #438
+2025/12/28-22:51:08.317 1a7c Compacting 4@0 + 1@1 files
+2025/12/28-22:51:08.344 1a7c Generated table #442@0: 6 keys, 33459 bytes
+2025/12/28-22:51:08.344 1a7c Compacted 4@0 + 1@1 files => 33459 bytes
+2025/12/28-22:51:08.366 1a7c compacted to: files[ 0 1 0 0 0 0 0 ]
+2025/12/28-22:51:08.367 1a7c Delete type=2 #433
+2025/12/28-22:51:08.367 1a7c Delete type=2 #435
+2025/12/28-22:51:08.367 1a7c Delete type=2 #437
+2025/12/28-22:51:08.367 1a7c Delete type=2 #439
+2025/12/28-22:51:08.367 1a7c Delete type=2 #441
+2025/12/28-22:52:08.235 1a7c Level-0 table #444: started
+2025/12/28-22:52:08.277 1a7c Level-0 table #444: 32297 bytes OK
+2025/12/28-22:52:08.298 1a7c Delete type=0 #440
+2025/12/28-22:53:08.242 1a7c Level-0 table #446: started
+2025/12/28-22:53:08.297 1a7c Level-0 table #446: 33265 bytes OK
+2025/12/28-22:53:08.323 1a7c Delete type=0 #443
+2025/12/28-22:54:08.241 1a7c Level-0 table #448: started
+2025/12/28-22:54:08.299 1a7c Level-0 table #448: 32292 bytes OK
+2025/12/28-22:54:08.322 1a7c Delete type=0 #445
+2025/12/28-22:55:08.237 1a7c Level-0 table #450: started
+2025/12/28-22:55:08.270 1a7c Level-0 table #450: 33408 bytes OK
+2025/12/28-22:55:08.304 1a7c Delete type=0 #447
+2025/12/28-22:55:08.304 1a7c Compacting 4@0 + 1@1 files
+2025/12/28-22:55:08.340 1a7c Generated table #451@0: 6 keys, 33665 bytes
+2025/12/28-22:55:08.340 1a7c Compacted 4@0 + 1@1 files => 33665 bytes
+2025/12/28-22:55:08.362 1a7c compacted to: files[ 0 1 0 0 0 0 0 ]
+2025/12/28-22:55:08.362 1a7c Delete type=2 #442
+2025/12/28-22:55:08.362 1a7c Delete type=2 #444
+2025/12/28-22:55:08.362 1a7c Delete type=2 #446
+2025/12/28-22:55:08.363 1a7c Delete type=2 #448
+2025/12/28-22:55:08.363 1a7c Delete type=2 #450
+2025/12/28-22:56:08.233 1a7c Level-0 table #453: started
+2025/12/28-22:56:08.265 1a7c Level-0 table #453: 32536 bytes OK
+2025/12/28-22:56:08.286 1a7c Delete type=0 #449
+2025/12/28-22:57:08.234 1a7c Level-0 table #455: started
+2025/12/28-22:57:08.272 1a7c Level-0 table #455: 32563 bytes OK
+2025/12/28-22:57:08.293 1a7c Delete type=0 #452
+2025/12/28-22:58:08.246 1a7c Level-0 table #457: started
+2025/12/28-22:58:08.270 1a7c Level-0 table #457: 32604 bytes OK
+2025/12/28-22:58:08.292 1a7c Delete type=0 #454
+2025/12/28-22:59:08.233 1a7c Level-0 table #459: started
+2025/12/28-22:59:08.279 1a7c Level-0 table #459: 32279 bytes OK
+2025/12/28-22:59:08.310 1a7c Delete type=0 #456
+2025/12/28-22:59:08.311 1a7c Compacting 4@0 + 1@1 files
+2025/12/28-22:59:08.346 1a7c Generated table #460@0: 6 keys, 32440 bytes
+2025/12/28-22:59:08.346 1a7c Compacted 4@0 + 1@1 files => 32440 bytes
+2025/12/28-22:59:08.367 1a7c compacted to: files[ 0 1 0 0 0 0 0 ]
+2025/12/28-22:59:08.367 1a7c Delete type=2 #451
+2025/12/28-22:59:08.367 1a7c Delete type=2 #453
+2025/12/28-22:59:08.367 1a7c Delete type=2 #455
+2025/12/28-22:59:08.368 1a7c Delete type=2 #457
+2025/12/28-22:59:08.368 1a7c Delete type=2 #459
+2025/12/28-23:00:08.238 1a7c Level-0 table #462: started
+2025/12/28-23:00:08.294 1a7c Level-0 table #462: 32604 bytes OK
+2025/12/28-23:00:08.317 1a7c Delete type=0 #458
+2025/12/28-23:01:08.240 1a7c Level-0 table #464: started
+2025/12/28-23:01:08.269 1a7c Level-0 table #464: 32325 bytes OK
+2025/12/28-23:01:08.292 1a7c Delete type=0 #461
+2025/12/28-23:02:08.237 1a7c Level-0 table #466: started
+2025/12/28-23:02:08.259 1a7c Level-0 table #466: 32732 bytes OK
+2025/12/28-23:02:08.282 1a7c Delete type=0 #463
+2025/12/28-23:03:08.238 1a7c Level-0 table #468: started
+2025/12/28-23:03:08.290 1a7c Level-0 table #468: 32492 bytes OK
+2025/12/28-23:03:08.315 1a7c Delete type=0 #465
+2025/12/28-23:03:08.316 1a7c Compacting 4@0 + 1@1 files
+2025/12/28-23:03:08.353 1a7c Generated table #469@0: 6 keys, 32727 bytes
+2025/12/28-23:03:08.353 1a7c Compacted 4@0 + 1@1 files => 32727 bytes
+2025/12/28-23:03:08.373 1a7c compacted to: files[ 0 1 0 0 0 0 0 ]
+2025/12/28-23:03:08.374 1a7c Delete type=2 #460
+2025/12/28-23:03:08.374 1a7c Delete type=2 #462
+2025/12/28-23:03:08.374 1a7c Delete type=2 #464
+2025/12/28-23:03:08.374 1a7c Delete type=2 #466
+2025/12/28-23:03:08.374 1a7c Delete type=2 #468

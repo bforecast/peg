@@ -7,3 +7,13 @@ earnings-worker/node_modules/
 earnings-worker/.wrangler/
 cache/
 *.log
+
+# Browser Artifacts
+CachedData/
+Crashpad/
+Local Storage/
+GPUCache/
+Cookies/
+Network Persistent State/
+Preferences/
+TransportSecurity/

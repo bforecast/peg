@@ -19,19 +19,95 @@ export const SCRIPTS = `
 
 
 
+        // Sidebar State
+        let expandedCategories = {
+            'SuperInvestor': true, // Default expanded
+            'Personal': false,
+            'ETF': false,
+            'MutualFund': false,
+            'Index': false,
+            'X': false,
+            'Other': false
+        };
+        
+        // Define Icons globally for reuse - Reduced size to 15px (approx 60% of original 24px)
+        const icons = {
+            'Personal': '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+            'SuperInvestor': '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>', // Trending Up
+            'ETF': '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg>', // Pie Chart
+            'MutualFund': '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18M5 10h14M3 21v-8a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2v8M12 2l-7 5h14zM10 10v11M14 10v11"/></svg>', // Bank
+            'Index': '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>', // Globe
+            'X': '<svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M18.901 1.153h3.68l-8.04 9.19L24 22.846h-7.406l-5.8-7.584-6.638 7.584H.474l8.6-9.83L0 1.154h7.594l5.243 6.932ZM17.61 20.644h2.039L6.486 3.24H4.298Z"/></svg>', // X Logo
+            'Other': '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>' // Default
+        };
+
         function renderSidebar() {
             const list = document.getElementById('groupList');
             if(!list) return;
             list.innerHTML = '';
             
+            // Icons defined globally now
+
+
+            // Group by Type
+            const grouped = {};
             groups.forEach(g => {
-                const li = document.createElement('li');
-                li.className = 'group-item ' + (currentGroup && currentGroup.id === g.id ? 'active' : '');
-                // Icon: Folder
-                li.innerHTML = \`<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:8px"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg> \${g.name}\`;
-                li.onclick = () => selectGroup(g);
-                list.appendChild(li);
+                const type = g.type || 'Personal'; // Default to Personal if undefined
+                if(!grouped[type]) grouped[type] = [];
+                grouped[type].push(g);
             });
+            
+            // Order of categories
+            const order = ['SuperInvestor', 'Personal', 'ETF', 'MutualFund', 'Index', 'X'];
+            // Add any other keys found in data but not in order list
+            Object.keys(grouped).forEach(k => {
+                if(!order.includes(k)) order.push(k);
+            });
+            
+            order.forEach(cat => {
+                const items = grouped[cat];
+                if(!items || items.length === 0) return; // Hide empty categories
+                
+                // Sort items by name
+                items.sort((a,b) => a.name.localeCompare(b.name));
+                
+                // Create Category Header
+                const catHeader = document.createElement('li');
+                catHeader.className = 'category-header ' + (expandedCategories[cat] ? '' : 'collapsed');
+                catHeader.onclick = (e) => toggleCategory(cat, e);
+                
+                const icon = icons[cat] || icons['Other'];
+                
+                catHeader.innerHTML = \`
+                    <div class="category-title">
+                        \${icon}
+                        <span>\${cat === 'MutualFund' ? 'Mutual Fund' : cat}</span>
+                    </div>
+                    <div class="category-arrow">&#9660;</div>
+                \`;
+                list.appendChild(catHeader);
+                
+                // Create List Container
+                const subList = document.createElement('ul');
+                subList.className = 'category-list ' + (expandedCategories[cat] ? '' : 'collapsed');
+                subList.id = 'cat-list-' + cat;
+                
+                items.forEach(g => {
+                    const li = document.createElement('li');
+                    li.className = 'group-item ' + (currentGroup && currentGroup.id === g.id ? 'active' : '');
+                    li.textContent = g.name;
+                    li.onclick = (e) => { e.stopPropagation(); selectGroup(g); };
+                    subList.appendChild(li);
+                });
+                
+                list.appendChild(subList);
+            });
+        }
+        
+        function toggleCategory(cat, e) {
+            e.stopPropagation();
+            expandedCategories[cat] = !expandedCategories[cat];
+            renderSidebar();
         }
 
         // Navigate back to Portfolios Board (Home)
@@ -58,11 +134,35 @@ export const SCRIPTS = `
             }
             
             // Populate new portfolio title bar elements inside dashboard view
+            // Populate new portfolio title bar elements inside dashboard view
             const portfolioTitleEl = document.getElementById('portfolioTitle');
-            if(portfolioTitleEl) portfolioTitleEl.textContent = currentGroup.name;
+            if(portfolioTitleEl) {
+                 // Icon Logic
+                 const typeKey = currentGroup.type || 'Personal';
+                 const iconSvg = icons[typeKey] || icons['Other'];
+                 let iconHtml = \`<span style="margin-left:8px; display:inline-flex; align-items:center; color:#555;">\${iconSvg}</span>\`;
+                 
+                 const ref = currentGroup.reference;
+                 if (ref && (ref.startsWith('http') || ref.startsWith('www'))) {
+                      const href = ref.startsWith('http') ? ref : 'https://' + ref;
+                      iconHtml = \`<a href="\${href}" target="_blank" rel="noopener noreferrer" style="margin-left:8px; display:inline-flex; align-items:center; color:#2196F3; text-decoration:none;" title="Source">\${iconSvg}</a>\`;
+                 }
+                 
+                 portfolioTitleEl.innerHTML = currentGroup.name + iconHtml;
+            }
             
             const portfolioMemoEl = document.getElementById('portfolioMemo');
-            if(portfolioMemoEl) portfolioMemoEl.textContent = currentGroup.description || '';
+            if(portfolioMemoEl) {
+                 let rawMemo = currentGroup.description || '';
+                 let memoHtml = rawMemo.replace(/\\n/g, '<br>');
+                 
+                 // Collapsible Logic
+                 if (rawMemo.length > 150) {
+                     portfolioMemoEl.innerHTML = \`<div class="memo-container" onclick="this.classList.toggle('expanded')" title="Tap to expand/collapse">\${memoHtml}</div>\`;
+                 } else {
+                     portfolioMemoEl.innerHTML = memoHtml;
+                 }
+            }
             
             // Populate manager view title
             const managerNameEl = document.getElementById('managerPortfolioName');
@@ -109,8 +209,21 @@ export const SCRIPTS = `
                 if(currentGroup) {
                     document.getElementById('editGroupName').value = currentGroup.name || '';
                     document.getElementById('editGroupMemo').value = currentGroup.description || '';
+                    // Populate Type and Ref
+                    if(document.getElementById('editGroupType')) document.getElementById('editGroupType').value = currentGroup.type || '';
+                    if(document.getElementById('editGroupRef')) document.getElementById('editGroupRef').value = currentGroup.reference || '';
+
                     const updated = currentGroup.updated_at || currentGroup.created_at;
                     document.getElementById('groupModified').textContent = updated ? new Date(updated).toLocaleString() : 'N/A';
+                    
+                    // Update original state to include new fields
+                    originalState = {
+                        name: currentGroup.name || '',
+                        description: currentGroup.description || '',
+                        type: currentGroup.type || '',
+                        reference: currentGroup.reference || '',
+                        members: JSON.stringify([...(localMembers || [])].sort((a,b) => a.symbol.localeCompare(b.symbol)))
+                    };
                 }
             } else {
                 if(currentGroup && currentGroup.id) loadDashboardData();
@@ -123,6 +236,7 @@ export const SCRIPTS = `
         }
 
         async function loadDashboardData() {
+            console.log("loadDashboardData started");
             const loading = document.getElementById('loading');
             loading.style.display = 'flex';
             
@@ -507,7 +621,9 @@ export const SCRIPTS = `
                         await selectGroup(tempG);
                         toggleManager();
                     }
-                }
+                    console.log("Calling loadDashboardData from updateGroup");
+                    await loadDashboardData();
+                    console.log("loadDashboardData returned in updateGroup");               }
             } catch (e) { alert('Error creating group'); }
         }
         async function deleteGroup() {
@@ -635,21 +751,27 @@ export const SCRIPTS = `
         }
 
         async function updateGroup() {
+            console.log("updateGroup started");
             if(!currentGroup.id) return;
             const name = document.getElementById('editGroupName').value;
             const description = document.getElementById('editGroupMemo').value;
+            const type = document.getElementById('editGroupType').value;
+            const reference = document.getElementById('editGroupRef').value;
+            
             // Send localMembers as well
             try {
                 const res = await fetch(\`/api/groups/\${currentGroup.id}\`, { 
                     method:'PUT', 
                     headers:{'Content-Type':'application/json'}, 
-                    body:JSON.stringify({name, description, members: localMembers}) 
+                    body:JSON.stringify({name, description, type, reference, members: localMembers}) 
                 });
                 if(res.ok) {
                     showToast('Saved successfully!', 'success');
                     await loadPortfolios(); 
                     currentGroup.name = name;
                     currentGroup.description = description;
+                    currentGroup.type = type;
+                    currentGroup.reference = reference;
                     const fullTitle = name + ' | Brilliant Forecast Portfolios';
                     document.title = fullTitle;
                     // User wants header to stay static "Brilliant Forecast Portfolios"
@@ -657,38 +779,60 @@ export const SCRIPTS = `
                     if(PTitle) PTitle.textContent = 'Brilliant Forecast Portfolios';
                     
                     // Update internal view memo, NOT global dashboardMemo
+                    // Update internal view memo, NOT global dashboardMemo
                     const portfolioTitleEl = document.getElementById('portfolioTitle');
-                    if(portfolioTitleEl) portfolioTitleEl.textContent = name;
+                    if(portfolioTitleEl) {
+                        const typeKey = type || 'Personal';
+                        const iconSvg = icons[typeKey] || icons['Other'];
+                        let iconHtml = \`<span style="margin-left:8px; display:inline-flex; align-items:center; color:#555;">\${iconSvg}</span>\`;
+                        
+                        if (reference && (reference.startsWith('http') || reference.startsWith('www'))) {
+                            const href = reference.startsWith('http') ? reference : 'https://' + reference;
+                            iconHtml = \`<a href="\${href}" target="_blank" rel="noopener noreferrer" style="margin-left:8px; display:inline-flex; align-items:center; color:#2196F3; text-decoration:none;" title="Source">\${iconSvg}</a>\`;
+                        }
+                        
+                        portfolioTitleEl.innerHTML = name + iconHtml;
+                    }
                     
                     const portfolioMemoEl = document.getElementById('portfolioMemo');
-                    if(portfolioMemoEl) portfolioMemoEl.textContent = description || '';
+                    if(portfolioMemoEl) {
+                         let rawMemo = description || '';
+                         let memoHtml = rawMemo.replace(/\\n/g, '<br>');
+                         
+                         // Collapsible Logic
+                         if (rawMemo.length > 150) {
+                             portfolioMemoEl.innerHTML = \`<div class="memo-container" onclick="this.classList.toggle('expanded')" title="Tap to expand/collapse">\${memoHtml}</div>\`;
+                         } else {
+                             portfolioMemoEl.innerHTML = memoHtml;
+                         }
+                    }
 
-                    // Ensure global memo is clear
-                    const globalMemo = document.getElementById('dashboardMemo');
-                    if(globalMemo) globalMemo.textContent = '';
-                    document.getElementById('groupModified').textContent = new Date().toLocaleString();
-                    
-                    // Reset original state
-                    originalState = {
-                        name: name,
-                        description: description || '',
-                        members: JSON.stringify(localMembers.sort())
-                    };
-                    checkDirty();
-                    
-                    // Redirect back to dashboard
-                    toggleManager();
-                    await loadDashboardData();
+// Ensure global memo is clear
+const globalMemo = document.getElementById('dashboardMemo');
+if (globalMemo) globalMemo.textContent = '';
+document.getElementById('groupModified').textContent = new Date().toLocaleString();
+
+// Reset original state
+originalState = {
+    name: name,
+    description: description || '',
+    members: JSON.stringify([...localMembers].sort((a,b) => a.symbol.localeCompare(b.symbol)))
+};
+checkDirty();
+
+// Redirect back to dashboard
+toggleManager();
+await loadDashboardData();
                 } else showToast('Failed to save', 'error');
-            } catch(e) { showToast('Error saving: ' + e.message, 'error'); }
+            } catch (e) { showToast('Error saving: ' + e.message, 'error'); }
         }
-        
-        async function loadMembers() {
-            if(!currentGroup.id) return;
-            const grid = document.getElementById('membersGrid');
-            grid.innerHTML = 'Loading...';
-            try {
-                const res = await fetch(\`/api/groups/\${currentGroup.id}/members\`);
+
+async function loadMembers() {
+    if (!currentGroup.id) return;
+    const grid = document.getElementById('membersGrid');
+    grid.innerHTML = 'Loading...';
+    try {
+        const res = await fetch(\`/api/groups/\${currentGroup.id}/members\`);
                 const members = await res.json();
                 
                 // Initialize local state with allocation
@@ -864,6 +1008,9 @@ export const SCRIPTS = `
         function checkDirty() {
             const currentName = document.getElementById('editGroupName').value;
             const currentDesc = document.getElementById('editGroupMemo').value;
+            const currentType = document.getElementById('editGroupType') ? document.getElementById('editGroupType').value : '';
+            const currentRef = document.getElementById('editGroupRef') ? document.getElementById('editGroupRef').value : '';
+            
             // Sort to compare consistently
             const currentMembersStr = JSON.stringify([...localMembers].sort((a,b) => a.symbol.localeCompare(b.symbol)));
             
@@ -871,6 +1018,8 @@ export const SCRIPTS = `
             
             const isDirty = (currentName !== originalState.name) ||
                             (currentDesc !== originalState.description) ||
+                            (currentType !== originalState.type) ||
+                            (currentRef !== originalState.reference) ||
                             (currentMembersStr !== originalState.members);
             
             const isValid = totalAlloc <= 100.0001; 
@@ -987,6 +1136,7 @@ export const SCRIPTS = `
         // --- PORTFOLIO BOARD LOGIC ---
 
         async function loadPortfolios() {
+            console.log("loadPortfolios started");
             const loading = document.getElementById('loading');
             if(loading) loading.style.display = 'flex';
             try {
@@ -1024,6 +1174,17 @@ export const SCRIPTS = `
             const tbody = document.getElementById('portfoliosBody');
             if(!tbody) return;
             let rows = '';
+            
+
+            
+            // Add sort indicator to Type column
+            const typeSortArrow = portfolioSort.key === 'type' ? (portfolioSort.dir === 'asc' ? ' \u25B2' : ' \u25BC') : '';
+            const typeHeader = document.getElementById('sort-p-type-head'); 
+            // Note: We need to ensure the ID exists in the HTML or we attach it dynamically
+            // Let's rely on finding standard sort headers or updating layout.ts later if needed.
+            // Actually, best to update the header directly if we can't find it.
+            // But let's assume standard sort function attached to th. 
+            // Better: update layout.ts to add id="sort-p-type" to the TH.
             
             if(!data || data.length === 0) {
                 tbody.innerHTML = '<tr><td colspan="9" style="text-align:center; padding:20px;">No portfolios found. Create one!</td></tr>';
@@ -1086,9 +1247,17 @@ export const SCRIPTS = `
                 
                 // Escape name
                 const safeName = p.name.replace(/'/g, "\\\\'");
+                
+
+                // Type Icon Logic
+                const typeKey = p.type || 'Personal';
+                const iconSvg = icons[typeKey] || icons['Other'];
+                // Icon container - no link
+                const typeHtml = \`<span title="\${typeKey}" style="display:flex; align-items:center; justify-content:center; color:#555;">\${iconSvg}</span>\`;
 
                 rows += \`<tr style="cursor:pointer; transition:background 0.2s; border-bottom:1px solid #eee;" onmouseover="this.style.background='#f0f9ff'" onmouseout="this.style.background='white'" onclick="selectPortfolio(\${p.id}, '\${safeName}')">
                     <td class="sticky-col" style="font-weight:700; color:#333; padding:12px;">\${p.name}</td>
+                    <td style="padding:12px; text-align:center;">\${typeHtml}</td>
                     <td style="text-align:center;">\${p.member_count || 0}</td>
                     <td style="text-align:right; padding:8px; \${getMetricStyle(p.change_1d, 'cagr')}">\${change1d}</td>
                     <td style="text-align:right; padding:8px; \${getMetricStyle(p.cagr, 'cagr')}">\${cagr}</td>
@@ -1134,6 +1303,16 @@ function sortPortfolios(key) {
         if(!groups || !Array.isArray(groups)) return;
         
         groups.sort((a, b) => {
+            // Special handling for Type (String)
+            if (key === 'type') {
+                 // Treat null/undefined as 'Personal'
+                 const sA = (a[key] || 'Personal').toLowerCase();
+                 const sB = (b[key] || 'Personal').toLowerCase();
+                 if (sA < sB) return portfolioSort.dir === 'asc' ? -1 : 1;
+                 if (sA > sB) return portfolioSort.dir === 'asc' ? 1 : -1;
+                 return 0;
+            }
+
             const valA = parseFloat(a[key]);
             const valB = parseFloat(b[key]);
             
@@ -1149,10 +1328,9 @@ function sortPortfolios(key) {
             // ASC: Null -> Small -> Large.
             // So Null is effectively -Infinity.
             
-            if (aInvalid) return portfolioSort.dir === 'asc' ? -1 : 1; 
-            if (bInvalid) return portfolioSort.dir === 'asc' ? 1 : -1;
+            if (aInvalid && !bInvalid) return portfolioSort.dir === 'asc' ? -1 : 1;
+            if (!aInvalid && bInvalid) return portfolioSort.dir === 'asc' ? 1 : -1;
             
-            // Normal number comparison
             return portfolioSort.dir === 'asc' ? valA - valB : valB - valA;
         });
 

@@ -80,8 +80,11 @@ app.get('/api/cron-summary', async (c) => {
         // 4. Success Rate
         const logs = await c.env.DB.prepare("SELECT status FROM cron_logs WHERE timestamp >= ?").bind(cutoff).all();
         const logResults = logs.results as any[];
-        const totalRuns = logResults.length;
-        const successRuns = logResults.filter(l => l.status === 'SUCCESS' || l.status === 'SKIPPED').length;
+        // Only count rows that represent a "Run Conclusion"
+        const conclusionalStatuses = ['SUCCESS', 'SKIPPED', 'FAILED', 'WARNING'];
+        const validRuns = logResults.filter(l => conclusionalStatuses.includes(l.status));
+        const totalRuns = validRuns.length;
+        const successRuns = validRuns.filter(l => l.status === 'SUCCESS' || l.status === 'SKIPPED').length;
         const rate = totalRuns > 0 ? Math.round((successRuns / totalRuns) * 100) : 100;
 
         // 5. Last Portfolio Stats Recalculation
@@ -213,11 +216,12 @@ app.post('/api/import-superinvestor', async (c) => {
         }
 
         const groupName = nameOverride || portfolio.manager;
-        const description = `Imported from DataRoma\nDate: ${portfolio.date}\nPeriod: ${portfolio.period}\nValue: ${portfolio.value}`;
+        const description = `Date: ${portfolio.date}\nPeriod: ${portfolio.period}\nValue: ${portfolio.value}`;
 
+        const reference = `https://www.dataroma.com/m/holdings.php?m=${code}`;
         const { meta } = await c.env.DB.prepare(
-            'INSERT INTO groups (name, description) VALUES (?, ?)'
-        ).bind(groupName, description).run();
+            'INSERT INTO groups (name, description, type, reference) VALUES (?, ?, ?, ?)'
+        ).bind(groupName, description, 'SuperInvestor', reference).run();
 
         const groupId = meta.last_row_id;
 
@@ -254,7 +258,7 @@ app.get('/api/portfolios', async (c) => {
 
         const { results } = await c.env.DB.prepare(`
             SELECT 
-                g.id, g.name, g.description, g.created_at,
+                g.id, g.name, g.description, g.type, g.reference, g.created_at,
                 ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy, ps.change_1d, ps.updated_at as stats_updated_at,
                 (SELECT count(*) FROM group_members gm WHERE gm.group_id = g.id) as member_count
             FROM groups g
@@ -676,6 +680,14 @@ app.put('/api/groups/:id', async (c) => {
         if (description !== undefined) {
             query += ', description = ?';
             params.push(description);
+        }
+        if (body.type !== undefined) {
+            query += ', type = ?';
+            params.push(body.type);
+        }
+        if (body.reference !== undefined) {
+            query += ', reference = ?';
+            params.push(body.reference);
         }
         query += ' WHERE id = ?';
         params.push(id);
