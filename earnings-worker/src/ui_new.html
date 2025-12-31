@@ -338,6 +338,332 @@
         }
     </style>
 </head>
+<style>
+    /* ... existing styles ... Keep them ... */
+    /* Add Chat Styles */
+
+    /* FAB Button */
+    .fab-btn {
+        position: fixed;
+        bottom: 30px;
+        right: 30px;
+        background: linear-gradient(135deg, #2563EB, #1D4ED8);
+        color: white;
+        width: 60px;
+        height: 60px;
+        border-radius: 30px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3);
+        cursor: pointer;
+        transition: transform 0.2s, box-shadow 0.2s;
+        z-index: 1000;
+    }
+
+    .fab-btn:hover {
+        transform: scale(1.05);
+        box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
+    }
+
+    /* Chat Container - Glassmorphism */
+    .chat-container {
+        position: fixed;
+        bottom: 100px;
+        right: 30px;
+        width: 380px;
+        height: 600px;
+        max-height: 80vh;
+        background: rgba(255, 255, 255, 0.95);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.5);
+        border-radius: 20px;
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+        z-index: 1000;
+    }
+
+    .chat-header {
+        padding: 20px;
+        background: rgba(255, 255, 255, 0.8);
+        border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .header-title {
+        font-weight: 600;
+        font-size: 16px;
+        color: #111827;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+    }
+
+    .header-subtitle {
+        font-size: 11px;
+        color: #6B7280;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+    }
+
+    .status-dot {
+        width: 8px;
+        height: 8px;
+        background: #10B981;
+        border-radius: 50%;
+    }
+
+    .close-btn {
+        color: #6B7280;
+        cursor: pointer;
+        font-size: 24px;
+        line-height: 1;
+    }
+
+    .chat-messages {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+        display: flex;
+        flex-direction: column;
+        gap: 16px;
+    }
+
+    .message {
+        max-width: 85%;
+        padding: 12px 16px;
+        border-radius: 16px;
+        font-size: 14px;
+        line-height: 1.5;
+        position: relative;
+    }
+
+    .message.bot {
+        background: #F3F4F6;
+        color: #1F2937;
+        border-bottom-left-radius: 4px;
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+        align-self: flex-start;
+    }
+
+    .message.user {
+        background: #2563EB;
+        color: white;
+        border-bottom-right-radius: 4px;
+        align-self: flex-end;
+        box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2);
+    }
+
+    .typing-indicator {
+        display: flex;
+        gap: 4px;
+        padding: 12px 16px;
+        background: #F3F4F6;
+        border-radius: 16px;
+        border-bottom-left-radius: 4px;
+        width: fit-content;
+        margin-bottom: 8px;
+        align-self: flex-start;
+    }
+
+    .dot {
+        width: 6px;
+        height: 6px;
+        background: #9CA3AF;
+        border-radius: 50%;
+        animation: bounce 1.4s infinite ease-in-out;
+    }
+
+    .dot:nth-child(1) {
+        animation-delay: -0.32s;
+    }
+
+    .dot:nth-child(2) {
+        animation-delay: -0.16s;
+    }
+
+    @keyframes bounce {
+
+        0%,
+        80%,
+        100% {
+            transform: scale(0);
+        }
+
+        40% {
+            transform: scale(1);
+        }
+    }
+
+    .input-area {
+        padding: 12px 16px;
+        background: rgba(255, 255, 255, 0.95);
+        border-top: 1px solid rgba(0, 0, 0, 0.05);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+    }
+
+    .chips-row {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding-bottom: 4px;
+        scrollbar-width: none;
+    }
+
+    .chip {
+        background: #EFF6FF;
+        color: #2563EB;
+        font-size: 11px;
+        font-weight: 500;
+        padding: 4px 10px;
+        border-radius: 12px;
+        white-space: nowrap;
+        cursor: pointer;
+        border: 1px solid rgba(37, 99, 235, 0.1);
+        transition: all 0.2s;
+    }
+
+    .chip:hover {
+        background: #DBEAFE;
+        transform: translateY(-1px);
+    }
+
+    .input-wrapper {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+
+    .chat-input {
+        flex: 1;
+        padding: 10px 14px;
+        border-radius: 12px;
+        border: 1px solid #E5E7EB;
+        outline: none;
+        font-family: inherit;
+        font-size: 14px;
+        transition: border-color 0.2s;
+    }
+
+    .chat-input:focus {
+        border-color: #2563EB;
+    }
+
+    .send-btn {
+        background: #2563EB;
+        color: white;
+        border: none;
+        border-radius: 12px;
+        width: 40px;
+        height: 40px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        transition: background 0.2s;
+        flex-shrink: 0;
+    }
+
+    .send-btn:hover {
+        background: #1D4ED8;
+    }
+
+    /* Slash Command Popup */
+    .slash-menu {
+        position: absolute;
+        bottom: 80px;
+        /* Above input area */
+        left: 20px;
+        width: 250px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+        border: 1px solid #E5E7EB;
+        overflow: hidden;
+        z-index: 1001;
+        animation: slideUp 0.2s ease-out;
+    }
+
+    .slash-header {
+        padding: 8px 12px;
+        background: #F9FAFB;
+        font-size: 11px;
+        font-weight: 600;
+        color: #6B7280;
+        border-bottom: 1px solid #E5E7EB;
+    }
+
+    .slash-item {
+        padding: 10px 12px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        cursor: pointer;
+        transition: background 0.1s;
+    }
+
+    .slash-item:hover,
+    .slash-item.active {
+        background: #EFF6FF;
+    }
+
+    .slash-icon {
+        width: 24px;
+        height: 24px;
+        background: #DBEAFE;
+        color: #2563EB;
+        border-radius: 6px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 600;
+    }
+
+    .slash-text {
+        font-size: 13px;
+        color: #1F2937;
+        font-weight: 500;
+    }
+
+    .slash-desc {
+        font-size: 11px;
+        color: #6B7280;
+        margin-left: auto;
+    }
+
+    @keyframes slideUp {
+        from {
+            opacity: 0;
+            transform: translateY(10px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    @media (max-width: 480px) {
+        .chat-container {
+            width: 100%;
+            height: 100%;
+            max-height: 100%;
+            bottom: 0;
+            right: 0;
+            border-radius: 0;
+        }
+    }
+</style>
 
 <body>
     <div class="header">
@@ -394,273 +720,500 @@
                 </div>
             </div>
 
-            <!-- Table Removed as per request -->
-        </div>
-    </div>
-    <script>
-        let chart = null;
-        let currentSymbol = '';
-        window.currentData = null; // Store for CSV download
+            <!-- Floating Action Button -->
+            <div id="fabBtn" class="fab-btn" onclick="toggleChat()">
+                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"
+                    stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"
+                    class="icon icon-tabler icons-tabler-outline icon-tabler-message-chatbot">
+                    <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                    <path
+                        d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12z" />
+                    <path d="M9.5 9h.01" />
+                    <path d="M14.5 9h.01" />
+                    <path d="M9.5 13a3.5 3.5 0 0 0 5 0" />
+                </svg>
+            </div>
 
-        function showStatus(message, type = 'info') {
-            const statusDiv = document.getElementById('statusDiv');
-            statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
-        }
+            <!-- Chat Interface -->
+            <div id="chatContainer" class="chat-container" style="display: none;">
+                <div class="chat-header">
+                    <div class="header-title">
+                        Forward PEG AI Expert
+                        <div class="header-subtitle">
+                            <span class="status-dot"></span>
+                            Context: <span id="chatContext">None</span>
+                        </div>
+                    </div>
+                    <div class="close-btn" onclick="toggleChat()">&times;</div>
+                </div>
 
-        function showLoading(msg = 'Analyzing...') {
-            const statusDiv = document.getElementById('statusDiv');
-            statusDiv.innerHTML = `<div class="loading"><div class="spinner"></div>${msg}</div>`;
-        }
+                <div id="chatMessages" class="chat-messages">
+                    <div class="message bot">
+                        Hello! I am your Investment Portfolio Expert. You can ask me about valuations, technical trends,
+                        or portfolio allocation.<br><br>
+                        Try typing <b>/p</b> to select a portfolio or <b>@</b> to analyze a specific stock.
+                    </div>
+                </div>
 
-        async function analyzeStock() {
-            const symbol = document.getElementById('symbolInput').value.toUpperCase().trim();
-            if (!symbol) {
-                showStatus('Please enter a symbol', 'error');
-                return;
-            }
+                <div id="slashMenu" class="slash-menu" style="display: none;">
+                    <div class="slash-header">PORTFOLIOS (/p)</div>
+                    <div id="slashList"></div>
+                </div>
 
-            currentSymbol = symbol;
-            showLoading("Updating and Analyzing...");
-            document.getElementById('resultsSection').classList.add('hidden');
+                <div class="input-area">
+                    <div class="chips-row">
+                        <div class="chip" onclick="setContextQuestion('✨ Analyze this')">✨ Analyze this</div>
+                        <div class="chip" onclick="setContextQuestion('📈 Technical Trend')">📈 Technical Trend</div>
+                        <div class="chip" onclick="setContextQuestion('💰 Valuation Check')">💰 Valuation Check</div>
+                    </div>
+                    <div class="input-wrapper">
+                        <input type="text" id="chatInput" class="chat-input" placeholder="Ask, @mention, or /command..."
+                            onkeydown="handleChatInput(event)" oninput="handleInputTrigger(event)">
+                        <button class="send-btn" onclick="sendChat()">
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24"
+                                fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"
+                                stroke-linejoin="round">
+                                <path stroke="none" d="M0 0h24v24H0z" fill="none" />
+                                <path d="M10 14l11 -11" />
+                                <path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5" />
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+            </div>
 
-            try {
-                // 1. Update Data First (Concurrent)
-                const [earningsResp, pricesResp] = await Promise.all([
-                    fetch(`/api/update?symbol=${symbol}`, { method: 'POST' }),
-                    fetch(`/api/update-prices?symbol=${symbol}`, { method: 'POST' })
-                ]);
+            <script>
+                let chart = null;
+                let currentSymbol = '';
+                window.currentData = null; // Store for CSV download
 
-                // We don't block on errors here, but we log them.
-                const earningsData = await earningsResp.json();
-                const pricesData = await pricesResp.json();
+                // --- CHAT VARIABLES ---
+                let chatVisible = false;
+                let chatHistory = [];
+                let activeContext = null; // e.g. "@AAPL" or "Portfolio: Growth"
+                let slashMode = false;
 
-                if (earningsData.error) console.warn("Earnings Update Error:", earningsData.error);
-                if (pricesData.error) console.warn("Price Update Error:", pricesData.error);
-
-                // 2. Fetch Analysis
-                const response = await fetch(`/api/forward-peg?symbol=${symbol}`);
-                const data = await response.json();
-
-                if (data.error) {
-                    showStatus(`Error: ${data.error}`, 'error');
-                    return;
-                }
-
-                displayResults(data);
-
-                // Show brief success info if updates happened
-                let updateMsg = "";
-                if (pricesData.count > 0 || (earningsData.message && !earningsData.message.includes('Skipped'))) {
-                    updateMsg = `<br><small>Updates: Defaults checked. Prices: ${pricesData.message}</small>`;
-                }
-
-                // Clear status or show small info
-                if (updateMsg) {
-                    showStatus(`Analysis Complete.${updateMsg}`, 'success');
-                } else {
-                    document.getElementById('statusDiv').innerHTML = '';
-                }
-
-                document.getElementById('resultsSection').classList.remove('hidden');
-
-            } catch (e) {
-                showStatus(`Error: ${e.message}`, 'error');
-            }
-        }
-
-        function displayResults(data) {
-            window.currentData = data; // Store for reference
-
-            // CRITICAL: Use LAST element (most recent data)
-            const latest = data.timeSeries[data.timeSeries.length - 1];
-
-            // Update metrics (Price is now a metric item)
-            document.getElementById('stockPrice').textContent = latest.price ? `$${parseFloat(latest.price).toFixed(2)}` : 'N/A';
-            document.getElementById('forwardEPS').textContent = data.currentForwardEPS ? `$${data.currentForwardEPS}` : 'N/A';
-            document.getElementById('forwardPE').textContent = latest.forwardPE ? parseFloat(latest.forwardPE).toFixed(2) : 'N/A';
-
-            const growthEl = document.getElementById('growthRate');
-            if (latest.growthRate) {
-                growthEl.textContent = `${latest.growthRate}%`;
-                growthEl.className = 'metric-value ' + (parseFloat(latest.growthRate) > 0 ? 'positive' : 'negative');
-            } else {
-                growthEl.textContent = 'N/A';
-                growthEl.className = 'metric-value';
-            }
-
-            const pegEl = document.getElementById('pegRatio');
-            if (latest.peg) {
-                pegEl.textContent = latest.peg;
-                pegEl.className = 'metric-value';
-            } else {
-                pegEl.textContent = 'N/A';
-                pegEl.className = 'metric-value';
-            }
-
-            // Render chart
-            renderChart(data.timeSeries);
-        }
-
-        function downloadCSV() {
-            if (!window.currentData) {
-                alert('No data to download.');
-                return;
-            }
-
-            const data = window.currentData;
-            const symbol = data.symbol;
-
-            let csv = 'Date,Price,Forward EPS,Forward P/E,Growth Rate (%),PEG Ratio\n';
-
-            data.timeSeries.forEach(row => {
-                csv += `${row.date},${row.price},${row.forwardEPS || ''},${row.forwardPE || ''},${row.growthRate || ''},${row.peg || ''}\n`;
-            });
-
-            const blob = new Blob([csv], { type: 'text/csv' });
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = `${symbol}_forward_peg.csv`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-        }
-
-        function renderChart(timeSeries) {
-            const ctx = document.getElementById('pegChart').getContext('2d');
-
-            if (chart) {
-                chart.destroy();
-            }
-
-            const labels = timeSeries.map(d => d.date);
-            const prices = timeSeries.map(d => parseFloat(d.price));
-            const pegs = timeSeries.map(d => d.peg ? parseFloat(d.peg) : null);
-
-            chart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [
-                        {
-                            label: 'Price',
-                            data: prices,
-                            borderColor: '#0078FF',
-                            backgroundColor: 'rgba(0, 120, 255, 0.1)',
-                            yAxisID: 'y',
-                            tension: 0.1,
-                            borderWidth: 2,
-                            pointRadius: 0
-                        },
-                        {
-                            label: 'PEG Ratio',
-                            data: pegs,
-                            borderColor: '#FF6B00',
-                            backgroundColor: 'rgba(255, 107, 0, 0.1)',
-                            yAxisID: 'y1',
-                            tension: 0.1,
-                            borderWidth: 2,
-                            pointRadius: 0
-                        }
-                    ]
-                },
-                options: {
-                    responsive: true,
-                    maintainAspectRatio: false,
-                    interaction: {
-                        mode: 'index',
-                        intersect: false,
-                    },
-                    plugins: {
-                        legend: {
-                            position: 'top',
-                            labels: {
-                                font: { size: 13, weight: '600' },
-                                padding: 15
-                            }
-                        },
-                        tooltip: {
-                            backgroundColor: 'rgba(15, 20, 25, 0.95)',
-                            padding: 12,
-                            titleFont: { size: 13, weight: '600' },
-                            bodyFont: { size: 13 }
-                        }
-                    },
-                    scales: {
-                        x: {
-                            grid: { display: false },
-                            ticks: {
-                                maxTicksLimit: 10,
-                                font: { size: 11 }
-                            }
-                        },
-                        y: {
-                            type: 'linear',
-                            display: true,
-                            position: 'left',
-                            title: {
-                                display: true,
-                                text: 'Price ($)',
-                                font: { size: 13, weight: '600' }
-                            },
-                            grid: { color: '#E1E8ED' }
-                        },
-                        y1: {
-                            type: 'linear',
-                            display: true,
-                            position: 'right',
-                            title: {
-                                display: true,
-                                text: 'PEG Ratio',
-                                font: { size: 13, weight: '600' }
-                            },
-                            grid: { drawOnChartArea: false }
-                        }
-                    },
-                    plugins: {
-                        zoom: {
-                            zoom: {
-                                wheel: {
-                                    enabled: true,
-                                    speed: 0.1
-                                },
-                                pinch: {
-                                    enabled: true
-                                },
-                                mode: 'x'
-                            },
-                            pan: {
-                                enabled: true,
-                                mode: 'x',
-                                modifierKey: 'ctrl'
-                            },
-                            limits: {
-                                x: { min: 'original', max: 'original' }
-                            }
-                        },
-                        legend: {
-                            display: true,
-                            position: 'top'
-                        },
-                        tooltip: {
-                            enabled: true
-                        }
+                function toggleChat() {
+                    chatVisible = !chatVisible;
+                    document.getElementById('chatContainer').style.display = chatVisible ? 'flex' : 'none';
+                    if (chatVisible) {
+                        // Focus input
+                        setTimeout(() => document.getElementById('chatInput').focus(), 100);
                     }
                 }
-            });
-        }
 
-        // Auto-analyze on load if symbol is provided
-        window.addEventListener('load', () => {
-            const urlParams = new URLSearchParams(window.location.search);
-            const symbol = urlParams.get('symbol');
-            if (symbol) {
-                document.getElementById('symbolInput').value = symbol;
-                analyzeStock();
-            }
-        });
-    </script>
+                function setChatContext(ctx) {
+                    activeContext = ctx;
+                    const contextLabel = document.getElementById('chatContext');
+                    contextLabel.textContent = ctx || 'None';
+                    contextLabel.style.color = ctx ? '#2563EB' : '#6B7280';
+                    contextLabel.style.fontWeight = ctx ? '600' : 'normal';
+                }
+
+                function addMessage(role, text) {
+                    const container = document.getElementById('chatMessages');
+                    const div = document.createElement('div');
+                    div.className = `message ${role}`;
+                    div.innerHTML = text; // Allow HTML for formatting
+                    container.appendChild(div);
+                    container.scrollTop = container.scrollHeight;
+                    chatHistory.push({ role, content: text });
+                }
+
+                function showTyping() {
+                    const container = document.getElementById('chatMessages');
+                    const div = document.createElement('div');
+                    div.id = 'typingIndicator';
+                    div.className = 'typing-indicator';
+                    div.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+                    container.appendChild(div);
+                    container.scrollTop = container.scrollHeight;
+                }
+
+                function hideTyping() {
+                    const el = document.getElementById('typingIndicator');
+                    if (el) el.remove();
+                }
+
+                async function sendChat() {
+                    const input = document.getElementById('chatInput');
+                    const message = input.value.trim();
+                    if (!message) return;
+
+                    // Clear input
+                    input.value = '';
+                    document.getElementById('slashMenu').style.display = 'none';
+
+                    // User Message
+                    addMessage('user', message);
+                    showTyping();
+
+                    try {
+                        const payload = {
+                            message: message,
+                            context: activeContext,
+                            history: chatHistory
+                        };
+
+                        const response = await fetch('/api/chat', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(payload)
+                        });
+
+                        const data = await response.json();
+                        hideTyping();
+
+                        if (data.error) {
+                            addMessage('bot', `<span style="color:red">Error: ${data.error}</span>`);
+                        } else {
+                            // Convert markdown-ish to HTML basic (newlines)
+                            let reply = data.response.replace(/\n/g, '<br>');
+                            // Bold **text**
+                            reply = reply.replace(/\*\*(.*?)\*\*/g, '<b>$1</b>');
+                            addMessage('bot', reply);
+                        }
+
+                    } catch (e) {
+                        hideTyping();
+                        addMessage('bot', "Connection Error.");
+                        console.error(e);
+                    }
+                }
+
+                function handleChatInput(e) {
+                    if (e.key === 'Enter') {
+                        if (document.getElementById('slashMenu').style.display === 'block') {
+                            // If menu open, select first item? Or just ignore enter
+                            // For now, let's just close menu and send if user hits Enter provided they didn't click
+                            // Actually, usually Enter selects the active item.
+                            const active = document.querySelector('.slash-item.active');
+                            if (active) {
+                                e.preventDefault();
+                                active.click();
+                                return;
+                            }
+                        }
+                        sendChat();
+                    }
+                }
+
+                function setContextQuestion(q) {
+                    document.getElementById('chatInput').value = q;
+                    sendChat();
+                }
+
+                // --- DASHBOARD LOGIC (Original) ---
+
+                function showStatus(message, type = 'info') {
+                    const statusDiv = document.getElementById('statusDiv');
+                    statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+                }
+
+                function showLoading(msg = 'Analyzing...') {
+                    const statusDiv = document.getElementById('statusDiv');
+                    statusDiv.innerHTML = `<div class="loading"><div class="spinner"></div>${msg}</div>`;
+                }
+
+                async function analyzeStock() {
+                    const symbol = document.getElementById('symbolInput').value.toUpperCase().trim();
+                    if (!symbol) {
+                        showStatus('Please enter a symbol', 'error');
+                        return;
+                    }
+
+                    currentSymbol = symbol;
+                    showLoading("Updating and Analyzing...");
+                    document.getElementById('resultsSection').classList.add('hidden');
+
+                    try {
+                        // 1. Update Data First (Concurrent)
+                        const [earningsResp, pricesResp] = await Promise.all([
+                            fetch(`/api/update?symbol=${symbol}`, { method: 'POST' }),
+                            fetch(`/api/update-prices?symbol=${symbol}`, { method: 'POST' })
+                        ]);
+
+                        const earningsData = await earningsResp.json();
+                        const pricesData = await pricesResp.json();
+
+                        if (earningsData.error) console.warn("Earnings Update Error:", earningsData.error);
+                        if (pricesData.error) console.warn("Price Update Error:", pricesData.error);
+
+                        // 2. Fetch Analysis
+                        const response = await fetch(`/api/forward-peg?symbol=${symbol}`);
+                        const data = await response.json();
+
+                        if (data.error) {
+                            showStatus(`Error: ${data.error}`, 'error');
+                            return;
+                        }
+
+                        displayResults(data);
+
+                        // Set Chat Context Automatically
+                        setChatContext(`@${symbol}`);
+
+                        // Show brief success info
+                        let updateMsg = "";
+                        if (pricesData.count > 0 || (earningsData.message && !earningsData.message.includes('Skipped'))) {
+                            updateMsg = `<br><small>Updates: Defaults checked. Prices: ${pricesData.message}</small>`;
+                        }
+
+                        if (updateMsg) {
+                            showStatus(`Analysis Complete.${updateMsg}`, 'success');
+                        } else {
+                            document.getElementById('statusDiv').innerHTML = '';
+                        }
+
+                        document.getElementById('resultsSection').classList.remove('hidden');
+
+                    } catch (e) {
+                        showStatus(`Error: ${e.message}`, 'error');
+                    }
+                }
+
+                function displayResults(data) {
+                    window.currentData = data;
+                    const latest = data.timeSeries[data.timeSeries.length - 1];
+
+                    document.getElementById('stockPrice').textContent = latest.price ? `$${parseFloat(latest.price).toFixed(2)}` : 'N/A';
+                    document.getElementById('forwardEPS').textContent = data.currentForwardEPS ? `$${data.currentForwardEPS}` : 'N/A';
+                    document.getElementById('forwardPE').textContent = latest.forwardPE ? parseFloat(latest.forwardPE).toFixed(2) : 'N/A';
+
+                    const growthEl = document.getElementById('growthRate');
+                    if (latest.growthRate) {
+                        growthEl.textContent = `${latest.growthRate}%`;
+                        growthEl.className = 'metric-value ' + (parseFloat(latest.growthRate) > 0 ? 'positive' : 'negative');
+                    } else {
+                        growthEl.textContent = 'N/A';
+                        growthEl.className = 'metric-value';
+                    }
+
+                    const pegEl = document.getElementById('pegRatio');
+                    if (latest.peg) {
+                        pegEl.textContent = latest.peg;
+                        pegEl.className = 'metric-value';
+                    } else {
+                        pegEl.textContent = 'N/A';
+                        pegEl.className = 'metric-value';
+                    }
+
+                    renderChart(data.timeSeries);
+                }
+
+                function downloadCSV() {
+                    if (!window.currentData) {
+                        alert('No data to download.');
+                        return;
+                    }
+
+                    const data = window.currentData;
+                    const symbol = data.symbol;
+
+                    let csv = 'Date,Price,Forward EPS,Forward P/E,Growth Rate (%),PEG Ratio\n';
+
+                    data.timeSeries.forEach(row => {
+                        csv += `${row.date},${row.price},${row.forwardEPS || ''},${row.forwardPE || ''},${row.growthRate || ''},${row.peg || ''}\n`;
+                    });
+
+                    const blob = new Blob([csv], { type: 'text/csv' });
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `${symbol}_forward_peg.csv`;
+                    document.body.appendChild(a);
+                    a.click();
+                    document.body.removeChild(a);
+                    window.URL.revokeObjectURL(url);
+                }
+
+                function renderChart(timeSeries) {
+                    const ctx = document.getElementById('pegChart').getContext('2d');
+
+                    if (chart) {
+                        chart.destroy();
+                    }
+
+                    const labels = timeSeries.map(d => d.date);
+                    const prices = timeSeries.map(d => parseFloat(d.price));
+                    const pegs = timeSeries.map(d => d.peg ? parseFloat(d.peg) : null);
+
+                    chart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [
+                                {
+                                    label: 'Price',
+                                    data: prices,
+                                    borderColor: '#0078FF',
+                                    backgroundColor: 'rgba(0, 120, 255, 0.1)',
+                                    yAxisID: 'y',
+                                    tension: 0.1,
+                                    borderWidth: 2,
+                                    pointRadius: 0
+                                },
+                                {
+                                    label: 'PEG Ratio',
+                                    data: pegs,
+                                    borderColor: '#FF6B00',
+                                    backgroundColor: 'rgba(255, 107, 0, 0.1)',
+                                    yAxisID: 'y1',
+                                    tension: 0.1,
+                                    borderWidth: 2,
+                                    pointRadius: 0
+                                }
+                            ]
+                        },
+                        options: {
+                            responsive: true,
+                            maintainAspectRatio: false,
+                            interaction: {
+                                mode: 'index',
+                                intersect: false,
+                            },
+                            plugins: {
+                                legend: {
+                                    position: 'top',
+                                    labels: {
+                                        font: { size: 13, weight: '600' },
+                                        padding: 15
+                                    }
+                                },
+                                tooltip: {
+                                    backgroundColor: 'rgba(15, 20, 25, 0.95)',
+                                    padding: 12,
+                                    titleFont: { size: 13, weight: '600' },
+                                    bodyFont: { size: 13 }
+                                }
+                            },
+                            scales: {
+                                x: {
+                                    grid: { display: false },
+                                    ticks: {
+                                        maxTicksLimit: 10,
+                                        font: { size: 11 }
+                                    }
+                                },
+                                y: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'left',
+                                    title: {
+                                        display: true,
+                                        text: 'Price ($)',
+                                        font: { size: 13, weight: '600' }
+                                    },
+                                    grid: { color: '#E1E8ED' }
+                                },
+                                y1: {
+                                    type: 'linear',
+                                    display: true,
+                                    position: 'right',
+                                    title: {
+                                        display: true,
+                                        text: 'PEG Ratio',
+                                        font: { size: 13, weight: '600' }
+                                    },
+                                    grid: { drawOnChartArea: false }
+                                }
+                            },
+                            plugins: {
+                                zoom: {
+                                    zoom: {
+                                        wheel: {
+                                            enabled: true,
+                                            speed: 0.1
+                                        },
+                                        pinch: {
+                                            enabled: true
+                                        },
+                                        mode: 'x'
+                                    },
+                                    pan: {
+                                        enabled: true,
+                                        mode: 'x',
+                                        modifierKey: 'ctrl'
+                                    },
+                                    limits: {
+                                        x: { min: 'original', max: 'original' }
+                                    }
+                                },
+                                legend: {
+                                    display: true,
+                                    position: 'top'
+                                },
+                                tooltip: {
+                                    enabled: true
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // --- SLASH COMMAND LOGIC ---
+
+                // Mock Data for Portfolios
+                const portfolios = [
+                    { id: 'bill_gates', name: 'Bill Gates Trust', desc: '12 Stocks', code: 'BG' },
+                    { id: 'warren_buffett', name: 'Warren Buffett', desc: 'Berkshire', code: 'WB' },
+                    { id: 'growth_fund', name: 'Growth Fund', desc: 'My Port', code: 'GF' }
+                ];
+
+                async function handleInputTrigger(e) {
+                    const val = e.target.value;
+                    const menu = document.getElementById('slashMenu');
+
+                    if (val.endsWith('/p') || val.match(/\/p\s/)) {
+                        // Show Portfolio Menu
+                        menu.style.display = 'block';
+                        renderSlashItems(portfolios);
+                        return;
+                    } else if (val.endsWith('/s')) {
+                        // Stock search - could implement dynamically
+                        // For now just hide
+                        menu.style.display = 'none';
+                    } else {
+                        menu.style.display = 'none';
+                    }
+                }
+
+                function renderSlashItems(items) {
+                    const list = document.getElementById('slashList');
+                    list.innerHTML = '';
+                    items.forEach((item, index) => {
+                        const div = document.createElement('div');
+                        div.className = `slash-item ${index === 0 ? 'active' : ''}`; // Auto-select first
+                        div.innerHTML = `
+                    <div class="slash-icon">${item.code}</div>
+                    <div class="slash-text">${item.name}</div>
+                    <div class="slash-desc">${item.desc}</div>
+                `;
+                        div.onclick = () => selectPortfolio(item);
+                        list.appendChild(div);
+                    });
+                }
+
+                function selectPortfolio(item) {
+                    // Set context, clear slash command from input
+                    setChatContext(`Portfolio: ${item.name}`);
+                    const input = document.getElementById('chatInput');
+                    // Remove the command text (simple replace)
+                    input.value = '';
+                    document.getElementById('slashMenu').style.display = 'none';
+                    // Announce
+                    addMessage('bot', `Context set to <b>${item.name}</b>.`);
+                }
+
+                window.addEventListener('load', () => {
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const symbol = urlParams.get('symbol');
+                    if (symbol) {
+                        document.getElementById('symbolInput').value = symbol;
+                        analyzeStock();
+                    }
+                });
+            </script>
 </body>
 
 </html>

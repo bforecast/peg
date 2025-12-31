@@ -10,6 +10,7 @@ export interface StockStats {
     sma200: number;
     chart1Y: string;    // SVG 
     rsRank1M: string;   // SVG
+    sharpeRatio1Y: number;
 }
 
 /**
@@ -85,6 +86,42 @@ function generateRSRank1M(prices: number[], lookback: number = 22, width: number
     </svg>`;
 }
 
+function calculateSharpeRatio(prices: number[], riskFreeRateAnnual: number = 0.045): number {
+    if (prices.length < 30) return 0; // Not enough data
+
+    // 1. Calculate Daily Returns
+    const returns: number[] = [];
+    for (let i = 1; i < prices.length; i++) {
+        const prev = prices[i - 1];
+        const curr = prices[i];
+        if (prev > 0) {
+            returns.push((curr - prev) / prev);
+        }
+    }
+
+    if (returns.length === 0) return 0;
+
+    // 2. Average Daily Return
+    const sumRet = returns.reduce((a, b) => a + b, 0);
+    const avgDailyRet = sumRet / returns.length;
+
+    // 3. Daily Standard Deviation
+    const sqDiffs = returns.map(r => Math.pow(r - avgDailyRet, 2));
+    const avgSqDiff = sqDiffs.reduce((a, b) => a + b, 0) / (returns.length - 1); // Sample std dev
+    const dailyStdDev = Math.sqrt(avgSqDiff);
+
+    // 4. Annualize
+    // Annualized Return = ((1 + avgDaily)^252) - 1  ... or simply avgDaily * 252 for approximations
+    // Let's use simple approximation for Sharpe: Mean * 252
+    const annualizedReturn = avgDailyRet * 252;
+    const annualizedVol = dailyStdDev * Math.sqrt(252);
+
+    // 5. Sharpe Ratio
+    if (annualizedVol === 0) return 0;
+
+    return (annualizedReturn - riskFreeRateAnnual) / annualizedVol;
+}
+
 export function calculateStats(symbol: string, prices: StockPrice[]): StockStats | null {
     if (!prices || prices.length === 0) return null;
 
@@ -149,6 +186,9 @@ export function calculateStats(symbol: string, prices: StockPrice[]): StockStats
     // RS Rank 1M (last 22 days)
     const rsRank1M = generateRSRank1M(closes);
 
+    // 5. Sharpe Ratio (Last 1Y = approx 252 days)
+    const sharpeRatio1Y = calculateSharpeRatio(recent1Y, 0.045);
+
     return {
         symbol,
         changeYTD,
@@ -158,6 +198,7 @@ export function calculateStats(symbol: string, prices: StockPrice[]): StockStats
         sma50,
         sma200,
         chart1Y,
-        rsRank1M
+        rsRank1M,
+        sharpeRatio1Y
     };
 }

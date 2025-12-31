@@ -1,6 +1,8 @@
 export type Bindings = {
     DB: D1Database;
     ALPHA_VANTAGE_KEY: string;
+    GEMINI_API_KEY: string;
+    PERPLEXITY_API_KEY?: string;
     AUTH_USERNAME?: string;
     AUTH_PASSWORD?: string;
 };

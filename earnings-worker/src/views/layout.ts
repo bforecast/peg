@@ -264,6 +264,70 @@ export const HTML = `<!DOCTYPE html>
         </div>
     </div>
 
+    <!-- Floating Action Button -->
+    <div id="fabBtn" class="fab-btn" onclick="toggleChat()">
+        <svg  xmlns="http://www.w3.org/2000/svg"  width="24"  height="24"  viewBox="0 0 24 24"  fill="none"  stroke="currentColor"  stroke-width="2"  stroke-linecap="round"  stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12z" /><path d="M9.5 9h.01" /><path d="M14.5 9h.01" /><path d="M9.5 13a3.5 3.5 0 0 0 5 0" /></svg>
+    </div>
+
+    <!-- Chat Interface -->
+    <div id="chatContainer" class="chat-container" style="display: none;">
+        <div class="chat-header">
+            <div class="header-title">
+                Forward PEG AI Expert
+                <div class="header-subtitle">
+                    <span class="status-dot"></span>
+                    Context: <span id="chatContext">None</span>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <select id="modelSelector" style="padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:0.8rem; background:white;">
+                    <option value="gemini">Gemini</option>
+                    <option value="perplexity">Perplexity</option>
+                </select>
+                <button onclick="toggleMaximize()" style="background:none; border:none; cursor:pointer;" title="Maximize">
+                    <svg id="maxIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    </svg>
+                    <svg id="restoreIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+                       <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                    </svg>
+                </button>
+                <button onclick="toggleChat()" style="background:none; border:none; cursor:pointer;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <div id="chatMessages" class="chat-messages">
+            <div class="message bot">
+                Hello! I am your Investment Portfolio Expert. You can ask me about valuations, technical trends, or portfolio allocation.<br><br>
+                Try typing <b>/p</b> to select a portfolio or <b>@</b> to analyze a specific stock.
+            </div>
+        </div>
+
+        <div id="slashMenu" class="slash-menu" style="display: none;">
+            <div class="slash-header">PORTFOLIOS (/p)</div>
+            <div id="slashList"></div>
+        </div>
+
+        <div class="input-area">
+            <div class="chips-row">
+                <div class="chip" onclick="setContextQuestion('✨ Analyze this')">✨ Analyze this</div>
+                <div class="chip" onclick="setContextQuestion('📈 Technical Trend')">📈 Technical Trend</div>
+                <div class="chip" onclick="setContextQuestion('💰 Valuation Check')">💰 Valuation Check</div>
+            </div>
+            <div class="input-wrapper">
+                <input type="text" id="chatInput" class="chat-input" placeholder="Ask, @mention, or /command..." onkeydown="handleChatInput(event)" oninput="handleInputTrigger(event)">
+                <button class="send-btn" onclick="sendChat()">
+                    <svg  xmlns="http://www.w3.org/2000/svg"  width="20"  height="20"  viewBox="0 0 24 24"  fill="none"  stroke="currentColor"  stroke-width="2"  stroke-linecap="round"  stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 14l11 -11" /><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5" /></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <script>${CLIENT_JS}</script>
     <script>${SCRIPTS}</script>
 </body>

@@ -123,12 +123,12 @@ export async function updatePrices(env: Bindings, symbol: string) {
                     INSERT OR REPLACE INTO stock_stats (
                         symbol, change_ytd, change_1y, delta_52w_high, 
                         sma_20, sma_50, sma_200, 
-                        chart_1y, rs_rank_1m, updated_at
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        chart_1y, rs_rank_1m, sharpe_ratio_1y, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 `).bind(
                     stats.symbol, stats.changeYTD, stats.change1Y, stats.delta52wHigh,
                     stats.sma20, stats.sma50, stats.sma200,
-                    stats.chart1Y, stats.rsRank1M, updatedAt
+                    stats.chart1Y, stats.rsRank1M, stats.sharpeRatio1Y, updatedAt
                 ).run();
             }
         }
@@ -454,7 +454,8 @@ export async function getDashboardData(env: Bindings, groupId?: string) {
                     sma50: (r as any).sma_50,
                     sma200: (r as any).sma_200,
                     chart1Y: (r as any).chart_1y,
-                    rsRank1M: (r as any).rs_rank_1m
+                    rsRank1M: (r as any).rs_rank_1m,
+                    sharpeRatio1Y: (r as any).sharpe_ratio_1y
                 } as StockStats);
             }
         }
@@ -509,7 +510,8 @@ export async function getDashboardData(env: Bindings, groupId?: string) {
 
             // New Fields
             chart1Y: stats?.chart1Y || '',
-            rsRank1M: stats?.rsRank1M || ''
+            rsRank1M: stats?.rsRank1M || '',
+            sharpeRatio1Y: stats?.sharpeRatio1Y || 0
         };
     });
 }
@@ -532,12 +534,12 @@ export async function regenerateStats(env: Bindings, symbol: string) {
                 INSERT OR REPLACE INTO stock_stats (
                     symbol, change_ytd, change_1y, delta_52w_high, 
                     sma_20, sma_50, sma_200, 
-                    chart_1y, rs_rank_1m, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    chart_1y, rs_rank_1m, sharpe_ratio_1y, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).bind(
                 stats.symbol, stats.changeYTD, stats.change1Y, stats.delta52wHigh,
                 stats.sma20, stats.sma50, stats.sma200,
-                stats.chart1Y, stats.rsRank1M, updatedAt
+                stats.chart1Y, stats.rsRank1M, stats.sharpeRatio1Y, updatedAt
             ).run();
             return true;
         }

@@ -1441,6 +1441,336 @@ if (document.readyState === 'loading') {
 } else {
     window.initDashboard();
 }
+
+        /* Chat Logic */
+        let chatOpen = false;
+        let slashActive = false;
+        let slashMode = null; // 'p' or 's'
+        let slashItems = [];
+
+        window.toggleChat = function() {
+            chatOpen = !chatOpen;
+            const container = document.getElementById('chatContainer');
+            const fab = document.getElementById('fabBtn');
+            
+            if (chatOpen) {
+                container.style.display = 'flex';
+                fab.style.display = 'none'; 
+                
+                // Set context if we have a current group
+                if (currentGroup) {
+                    setChatContext('@' + currentGroup.name);
+                }
+                
+                // Focus input
+                setTimeout(() => document.getElementById('chatInput').focus(), 100);
+            } else {
+                container.style.display = 'none';
+                fab.style.display = 'flex';
+            }
+        };
+
+        let isMaximized = false;
+        
+        window.toggleMaximize = function() {
+            isMaximized = !isMaximized;
+            const container = document.getElementById('chatContainer');
+            const maxIcon = document.getElementById('maxIcon');
+            const restoreIcon = document.getElementById('restoreIcon');
+            
+            if (isMaximized) {
+                container.style.width = '90vw';
+                container.style.height = '90vh';
+                container.style.maxHeight = '90vh';
+                container.style.bottom = '5vh';
+                container.style.right = '5vw';
+                maxIcon.style.display = 'none';
+                restoreIcon.style.display = 'block';
+            } else {
+                // Restore default size
+                container.style.width = '600px';
+                container.style.height = '800px';
+                container.style.maxHeight = '90vh';
+                container.style.bottom = '80px';
+                container.style.right = '20px';
+                maxIcon.style.display = 'block';
+                restoreIcon.style.display = 'none';
+            }
+        };
+
+        function setChatContext(ctx) {
+            document.getElementById('chatContext').textContent = ctx;
+        }
+
+        function parseMarkdown(text) {
+            if (!text) return '';
+            
+            // 1. Bold: **text**
+            // Use a simple replace for bold, careful with escaping
+            // Needs quadruple backslashes because it's inside a template string
+            let html = text.replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>');
+            
+            const lines = html.split(/\\r?\\n/);
+            let output = '';
+            let inList = false;
+            let inTable = false;
+            let tableRows = [];
+
+            function renderTableRows(rows) {
+                if (rows.length < 2) return '';
+                let tableHtml = '<table style="width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 0.85rem;">';
+                
+                rows.forEach((row, idx) => {
+                    // Simple check for separator line like |---|---|
+                    if (row.indexOf('---') !== -1 && row.indexOf('|') !== -1) return;
+                    
+                    const cells = row.split('|').filter(function(c) { return c && c.trim() !== ''; });
+                    if (cells.length === 0) return;
+                    
+                    tableHtml += '<tr>';
+                    const isHeader = (idx === 0);
+                    
+                    cells.forEach(function(cell) {
+                         const tag = isHeader ? 'th' : 'td';
+                         const style = isHeader 
+                            ? 'padding: 6px 8px; border-bottom: 2px solid #ddd; text-align: left; font-weight: 600; background: #f5f5f5;'
+                            : 'padding: 5px 8px; border-bottom: 1px solid #eee; text-align: left;';
+                         tableHtml += '<' + tag + ' style="' + style + '">' + cell.trim() + '</' + tag + '>';
+                    });
+                    tableHtml += '</tr>';
+                });
+                tableHtml += '</table>';
+                return tableHtml;
+            }
+
+            for (var i = 0; i < lines.length; i++) {
+                var line = lines[i].trim();
+                
+                // Table detection
+                if (line.startsWith('|') && line.endsWith('|')) {
+                    if (inList) { output += '</ul>'; inList = false; }
+                    if (!inTable) { inTable = true; tableRows = []; }
+                    tableRows.push(line);
+                    continue;
+                } else if (inTable) {
+                    output += renderTableRows(tableRows);
+                    inTable = false;
+                    tableRows = [];
+                }
+
+                // Headers
+                if (line.startsWith('#### ')) {
+                    if (inList) { output += '</ul>'; inList = false; }
+                    output += '<h5 style="margin: 10px 0 4px 0; font-size: 0.95rem; font-weight: 600; text-transform: uppercase; color: #555;">' + line.substring(5) + '</h5>';
+                    continue;
+                }
+                if (line.startsWith('### ')) {
+                    if (inList) { output += '</ul>'; inList = false; }
+                    output += '<h4 style="margin: 12px 0 6px 0; font-size: 1rem; font-weight: 600;">' + line.substring(4) + '</h4>';
+                    continue;
+                }
+                if (line.startsWith('## ')) {
+                    if (inList) { output += '</ul>'; inList = false; }
+                    output += '<h3 style="margin: 14px 0 8px 0; font-size: 1.1rem; font-weight: 600;">' + line.substring(3) + '</h3>';
+                    continue;
+                }
+                
+                // List Items
+                if (line.startsWith('* ') || line.startsWith('- ')) {
+                    if (!inList) { output += '<ul style="margin: 4px 0; padding-left: 20px;">'; inList = true; }
+                    output += '<li>' + line.substring(2) + '</li>';
+                    continue;
+                }
+                
+                if (inList) { output += '</ul>'; inList = false; }
+                
+                if (line.length > 0) output += line + '<br>';
+            }
+            
+            if (inList) output += '</ul>';
+            if (inTable) output += renderTableRows(tableRows);
+            
+            return output;
+        }
+
+        function addMessage(role, text) {
+            const container = document.getElementById('chatMessages');
+            const div = document.createElement('div');
+            div.className = 'message ' + role;
+            // Parse Markdown for bot messages, or all? 
+            // Let's parse for all to allow user markdown too.
+            div.innerHTML = parseMarkdown(text);
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        let typingTimer;
+        function showTyping() {
+            hideTyping();
+            const container = document.getElementById('chatMessages');
+            const div = document.createElement('div');
+            div.id = 'typingIndicator';
+            div.className = 'typing-indicator';
+            div.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+            container.appendChild(div);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function hideTyping() {
+            const el = document.getElementById('typingIndicator');
+            if(el) el.remove();
+        }
+
+        window.sendChat = async function() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            if (!text) return;
+
+            addMessage('user', text);
+            input.value = '';
+            showTyping();
+
+            // Prepare context
+            let context = {};
+            if (currentGroup && currentGroup.id) {
+                context.portfolioId = currentGroup.id;
+                context.portfolioName = currentGroup.name;
+            }
+
+            // Get selected model
+            const modelSelector = document.getElementById('modelSelector');
+            const selectedModel = modelSelector ? modelSelector.value : 'gemini';
+            
+            try {
+                const res = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: text, context, model: selectedModel })
+                });
+                
+                const data = await res.json();
+                hideTyping();
+                
+                if (data.error) {
+                    addMessage('bot', 'Error: ' + data.error);
+                } else {
+                    addMessage('bot', data.response);
+                }
+            } catch (e) {
+                hideTyping();
+                addMessage('bot', 'Network error. Please try again.');
+            }
+        };
+
+        window.handleChatInput = function(e) {
+            if (e.key === 'Enter') {
+                if (slashActive) {
+                    document.getElementById('slashMenu').style.display = 'none';
+                    slashActive = false;
+                    return; 
+                }
+                window.sendChat();
+            }
+            if (e.key === 'Escape') {
+                if(slashActive) {
+                     document.getElementById('slashMenu').style.display = 'none';
+                     slashActive = false;
+                } else {
+                     window.toggleChat();
+                }
+            }
+        };
+
+        window.setContextQuestion = function(q) {
+            document.getElementById('chatInput').value = q;
+            window.sendChat();
+        };
+
+        /* Slash Commands */
+        window.handleInputTrigger = function(e) {
+            const val = e.target.value;
+            const menu = document.getElementById('slashMenu');
+            
+            // Trigger 1: /p
+            if (val.endsWith('/p')) {
+                slashMode = 'p';
+                slashActive = true;
+                menu.style.display = 'block';
+                document.querySelector('.slash-header').textContent = 'PORTFOLIOS';
+                
+                // Populate with current groups (limit 5)
+                const items = groups.slice(0, 5).map(g => ({
+                    icon: '📁',
+                    text: g.name,
+                    desc: g.type || 'Personal',
+                    data: g
+                }));
+                renderSlashItems(items);
+            }
+            // Trigger 2: /s (Stocks)
+            else if (val.endsWith('/s')) {
+                slashMode = 's';
+                slashActive = true;
+                menu.style.display = 'block';
+                document.querySelector('.slash-header').textContent = 'STOCKS';
+                
+                const items = (localMembers || []).slice(0, 5).map(m => ({
+                    icon: '📈',
+                    text: m.symbol,
+                    desc: m.allocation + '%',
+                    data: m
+                }));
+                if(items.length === 0) {
+                     items.push({icon:'?', text:'No stocks in view', desc:''});
+                }
+                renderSlashItems(items);
+            }
+            // Close if parsing away
+            else if (slashActive && !val.includes('/')) {
+                menu.style.display = 'none';
+                slashActive = false;
+            }
+        };
+
+        function renderSlashItems(items) {
+            const list = document.getElementById('slashList');
+            list.innerHTML = '';
+            items.forEach(item => {
+                const el = document.createElement('div');
+                el.className = 'slash-item';
+                el.innerHTML = \`
+                    <div class="slash-icon">\${item.icon}</div>
+                    <div class="slash-text">\${item.text}</div>
+                    <div class="slash-desc">\${item.desc}</div>
+                \`;
+                el.onclick = () => {
+                    if (slashMode === 'p') selectPortfolioSlash(item.data);
+                    else insertStockSlash(item.text);
+                };
+                list.appendChild(el);
+            });
+        }
+
+        function selectPortfolioSlash(group) {
+            // Set context
+            setChatContext('@' + group.name);
+            const input = document.getElementById('chatInput');
+            // Replace /p with @GroupName
+            input.value = input.value.slice(0, -2) + '@' + group.name + ' ';
+            document.getElementById('slashMenu').style.display = 'none';
+            slashActive = false;
+            input.focus();
+            
+            selectGroup(group);
+        }
+        
+        function insertStockSlash(symbol) {
+             const input = document.getElementById('chatInput');
+             input.value = input.value.slice(0, -2) + '@' + symbol + ' ';
+             document.getElementById('slashMenu').style.display = 'none';
+             slashActive = false;
+             input.focus();
+        }
 `;
 
 

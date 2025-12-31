@@ -4,6 +4,7 @@ import { Bindings } from './types';
 import dashboardRoutes from './routes/dashboard';
 import adminRoutes from './routes/admin';
 import legacyRoutes from './routes/legacy';
+import chatRoutes from './routes/chat';
 import { scheduled } from './cron';
 
 console.log('Worker Environment (main.ts) v1.3');
@@ -34,6 +35,7 @@ app.use('/*', async (c, next) => {
 app.route('/', dashboardRoutes);
 app.route('/', adminRoutes);
 app.route('/', legacyRoutes);
+app.route('/', chatRoutes);
 
 // Export Worker Entry Point
 export default {
