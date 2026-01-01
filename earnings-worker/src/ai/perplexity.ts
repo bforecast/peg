@@ -25,39 +25,22 @@ interface PerplexityResponse {
 /**
  * Generate a response using the Perplexity API with real-time web search.
  * @param env - Cloudflare Worker environment bindings
- * @param userMessage - The user's input message
- * @param systemPrompt - Optional system prompt for context
+ * @param messages - Array of conversation messages (user, assistant, system)
  * @returns The AI response text
  */
 export async function generatePerplexityResponse(
-    env: Bindings,
-    userMessage: string,
-    systemPrompt?: string
+    apiKey: string,
+    chatMessages: PerplexityMessage[]
 ): Promise<string> {
-    const apiKey = env.PERPLEXITY_API_KEY;
+
     if (!apiKey) {
         return 'Error: PERPLEXITY_API_KEY is not configured. Please set it using `wrangler secret put PERPLEXITY_API_KEY`.';
     }
 
-    const messages: PerplexityMessage[] = [];
-
-    // Add system prompt if provided
-    if (systemPrompt) {
-        messages.push({ role: 'system', content: systemPrompt });
-    } else {
-        messages.push({
-            role: 'system',
-            content: 'You are a helpful investment research assistant. Provide accurate, up-to-date information with citations when available. Focus on factual data and recent news.'
-        });
-    }
-
-    // Add user message
-    messages.push({ role: 'user', content: userMessage });
-
     try {
         console.log('[Perplexity] Sending request to:', PERPLEXITY_API_URL);
         console.log('[Perplexity] Model:', DEFAULT_MODEL);
-        console.log('[Perplexity] Messages count:', messages.length);
+        console.log('[Perplexity] Messages count:', chatMessages.length);
 
         const response = await fetch(PERPLEXITY_API_URL, {
             method: 'POST',
@@ -67,9 +50,9 @@ export async function generatePerplexityResponse(
             },
             body: JSON.stringify({
                 model: DEFAULT_MODEL,
-                messages: messages,
+                messages: chatMessages,
                 temperature: 0.2, // Lower for more factual responses
-                max_tokens: 1024
+                max_tokens: 8192
             })
         });
 

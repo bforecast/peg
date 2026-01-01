@@ -233,6 +233,39 @@ export const STYLES = `
             flex-direction: column;
             overflow: hidden;
             z-index: 2000;
+            transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        }
+
+        .chat-container.maximized {
+            width: 90vw;
+            height: 90vh;
+            right: 5vw;
+            bottom: 5vh;
+            max-height: 90vh;
+        }
+
+        @media (max-width: 768px) {
+            .chat-container {
+                width: 96vw;
+                right: 2vw;
+                bottom: 80px;
+                height: 70vh;
+            }
+            
+            .chat-container.maximized {
+                position: fixed !important;
+                width: 100vw !important;
+                height: 100dvh !important;
+                top: 0 !important;
+                left: 0 !important;
+                right: 0 !important;
+                bottom: 0 !important;
+                margin: 0 !important;
+                border: none !important;
+                border-radius: 0 !important;
+                max-height: none !important;
+                z-index: 9999 !important;
+            }
         }
 
         .chat-header {
@@ -400,7 +433,8 @@ export const STYLES = `
             border-radius: 12px;
             box-shadow: 0 4px 20px rgba(0,0,0,0.15);
             border: 1px solid #E5E7EB;
-            overflow: hidden;
+            overflow-y: auto;
+            max-height: 300px;
             z-index: 2001;
             animation: slideUp 0.2s ease-out;
         }

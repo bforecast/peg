@@ -273,7 +273,7 @@ export const HTML = `<!DOCTYPE html>
     <div id="chatContainer" class="chat-container" style="display: none;">
         <div class="chat-header">
             <div class="header-title">
-                Forward PEG AI Expert
+                Investment AI Expert
                 <div class="header-subtitle">
                     <span class="status-dot"></span>
                     Context: <span id="chatContext">None</span>
@@ -281,8 +281,8 @@ export const HTML = `<!DOCTYPE html>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
                 <select id="modelSelector" style="padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:0.8rem; background:white;">
+                    <option value="perplexity" selected>Perplexity (Pro)</option>
                     <option value="gemini">Gemini</option>
-                    <option value="perplexity">Perplexity</option>
                 </select>
                 <button onclick="toggleMaximize()" style="background:none; border:none; cursor:pointer;" title="Maximize">
                     <svg id="maxIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -320,6 +320,9 @@ export const HTML = `<!DOCTYPE html>
                 <div class="chip" onclick="setContextQuestion('💰 Valuation Check')">💰 Valuation Check</div>
             </div>
             <div class="input-wrapper">
+                <button class="translate-btn" onclick="requestTranslation()" title="Translate last reply to Chinese" style="background:none; border:none; cursor:pointer; padding:0 8px; color:#666;">
+                    <span style="font-size: 1.2rem;">文</span>
+                </button>
                 <input type="text" id="chatInput" class="chat-input" placeholder="Ask, @mention, or /command..." onkeydown="handleChatInput(event)" oninput="handleInputTrigger(event)">
                 <button class="send-btn" onclick="sendChat()">
                     <svg  xmlns="http://www.w3.org/2000/svg"  width="20"  height="20"  viewBox="0 0 24 24"  fill="none"  stroke="currentColor"  stroke-width="2"  stroke-linecap="round"  stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 14l11 -11" /><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5" /></svg>

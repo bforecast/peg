@@ -81,7 +81,10 @@ function generateRSRank1M(prices: number[], lookback: number = 22, width: number
         bars += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barH.toFixed(1)}" fill="${fill}" />`;
     });
 
-    return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg">
+    // Calculate current score (last rank * 100 for 0-100 scale)
+    const currentScore = ranks.length > 0 ? (ranks[ranks.length - 1] * 100).toFixed(0) : "0";
+
+    return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg" data-score="${currentScore}">
         ${bars}
     </svg>`;
 }

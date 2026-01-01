@@ -2,12 +2,12 @@ import { Hono } from 'hono';
 import { Bindings } from '../types';
 import { chatWithGemini } from '../ai/gemini';
 import { generatePerplexityResponse } from '../ai/perplexity';
-import { getLatestQuotes } from '../db';
+import { getLatestQuotes, regenerateStats } from '../db';
 
 const chatRoutes = new Hono<{ Bindings: Bindings }>();
 
 const SYSTEM_PROMPT = `
-You are the "Forward PEG AI Expert", a specialized assistant for the Forward Peg System used by bforecast.
+You are the "Investment AI expert", a specialized assistant for the Forward Peg System used by bforecast.
 You act as three experts rolled into one:
 1. Investment Expert: Analyzes portfolio allocations, diversification, and risks.
 2. Value Investing Expert: Evaluates valuations using PEG, Forward PE, and Earnings Growth.
@@ -28,12 +28,13 @@ Tone: Professional, Insightful, yet Concise. Use markdown for formatting.
 chatRoutes.post('/api/chat', async (c) => {
     try {
         const body = await c.req.json();
-        const { message, context, history, model } = body;
+        let { message, context, history, model } = body;
         // model: 'gemini' (default) or 'perplexity'
 
         // Prepare message with context
         let fullMessage = message;
         if (context) {
+            console.log('[Perplexity] Incoming Context:', JSON.stringify(context, null, 2));
             // Extract meaningful context string
             let contextStr = '';
             if (typeof context === 'string') {
@@ -44,17 +45,20 @@ chatRoutes.post('/api/chat', async (c) => {
                 contextStr = JSON.stringify(context);
             }
             fullMessage = `[Context: ${contextStr}] ${message}`;
+        } else {
+            console.log('[Perplexity] No Context provided');
         }
 
         // Route to selected model
         if (model === 'perplexity') {
             // Parse @mentions to fetch local portfolio data
-            // Match @Name until next @ or common delimiters (-, ?, :, lowercase word boundary)
-            const mentionRegex = /@([A-Z][A-Za-z0-9\s]*?)(?=\s*[@?:-]|\s+[a-z]|$)/g;
+            // Updated to support Quoted names ('Name') or Standard names (stopped by lowercase command)
+            const mentionRegex = /@(?:'([^']+)'|"([^"]+)"|([\p{L}\p{N}\s&'_\-]+?)(?=\s*(?:[@?:!.,]|$)|(?<=\s)[a-z]))/gu;
             const mentions: string[] = [];
             let match;
             while ((match = mentionRegex.exec(message)) !== null) {
-                const name = match[1].trim();
+                // match[1] = single quoted, match[2] = double quoted, match[3] = standard
+                const name = (match[1] || match[2] || match[3]).trim();
                 if (name.length > 0) {
                     mentions.push(name);
                 }
@@ -67,17 +71,150 @@ chatRoutes.post('/api/chat', async (c) => {
                 }
             }
 
-            // Detect "all portfolios" queries
-            const allPortfoliosRegex = /\b(all|every|compare\s+all)\s+(portfolios?|groups?)/i;
+            // Detect "all portfolios" queries - explicitly include "analyze this"
+            const allPortfoliosRegex = /\b(all|every|compare\s+all)\s+(portfolios?|groups?)|analyze\s+this|valuation\s+check|technical\s+trend/i;
             const wantsAllPortfolios = allPortfoliosRegex.test(message);
 
-            console.log('[Perplexity] Parsed mentions:', mentions, 'all:', wantsAllPortfolios);
+            // Check if user mentioned a specific stock symbol (e.g., @NVDA, @AAPL)
+            // This overrides the page context
+            const stockSymbolMatch = message.match(/@([A-Za-z]{1,5})\b/);
+            let targetSymbol: string | null = null;
+            if (stockSymbolMatch) {
+                targetSymbol = stockSymbolMatch[1].toUpperCase();
+                console.log('[Perplexity] User mentioned stock symbol:', targetSymbol);
+            }
+
+            console.log('[Perplexity] Parsed mentions:', mentions, 'all:', wantsAllPortfolios, 'targetSymbol:', targetSymbol);
 
             // Fetch portfolio data for mentioned portfolios
             let localDataContext = '';
 
-            // If user asks for "all portfolios", fetch all stats
-            if (wantsAllPortfolios) {
+            // This is a translation request - skip context injection & inject prior response
+            const isTranslationRequest = /translate.*previous|翻译|translation/i.test(message);
+            let enhancedMessage = message; // Initialize enhancedMessage
+
+            if (isTranslationRequest) {
+                console.log('[Perplexity] Translation request detected.');
+                localDataContext = ''; // Ensure no context is injected
+
+                if (history && Array.isArray(history)) {
+                    // Find actual last assistant message (skip user messages)
+                    const reversedHistory = [...history].reverse();
+                    const lastAssistantMsg = reversedHistory.find(h => h.role === 'model' || h.role === 'assistant');
+
+                    if (lastAssistantMsg && lastAssistantMsg.content) {
+                        console.log('[Perplexity] Injecting ' + lastAssistantMsg.content.length + ' chars for translation');
+                        // REWRITE the user message to be self-contained
+                        enhancedMessage = `Please translate the following text into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text:\n\n"""\n${lastAssistantMsg.content}\n"""`;
+                    } else {
+                        console.log('[Perplexity] WARNING: No assistant message found for translation. History Len:', history.length);
+                        // Fallback: Try to translate the LAST message if it's not the current one?
+                        // Or just let it fail but with context.
+                        // We will append a system note so the AI knows why.
+                        enhancedMessage = message + `\n\n[System Note: The user requested translation of the previous response, but the server implementation could not locate a previous 'model' or 'assistant' message in the provided history. History Length: ${history.length}. Roles: ${history.map(h => h.role).join(',')}.]`;
+                    }
+                }
+            } else {
+                enhancedMessage = message;
+            }
+            // Priority: 1. User's @mention, 2. Page context (isSingleStock)
+            // But skip for translation requests
+            const symbolToAnalyze = isTranslationRequest ? null : (targetSymbol || (context && context.symbol ? context.symbol.toUpperCase() : null));
+
+            // Handle Single Stock Context first
+            if (symbolToAnalyze) {
+                const symbol = symbolToAnalyze;
+                try {
+                    console.log('[Perplexity] Fetching context for single stock:', symbol);
+
+                    // Lazy Fetch: Ensure we have quote data
+                    await getLatestQuotes(c.env, [symbol]);
+
+                    // Regenerate stats if needed (for RS Rank, SMAs, etc.)
+                    await regenerateStats(c.env, symbol);
+
+                    const db = c.env.DB;
+
+                    // Fetch Quote & Stats
+                    const quote = await db.prepare(
+                        `SELECT sq.*, ss.* 
+                         FROM stock_quotes sq
+                         LEFT JOIN (SELECT * FROM stock_stats WHERE rowid IN (SELECT MAX(rowid) FROM stock_stats GROUP BY symbol)) ss ON sq.symbol = ss.symbol
+                         WHERE sq.symbol = ? ORDER BY sq.updated_at DESC LIMIT 1`
+                    ).bind(symbol).first();
+
+                    if (quote) {
+                        localDataContext += `\n\n### Stock Analysis: ${symbol}\n`;
+                        localDataContext += `- Price: $${quote.price}\n`;
+                        localDataContext += `- Market Cap: $${(quote.market_cap ? (quote.market_cap / 1000000000).toFixed(2) + 'B' : 'N/A')}\n`;
+                        localDataContext += `- Dividend Yield: ${(quote.dividend_yield ? (quote.dividend_yield * 100).toFixed(2) : '0.00')}%\n`;
+                        localDataContext += `- P/S Ratio: ${quote.ps_ratio}\n`;
+                        localDataContext += `- Change 1Y: ${(quote.change_1y || 0).toFixed(2)}%\n`;
+                        localDataContext += `- Change YTD: ${(quote.change_ytd || 0).toFixed(2)}%\n`;
+                        localDataContext += `- Forward PE: ${quote.forward_pe}\n`;
+                        localDataContext += `- PEG Ratio: ${((quote.forward_pe && quote.eps_next_year && quote.eps_current_year) ? (quote.forward_pe / (((quote.eps_next_year - quote.eps_current_year) / Math.abs(quote.eps_current_year)) * 100)).toFixed(2) : 'N/A')}\n`;
+
+                        // Parse RS Score from SVG if present
+                        let rsRank = 'N/A';
+                        const rawRsRank = quote.rs_rank_1m;
+                        if (rawRsRank && typeof rawRsRank === 'string') {
+                            if (rawRsRank.includes('data-score=')) {
+                                const match = rawRsRank.match(/data-score="(\d+)"/);
+                                rsRank = match ? `${match[1]}/100` : 'See Chart';
+                            } else if (rawRsRank.startsWith('<svg')) {
+                                rsRank = 'See Chart';
+                            } else {
+                                rsRank = rawRsRank;
+                            }
+                        }
+                        localDataContext += `- RS Rank (1M): ${rsRank}\n`;
+                        localDataContext += `- 20 SMA: ${quote.sma_20}\n`;
+                        localDataContext += `- 50 SMA: ${quote.sma_50}\n`;
+                        localDataContext += `- 200 SMA: ${quote.sma_200}\n`;
+                        localDataContext += `- Technical Status: ${(quote.price > quote.sma_20 && quote.sma_20 > quote.sma_50) ? 'Strong Uptrend' : 'Neutral/Mixed'}\n`;
+
+                        // Earnings History
+                        const earnings = await db.prepare(
+                            `SELECT fiscal_date_ending, estimated_eps, reported_eps, surprise_percentage
+                             FROM stock_earnings
+                             WHERE symbol = ?
+                             ORDER BY fiscal_date_ending DESC LIMIT 4`
+                        ).bind(symbol).all();
+
+                        if (earnings.results && earnings.results.length > 0) {
+                            localDataContext += `\n**Recent Earnings:**\n`;
+                            localDataContext += `| Date | Est | Rep | Surprise |\n`;
+                            localDataContext += `|------|-----|-----|----------|\n`;
+                            for (const e of earnings.results as any[]) {
+                                localDataContext += `| ${e.fiscal_date_ending} | ${e.estimated_eps} | ${e.reported_eps} | ${e.surprise_percentage}% |\n`;
+                            }
+                        }
+
+                        // Holdings check
+                        const holdings = await db.prepare(
+                            `SELECT g.name, gm.allocation
+                             FROM group_members gm
+                             JOIN groups g ON gm.group_id = g.id
+                             WHERE gm.symbol = ?`
+                        ).bind(symbol).all();
+
+                        if (holdings.results && holdings.results.length > 0) {
+                            localDataContext += `\n**Your Holdings:**\n`;
+                            for (const h of holdings.results as any[]) {
+                                localDataContext += `- Held in **${h.name}** (${h.allocation}%)\n`;
+                            }
+                        } else {
+                            localDataContext += `\n(Not currently held in any active portfolios)\n`;
+                        }
+
+                        console.log('[Perplexity] Final Context for ' + symbol + ':', localDataContext);
+                    } else {
+                        localDataContext += `\n\n### Stock Context: ${symbol}\n(No local data found in DB, please use web search.)\n`;
+                    }
+                } catch (e) {
+                    console.error('Error fetching single stock context:', e);
+                }
+            } else if (wantsAllPortfolios) {
                 try {
                     const db = c.env.DB;
                     const allGroups = await db.prepare(
@@ -99,46 +236,112 @@ chatRoutes.post('/api/chat', async (c) => {
                 } catch (dbError) {
                     console.error('Error fetching all portfolios:', dbError);
                 }
-            } else if (mentions.length > 0) {
+            } else if (mentions.length > 0 || (context && context.portfolioId)) {
                 try {
                     const db = c.env.DB;
-                    for (const portfolioName of mentions) {
-                        console.log('[Perplexity] Looking up portfolio:', portfolioName);
+                    const portfoliosToFetch: { type: 'id' | 'name', value: string | number }[] = [];
 
-                        // Find group by name (case-insensitive partial match)
-                        const group = await db.prepare(
-                            `SELECT g.id, g.name, g.description,
-                                    ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy
-                             FROM groups g
-                             LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
-                             WHERE LOWER(g.name) LIKE LOWER(?)`
-                        ).bind(`%${portfolioName}%`).first();
+                    // 1. Context Portfolio (ID is most reliable)
+                    if (context && context.portfolioId) {
+                        portfoliosToFetch.push({ type: 'id', value: context.portfolioId });
+                    }
+
+                    // 2. Mentioned Portfolios (by Name)
+                    for (const m of mentions) {
+                        // Avoid duplicate if context name is same
+                        if (context && context.portfolioName && m === context.portfolioName) continue;
+                        portfoliosToFetch.push({ type: 'name', value: m });
+                    }
+
+                    for (const target of portfoliosToFetch) {
+                        let group;
+                        if (target.type === 'id') {
+                            console.log('[Perplexity] Looking up portfolio by ID:', target.value);
+                            group = await db.prepare(
+                                `SELECT g.id, g.name, g.description,
+                                        ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy
+                                 FROM groups g
+                                 LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
+                                 WHERE g.id = ?`
+                            ).bind(target.value).first();
+                        } else {
+                            console.log('[Perplexity] Looking up portfolio by Name:', target.value);
+                            group = await db.prepare(
+                                `SELECT g.id, g.name, g.description,
+                                        ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy
+                                 FROM groups g
+                                 LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
+                                 WHERE LOWER(g.name) LIKE LOWER(?)`
+                            ).bind(`%${target.value}%`).first();
+                        }
+
+
 
                         if (group) {
                             console.log('[Perplexity] Found portfolio:', group.name);
-                            // Get holdings with valuation and technical data
+
+                            // 1. Get Symbols first to ensure data freshness
+                            const memberSymbols = await db.prepare(
+                                `SELECT symbol FROM group_members WHERE group_id = ?`
+                            ).bind(group.id).all();
+
+                            if (memberSymbols.results && memberSymbols.results.length > 0) {
+                                const symbols = memberSymbols.results.map((r: any) => r.symbol);
+                                // Lazy Fetch quotes & Regen Stats if needed
+                                await getLatestQuotes(c.env, symbols);
+                                for (const s of symbols) {
+                                    await regenerateStats(c.env, s);
+                                }
+                            }
+
+                            // 2. Get holdings with now-guaranteed valuation and technical data
                             const holdings = await db.prepare(
                                 `SELECT gm.symbol, gm.allocation, 
-                                        sq.price, sq.forward_pe, sq.pe_ratio,
+                                        sq.price, sq.forward_pe, sq.pe_ratio, sq.eps_current_year, sq.eps_next_year,
                                         ss.change_ytd, ss.change_1y, ss.sma_20, ss.sma_50, ss.sma_200, ss.rs_rank_1m
                                  FROM group_members gm
-                                 LEFT JOIN stock_quotes sq ON gm.symbol = sq.symbol
-                                 LEFT JOIN stock_stats ss ON gm.symbol = ss.symbol
+                                 LEFT JOIN (
+                                     SELECT * FROM stock_quotes WHERE rowid IN (
+                                         SELECT MAX(rowid) FROM stock_quotes GROUP BY symbol
+                                     )
+                                 ) sq ON gm.symbol = sq.symbol
+                                 LEFT JOIN (
+                                     SELECT * FROM stock_stats WHERE rowid IN (
+                                         SELECT MAX(rowid) FROM stock_stats GROUP BY symbol
+                                     )
+                                 ) ss ON gm.symbol = ss.symbol
                                  WHERE gm.group_id = ?
                                  ORDER BY gm.allocation DESC
-                                 LIMIT 10`
+                                 LIMIT 20`
                             ).bind(group.id).all();
 
                             localDataContext += `\n\n### Portfolio: ${group.name}\n`;
                             localDataContext += `**Description**: ${group.description || 'N/A'}\n`;
-                            localDataContext += `**Stats**: CAGR: ${group.cagr?.toFixed(1) || 'N/A'}%, Sharpe: ${group.sharpe?.toFixed(2) || 'N/A'}, Sortino: ${group.sortino?.toFixed(2) || 'N/A'}, Max DD: ${group.max_drawdown?.toFixed(1) || 'N/A'}%\n`;
+                            localDataContext += `### Portfolio Statistics:\n`;
+                            localDataContext += `- **CAGR**: ${group.cagr?.toFixed(1) || 'N/A'}%\n`;
+                            localDataContext += `- **Sharpe Ratio**: ${group.sharpe?.toFixed(2) || 'N/A'}\n`;
+                            localDataContext += `- **Sortino Ratio**: ${group.sortino?.toFixed(2) || 'N/A'}\n`;
+                            localDataContext += `- **Max Drawdown**: ${group.max_drawdown?.toFixed(1) || 'N/A'}%\n`;
                             localDataContext += `**Top Holdings (with Valuation & Technicals)**:\n`;
                             if (holdings.results && holdings.results.length > 0) {
                                 for (const h of holdings.results as any[]) {
                                     const priceVsSma = h.price && h.sma_20 && h.sma_50 && h.sma_200
                                         ? (h.price > h.sma_20 && h.sma_20 > h.sma_50 ? 'Uptrend' : h.price < h.sma_200 ? 'Downtrend' : 'Neutral')
                                         : 'N/A';
-                                    localDataContext += `- **${h.symbol}**: ${h.allocation?.toFixed(1)}% alloc, Price: $${h.price?.toFixed(2) || 'N/A'}, Forward PE: ${h.forward_pe?.toFixed(1) || 'N/A'}, PE: ${h.pe_ratio?.toFixed(1) || 'N/A'}, RS Rank: ${h.rs_rank_1m || 'N/A'}, Trend: ${priceVsSma}, YTD: ${h.change_ytd?.toFixed(1) || 'N/A'}%, 1Y: ${h.change_1y?.toFixed(1) || 'N/A'}%\n`;
+                                    const epsCurrent = h.eps_current_year;
+                                    const epsNext = h.eps_next_year;
+                                    let growthStr = 'N/A';
+                                    let pegStr = 'N/A';
+
+                                    if (epsCurrent !== null && epsNext !== null && epsCurrent !== 0) {
+                                        const g = ((epsNext - epsCurrent) / Math.abs(epsCurrent)) * 100;
+                                        growthStr = g.toFixed(1) + '%';
+                                        if (h.forward_pe && g > 0) {
+                                            pegStr = (h.forward_pe / g).toFixed(2);
+                                        }
+                                    }
+
+                                    localDataContext += `- **${h.symbol}**: ${h.allocation?.toFixed(1)}% alloc, Price: $${h.price?.toFixed(2) || 'N/A'}, Forward PE: ${h.forward_pe?.toFixed(1) || 'N/A'}, PEG: ${pegStr}, Growth: ${growthStr}, PE: ${h.pe_ratio?.toFixed(1) || 'N/A'}, RS Rank: ${h.rs_rank_1m || 'N/A'}, Trend: ${priceVsSma}, YTD: ${h.change_ytd?.toFixed(1) || 'N/A'}%, 1Y: ${h.change_1y?.toFixed(1) || 'N/A'}%\n`;
                                 }
                             } else {
                                 localDataContext += `- No holdings data available\n`;
@@ -151,13 +354,50 @@ chatRoutes.post('/api/chat', async (c) => {
             }
 
             // Enhance message with local data
-            let enhancedMessage = fullMessage;
+            if (!isTranslationRequest) {
+                enhancedMessage = fullMessage;
+            }
             if (localDataContext) {
+                console.log('[Perplexity] Injecting Local Context:\n', localDataContext);
                 enhancedMessage = `${fullMessage}\n\n--- LOCAL PORTFOLIO DATA FROM DATABASE ---${localDataContext}\n--- END OF LOCAL DATA ---\n\nUse the above local data to answer the question. Combine with web search if needed.`;
             }
 
             // Use Perplexity API for real-time web search
-            const result = await generatePerplexityResponse(c.env, enhancedMessage, SYSTEM_PROMPT);
+            const perplexityMessages: { role: 'system' | 'user' | 'assistant', content: string }[] = [
+                { role: 'system', content: SYSTEM_PROMPT }
+            ];
+
+            // Include recent chat history (for translation/follow-up questions)
+            // Sanitize to ensure: 1) First non-system is 'user', 2) Alternating roles
+            if (history && Array.isArray(history)) {
+                const recentHistory = history.slice(-6); // Last 6 messages
+                let lastRole = 'system';
+                let hasFirstUser = false;
+                for (const h of recentHistory) {
+                    if (h.role && h.content) {
+                        const currentRole = h.role === 'user' ? 'user' : 'assistant';
+                        // First message after system MUST be 'user'
+                        if (!hasFirstUser && currentRole === 'assistant') continue;
+                        if (currentRole === 'user') hasFirstUser = true;
+                        // Skip if same role as previous (avoid consecutive)
+                        if (currentRole === lastRole) continue;
+                        perplexityMessages.push({
+                            role: currentRole,
+                            content: h.content
+                        });
+                        lastRole = currentRole;
+                    }
+                }
+                // If last message in history is 'user', remove it (we'll add our own)
+                if (perplexityMessages.length > 1 && perplexityMessages[perplexityMessages.length - 1].role === 'user') {
+                    perplexityMessages.pop();
+                }
+            }
+
+            // Add current message
+            perplexityMessages.push({ role: 'user', content: enhancedMessage });
+
+            const result = await generatePerplexityResponse(c.env.PERPLEXITY_API_KEY, perplexityMessages);
             return c.json({ response: result, model: 'perplexity' });
         }
 

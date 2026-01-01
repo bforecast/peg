@@ -534,12 +534,12 @@ export async function regenerateStats(env: Bindings, symbol: string) {
                 INSERT OR REPLACE INTO stock_stats (
                     symbol, change_ytd, change_1y, delta_52w_high, 
                     sma_20, sma_50, sma_200, 
-                    chart_1y, rs_rank_1m, sharpe_ratio_1y, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    chart_1y, rs_rank_1m, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             `).bind(
                 stats.symbol, stats.changeYTD, stats.change1Y, stats.delta52wHigh,
                 stats.sma20, stats.sma50, stats.sma200,
-                stats.chart1Y, stats.rsRank1M, stats.sharpeRatio1Y, updatedAt
+                stats.chart1Y, stats.rsRank1M, updatedAt
             ).run();
             return true;
         }

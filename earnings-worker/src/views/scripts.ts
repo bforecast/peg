@@ -116,6 +116,7 @@ export const SCRIPTS = `
             document.title = 'Brilliant Forecast Portfolios';
             document.getElementById('pageTitle').textContent = 'Brilliant Forecast Portfolios';
             document.getElementById('dashboardMemo').textContent = '';
+            setChatContext(''); // Clear chat visual context
             // Update URL to home
             history.pushState(null, '', '/');
             setView('portfolios');
@@ -1409,6 +1410,7 @@ window.initDashboard = async function () {
                 }
             } else {
                 currentGroup = null;
+                setChatContext(''); // Clear chat context UI
                 setView('portfolios');
                 await loadPortfolios();
             }
@@ -1447,6 +1449,7 @@ if (document.readyState === 'loading') {
         let slashActive = false;
         let slashMode = null; // 'p' or 's'
         let slashItems = [];
+        let chatHistory = []; // History storage
 
         window.toggleChat = function() {
             chatOpen = !chatOpen;
@@ -1479,23 +1482,43 @@ if (document.readyState === 'loading') {
             const restoreIcon = document.getElementById('restoreIcon');
             
             if (isMaximized) {
-                container.style.width = '90vw';
-                container.style.height = '90vh';
-                container.style.maxHeight = '90vh';
-                container.style.bottom = '5vh';
-                container.style.right = '5vw';
+                container.classList.add('maximized');
+                // Remove inline styles to let CSS class take over
+                container.style.width = '';
+                container.style.height = '';
+                container.style.maxHeight = '';
+                container.style.bottom = '';
+                container.style.right = '';
+                
                 maxIcon.style.display = 'none';
                 restoreIcon.style.display = 'block';
             } else {
-                // Restore default size
-                container.style.width = '600px';
-                container.style.height = '800px';
-                container.style.maxHeight = '90vh';
-                container.style.bottom = '80px';
-                container.style.right = '20px';
+                container.classList.remove('maximized');
+                // Remove inline styles to let Default CSS take over
+                container.style.width = '';
+                container.style.height = '';
+                container.style.maxHeight = '';
+                container.style.bottom = '';
+                container.style.right = '';
+                
                 maxIcon.style.display = 'block';
                 restoreIcon.style.display = 'none';
             }
+        };
+
+        window.requestTranslation = function() {
+            const chatInput = document.getElementById('chatInput');
+            // Store current input if any
+            const currentInput = chatInput.value;
+            
+            // Send translation request
+            // Send translation request
+            chatInput.value = "Please translate your PREVIOUS response into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text.";
+            sendChat();
+            
+            // Restore previous input (optional, but good UX if they were typing)
+            // Actually sendChat clears input, so we can't easily restore it to the input field
+            // But usually user translates *after* reading, so input is likely empty.
         };
 
         function setChatContext(ctx) {
@@ -1602,6 +1625,15 @@ if (document.readyState === 'loading') {
             div.innerHTML = parseMarkdown(text);
             container.appendChild(div);
             container.scrollTop = container.scrollHeight;
+
+            // Track history
+            // Map 'bot' role to 'model' for Gemini/API consistency
+            const apiRole = role === 'bot' ? 'model' : 'user';
+            chatHistory.push({ role: apiRole, content: text });
+            
+            // Limit history size on client side too if needed?
+            // Let's keep last 20 messages
+            if (chatHistory.length > 20) chatHistory = chatHistory.slice(-20);
         }
 
         let typingTimer;
@@ -1639,13 +1671,13 @@ if (document.readyState === 'loading') {
 
             // Get selected model
             const modelSelector = document.getElementById('modelSelector');
-            const selectedModel = modelSelector ? modelSelector.value : 'gemini';
+            const selectedModel = modelSelector ? modelSelector.value : 'perplexity';
             
             try {
                 const res = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text, context, model: selectedModel })
+                    body: JSON.stringify({ message: text, context, history: chatHistory, model: selectedModel })
                 });
                 
                 const data = await res.json();
@@ -1698,8 +1730,8 @@ if (document.readyState === 'loading') {
                 menu.style.display = 'block';
                 document.querySelector('.slash-header').textContent = 'PORTFOLIOS';
                 
-                // Populate with current groups (limit 5)
-                const items = groups.slice(0, 5).map(g => ({
+                // Populate with current groups (limit 50)
+                const items = groups.slice(0, 50).map(g => ({
                     icon: '📁',
                     text: g.name,
                     desc: g.type || 'Personal',
@@ -1714,7 +1746,7 @@ if (document.readyState === 'loading') {
                 menu.style.display = 'block';
                 document.querySelector('.slash-header').textContent = 'STOCKS';
                 
-                const items = (localMembers || []).slice(0, 5).map(m => ({
+                const items = (localMembers || []).slice(0, 50).map(m => ({
                     icon: '📈',
                     text: m.symbol,
                     desc: m.allocation + '%',
@@ -1753,15 +1785,16 @@ if (document.readyState === 'loading') {
 
         function selectPortfolioSlash(group) {
             // Set context
-            setChatContext('@' + group.name);
+            setChatContext("@'" + group.name + "'");
             const input = document.getElementById('chatInput');
-            // Replace /p with @GroupName
-            input.value = input.value.slice(0, -2) + '@' + group.name + ' ';
+            // Replace /p with @'GroupName'
+            input.value = input.value.slice(0, -2) + "@'" + group.name + "' ";
             document.getElementById('slashMenu').style.display = 'none';
             slashActive = false;
             input.focus();
             
-            selectGroup(group);
+            // Do NOT navigate to the group page
+            // selectGroup(group);
         }
         
         function insertStockSlash(symbol) {

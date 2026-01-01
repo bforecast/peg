@@ -6,6 +6,7 @@ export const STOCK_HTML = `<!DOCTYPE html>
     <title>Stock Analysis</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         :root {
             --bg-color: #f8f9fa;
@@ -207,6 +208,34 @@ export const STOCK_HTML = `<!DOCTYPE html>
         .port-card:hover { background: #eff3f4; }
         .alloc-badge { font-family: monospace; font-weight: 700; background: #ddd; padding: 2px 6px; border-radius: 4px; }
 
+
+        /* Chat UI Styles */
+        .fab-btn { position: fixed; bottom: 30px; right: 30px; background: linear-gradient(135deg, #2563EB, #1D4ED8); color: white; width: 60px; height: 60px; border-radius: 30px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; z-index: 2000; }
+        .fab-btn:hover { transform: scale(1.05); box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4); }
+        .chat-container { position: fixed; bottom: 80px; right: 20px; width: 600px; height: 800px; max-height: 90vh; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 20px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15); display: flex; flex-direction: column; overflow: hidden; z-index: 2000; display: none; }
+        .chat-header { padding: 20px; background: rgba(255, 255, 255, 0.8); border-bottom: 1px solid rgba(0, 0, 0, 0.05); display: flex; justify-content: space-between; align-items: center; }
+        .header-title { font-weight: 600; font-size: 16px; color: #111827; display: flex; flex-direction: column; gap: 2px; }
+        .header-subtitle { font-size: 11px; color: #6B7280; font-weight: 500; display: flex; align-items: center; gap: 6px; }
+        .status-dot { width: 8px; height: 8px; background: #10B981; border-radius: 50%; }
+        .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+        .message { max-width: 85%; padding: 12px 16px; border-radius: 16px; font-size: 0.95rem; line-height: 1.5; position: relative; }
+        .message.bot { background: #F3F4F6; color: #1F2937; border-bottom-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); align-self: flex-start; }
+        .message.user { background: #2563EB; color: white; border-bottom-right-radius: 4px; align-self: flex-end; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); }
+        .typing-indicator { display: flex; gap: 4px; padding: 12px 16px; background: #F3F4F6; border-radius: 16px; border-bottom-left-radius: 4px; width: fit-content; margin-bottom: 8px; align-self: flex-start; }
+        .dot { width: 6px; height: 6px; background: #9CA3AF; border-radius: 50%; animation: bounce 1.4s infinite ease-in-out; }
+        .dot:nth-child(1) { animation-delay: -0.32s; }
+        .dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes bounce { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+        .input-area { padding: 12px 16px; background: rgba(255, 255, 255, 0.95); border-top: 1px solid rgba(0, 0, 0, 0.05); display: flex; flex-direction: column; gap: 10px; }
+        .chips-row { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 4px; scrollbar-width: none; }
+        .chip { background: #EFF6FF; color: #2563EB; font-size: 11px; font-weight: 500; padding: 4px 10px; border-radius: 12px; white-space: nowrap; cursor: pointer; border: 1px solid rgba(37, 99, 235, 0.1); transition: all 0.2s; }
+        .chip:hover { background: #DBEAFE; transform: translateY(-1px); }
+        .input-wrapper { display: flex; gap: 10px; align-items: center; }
+        .chat-input { flex: 1; padding: 10px 14px; border-radius: 12px; border: 1px solid #E5E7EB; outline: none; font-family: inherit; font-size: 14px; transition: border-color 0.2s; }
+        .chat-input:focus { border-color: #2563EB; }
+        .send-btn { background: #2563EB; color: white; border: none; border-radius: 12px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.2s; flex-shrink: 0; }
+        .send-btn:hover { background: #1D4ED8; }
+        @media (max-width: 480px) { .chat-container { width: 100%; height: 100%; max-height: 100%; bottom: 0; right: 0; border-radius: 0; } }
     </style>
 </head>
 <body>
@@ -221,6 +250,69 @@ export const STOCK_HTML = `<!DOCTYPE html>
     <div class="full-width loading" id="loading">Loading stock data...</div>
 </div>
 
+
+    <!-- Floating Action Button -->
+    <div id="fabBtn" class="fab-btn" onclick="toggleChat()">
+        <svg  xmlns="http://www.w3.org/2000/svg"  width="24"  height="24"  viewBox="0 0 24 24"  fill="none"  stroke="currentColor"  stroke-width="2"  stroke-linecap="round"  stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M18 4a3 3 0 0 1 3 3v8a3 3 0 0 1 -3 3h-5l-5 3v-3h-2a3 3 0 0 1 -3 -3v-8a3 3 0 0 1 3 -3h12z" /><path d="M9.5 9h.01" /><path d="M14.5 9h.01" /><path d="M9.5 13a3.5 3.5 0 0 0 5 0" /></svg>
+    </div>
+
+    <!-- Chat Interface -->
+    <div id="chatContainer" class="chat-container">
+        <div class="chat-header">
+            <div class="header-title">
+                Forward PEG AI Expert
+                <div class="header-subtitle">
+                    <span class="status-dot"></span>
+                    Context: <span id="chatContext">@\${symbol}</span>
+                </div>
+            </div>
+            <div style="display:flex; align-items:center; gap:10px;">
+                <select id="modelSelector" style="padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:0.8rem; background:white;">
+                    <option value="perplexity" selected>Perplexity (Pro)</option>
+                    <option value="gemini">Gemini</option>
+                </select>
+                <button onclick="toggleMaximize()" style="background:none; border:none; cursor:pointer;" title="Maximize">
+                    <svg id="maxIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                    </svg>
+                    <svg id="restoreIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
+                       <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"></path>
+                    </svg>
+                </button>
+                <button onclick="toggleChat()" style="background:none; border:none; cursor:pointer;">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#666" stroke-width="2">
+                        <line x1="18" y1="6" x2="6" y2="18"></line>
+                        <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                </button>
+            </div>
+        </div>
+        
+        <div id="chatMessages" class="chat-messages">
+            <div class="message bot">
+                Hello! I can analyze \${symbol} for you. Ask about earnings, valuation, or technical trends.
+            </div>
+        </div>
+
+        <div class="input-area">
+            <div class="chips-row">
+                <div class="chip" onclick="setContextQuestion('✨ Analyze this stock')">✨ Analyze this</div>
+                <div class="chip" onclick="setContextQuestion('📈 Technical Analysis for '+symbol)">📈 Technical Trend</div>
+                <div class="chip" onclick="setContextQuestion('💰 Valuation Check for '+symbol)">💰 Valuation Check</div>
+                 <div class="chip" onclick="setContextQuestion('📊 Earnings History for '+symbol)">📊 Earnings</div>
+            </div>
+            <div class="input-wrapper">
+                 <button class="translate-btn" onclick="requestTranslation()" title="Translate last reply to Chinese" style="background:none; border:none; cursor:pointer; padding:0 8px; color:#666;">
+                    <span style="font-size: 1.2rem;">文</span>
+                </button>
+                <input type="text" id="chatInput" class="chat-input" placeholder="Ask about \${symbol}..." onkeydown="handleChatInput(event)">
+                <button class="send-btn" onclick="sendChat()">
+                    <svg  xmlns="http://www.w3.org/2000/svg"  width="20"  height="20"  viewBox="0 0 24 24"  fill="none"  stroke="currentColor"  stroke-width="2"  stroke-linecap="round"  stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 14l11 -11" /><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5" /></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+    
 <script>
     const symbol = window.location.pathname.split('/').pop();
     const container = document.getElementById('mainContent');
@@ -229,6 +321,140 @@ export const STOCK_HTML = `<!DOCTYPE html>
     // Utility for colors
     const GREEN = '#00BA7C';
     const RED = '#F91880';
+
+
+    // -- CHAT LOGIC --
+    let chatOpen = false;
+    let isMaximized = false;
+    let chatHistory = [];
+    const chatContainer = document.getElementById('chatContainer');
+    const fabBtn = document.getElementById('fabBtn');
+    
+    // Add simple markdown parser if marked is missing
+    function parseMarkdown(text) {
+        if(window.marked) return window.marked.parse(text);
+        return text.replace(/\\n/g, '<br>').replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
+    }
+
+    function toggleChat() {
+        chatOpen = !chatOpen;
+        if(chatOpen) {
+            chatContainer.style.display = 'flex';
+            fabBtn.style.display = 'none';
+             setTimeout(() => document.getElementById('chatInput').focus(), 100);
+        } else {
+            chatContainer.style.display = 'none';
+            fabBtn.style.display = 'flex';
+        }
+    }
+    
+    function toggleMaximize() {
+        isMaximized = !isMaximized;
+        const iconMax = document.getElementById('maxIcon');
+        const iconRestore = document.getElementById('restoreIcon');
+        
+        if (isMaximized) {
+            chatContainer.style.width = '95%';
+            chatContainer.style.height = '95%';
+            chatContainer.style.bottom = '2.5%';
+            chatContainer.style.right = '2.5%';
+            chatContainer.style.borderRadius = '8px';
+            iconMax.style.display = 'none';
+            iconRestore.style.display = 'block';
+        } else {
+            chatContainer.style.width = '600px';
+            chatContainer.style.height = '800px';
+            chatContainer.style.bottom = '80px';
+            chatContainer.style.right = '20px';
+            chatContainer.style.borderRadius = '20px';
+            iconMax.style.display = 'block';
+            iconRestore.style.display = 'none';
+        }
+    }
+
+    function addMessage(role, content) {
+        const div = document.createElement('div');
+        div.className = 'message ' + (role === 'user' ? 'user' : 'bot');
+        div.innerHTML = role === 'user' ? content : parseMarkdown(content);
+        document.getElementById('chatMessages').appendChild(div);
+        
+        const msgs = document.getElementById('chatMessages');
+        msgs.scrollTop = msgs.scrollHeight;
+        
+        chatHistory.push({ role, content });
+        if(chatHistory.length > 20) chatHistory.shift();
+    }
+    
+    function showTyping() {
+        const div = document.createElement('div');
+        div.id = 'typingIndicator';
+        div.className = 'typing-indicator';
+        div.innerHTML = '<div class="dot"></div><div class="dot"></div><div class="dot"></div>';
+        document.getElementById('chatMessages').appendChild(div);
+        const msgs = document.getElementById('chatMessages');
+        msgs.scrollTop = msgs.scrollHeight;
+    }
+
+    function hideTyping() {
+        const el = document.getElementById('typingIndicator');
+        if(el) el.remove();
+    }
+
+    async function sendChat() {
+        const input = document.getElementById('chatInput');
+        const text = input.value.trim();
+        if (!text) return;
+
+        addMessage('user', text);
+        input.value = '';
+        showTyping();
+
+        const context = {
+            symbol: symbol, 
+            portfolioName: 'Stock Analysis: ' + symbol,
+            isSingleStock: true
+        };
+
+        const modelSelector = document.getElementById('modelSelector');
+        const selectedModel = modelSelector ? modelSelector.value : 'perplexity';
+        
+        try {
+            const res = await fetch('/api/chat', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ message: text, context, history: chatHistory, model: selectedModel })
+            });
+            
+            const data = await res.json();
+            hideTyping();
+            
+            if (data.error) {
+                addMessage('assistant', 'Error: ' + data.error);
+            } else {
+                addMessage('assistant', data.response);
+            }
+        } catch (e) {
+            hideTyping();
+            addMessage('assistant', 'Network Error: ' + e.message);
+        }
+    }
+
+    function handleChatInput(e) {
+        if (e.key === 'Enter') sendChat();
+    }
+
+    function requestTranslation() {
+        const input = document.getElementById('chatInput');
+        input.value = "Please translate your PREVIOUS response into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text.";
+        sendChat();
+    }
+    
+    function setContextQuestion(q) {
+        if(!chatOpen) toggleChat();
+        const input = document.getElementById('chatInput');
+        input.value = q;
+        sendChat();
+    }
 
     async function init() {
         try {
