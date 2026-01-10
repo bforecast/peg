@@ -269,18 +269,33 @@ export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
 
 export async function fetchPriceHistory(symbol: string): Promise<any[]> {
     try {
-        const session = await getYahooSession();
+        let session = await getYahooSession();
         if (!session) throw new Error('Failed to get Yahoo Session');
 
-        const { crumb, cookie } = session;
-        const period1 = Math.floor((Date.now() - 31536000000 * 2) / 1000); // 2 years ago (safe buffer)
+        let { crumb, cookie } = session;
+        const period1 = Math.floor((Date.now() - 31536000000 * 10) / 1000); // 10 years ago
         const period2 = Math.floor(Date.now() / 1000);
 
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?symbol=${symbol}&period1=${period1}&period2=${period2}&interval=1d&crumb=${crumb}`;
+        let url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?symbol=${symbol}&period1=${period1}&period2=${period2}&interval=1d&crumb=${crumb}`;
 
-        const response = await fetchWithTimeout(url, {
+        let response = await fetchWithTimeout(url, {
             headers: { 'User-Agent': USER_AGENT, 'Cookie': cookie }
         }, 10000);
+
+        // Retry on Auth Failure
+        if (response.status === 401 || response.status === 403) {
+            console.warn(`[Yahoo History] Session Expired/Invalid (${response.status}) for ${symbol}. Refreshing session and retrying.`);
+            yahooSession = null;
+            session = await getYahooSession();
+            if (session) {
+                crumb = session.crumb;
+                cookie = session.cookie;
+                url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?symbol=${symbol}&period1=${period1}&period2=${period2}&interval=1d&crumb=${crumb}`;
+                response = await fetchWithTimeout(url, {
+                    headers: { 'User-Agent': USER_AGENT, 'Cookie': cookie }
+                }, 10000);
+            }
+        }
 
         if (!response.ok) {
             console.error(`Yahoo History Error for ${symbol}: ${response.status} ${response.statusText}`);

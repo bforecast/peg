@@ -728,6 +728,19 @@ app.put('/api/groups/:id', async (c) => {
         }
 
         await c.env.DB.batch(statements);
+
+        // Allow batch backfill triggering for new members?
+        // It's complex to know which were added vs existing.
+        // For simplicity, we can iterate 'members' in query and trigger check.
+        // Or leave it for 'Add Member' mostly.
+        // Let's iterate if it's a small batch. 
+        if (Array.isArray(members)) {
+            for (const mem of members) {
+                const s = typeof mem === 'string' ? mem : mem.symbol;
+                if (s) await checkAndBackfill(c.env, s.toUpperCase(), c.executionCtx);
+            }
+        }
+
         return c.json({ success: true });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
@@ -771,15 +784,42 @@ app.post('/api/groups/:id/members', async (c) => {
         const { symbol } = body;
         if (!symbol) return c.json({ error: 'Symbol is required' }, 400);
 
+        const symUpper = symbol.toUpperCase();
         await c.env.DB.prepare(
             'INSERT OR IGNORE INTO group_members (group_id, symbol) VALUES (?, ?)'
-        ).bind(id, symbol.toUpperCase()).run();
+        ).bind(id, symUpper).run();
 
-        return c.json({ success: true, symbol });
+        // Trigger Backfill Check
+        await checkAndBackfill(c.env, symUpper, c.executionCtx);
+
+        return c.json({ success: true, symbol: symUpper });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     }
 });
+
+// Helper for Backfill
+async function checkAndBackfill(env: Bindings, symbol: string, ctx: ExecutionContext) {
+    // 1. Check existing history depth
+    try {
+        const { count } = await env.DB.prepare('SELECT count(*) as count FROM stock_prices WHERE symbol = ?').bind(symbol).first() as { count: number };
+
+        // If less than 200 days (approx 1 year), treat as missing history
+        if (count < 200) {
+            console.log(`[Backfill] Triggering for ${symbol} (Count: ${count})`);
+
+            // Run in background to avoid blocking response
+            ctx.waitUntil((async () => {
+                const { backfillHistory } = await import('../db');
+                await backfillHistory(env, symbol);
+            })());
+            return true;
+        }
+    } catch (e) {
+        console.error(`[Backfill] Check failed for ${symbol}`, e);
+    }
+    return false;
+}
 
 // Remove Member
 app.delete('/api/groups/:id/members/:symbol', async (c) => {
@@ -790,6 +830,50 @@ app.delete('/api/groups/:id/members/:symbol', async (c) => {
             'DELETE FROM group_members WHERE group_id = ? AND symbol = ?'
         ).bind(id, symbol).run();
         return c.json({ success: true });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// Manual Backfill Endpoint (supports GET for browser, POST for API)
+app.on(['GET', 'POST'], '/api/admin/backfill-history', async (c) => {
+    try {
+        const symbol = c.req.query('symbol')?.toUpperCase();
+        const groupId = c.req.query('id');
+
+        const { backfillHistory } = await import('../db');
+        let triggered = [];
+
+        if (symbol) {
+            // Run in background via waitUntil
+            c.executionCtx.waitUntil(backfillHistory(c.env, symbol));
+            triggered.push(symbol);
+        } else if (groupId) {
+            const { results } = await c.env.DB.prepare('SELECT symbol FROM group_members WHERE group_id = ?').bind(groupId).all();
+            const symbols = (results || []).map((r: any) => r.symbol);
+
+            // Trigger all in background (sequential inside async wrapper)
+            c.executionCtx.waitUntil((async () => {
+                for (const s of symbols) {
+                    await backfillHistory(c.env, s);
+                    await new Promise(r => setTimeout(r, 1000)); // Delay between
+                }
+
+                // Trigger Portfolio Recalc Logic
+                try {
+                    const { calculatePortfolioStats } = await import('../portfolio');
+                    await calculatePortfolioStats(c.env, parseInt(groupId));
+                    console.log(`[Backfill] Recalculated stats for group ${groupId}`);
+                } catch (e) {
+                    console.error(`[Backfill] Failed to recalc stats for group ${groupId}`, e);
+                }
+            })());
+            triggered = symbols;
+        } else {
+            return c.json({ error: 'Symbol or Group ID required' }, 400);
+        }
+
+        return c.json({ success: true, message: `Backfill started for ${triggered.length} symbols`, symbols: triggered });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     }
