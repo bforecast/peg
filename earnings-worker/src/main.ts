@@ -1,37 +1,81 @@
 import { Hono } from 'hono';
-import { basicAuth } from 'hono/basic-auth';
+import { getCookie, setCookie } from 'hono/cookie';
 import { Bindings } from './types';
 import dashboardRoutes from './routes/dashboard';
 import adminRoutes from './routes/admin';
 import legacyRoutes from './routes/legacy';
 import chatRoutes from './routes/chat';
 import { scheduled } from './cron';
+import { LOGIN_HTML } from './login_html';
 
-console.log('Worker Environment (main.ts) v1.3');
+console.log('Worker Environment (main.ts) v2.0 - Cookie Auth');
 
 const app = new Hono<{ Bindings: Bindings }>();
 
-// Security Middleware
-app.use('/*', async (c, next) => {
-    // Check if auth is configured
-    const username = c.env.AUTH_USERNAME || 'admin';
-    const password = c.env.AUTH_PASSWORD || 'password';
+// --- Public Routes ---
 
-    // Allow public access to status summary for debugging
-    const url = new URL(c.req.url);
-    if (url.pathname === '/api/cron-summary' || url.pathname === '/api/health') {
-        await next();
-    } else {
-        const auth = basicAuth({
-            username,
-            password,
+// Login Page
+app.get('/login', (c) => {
+    return c.html(LOGIN_HTML);
+});
+
+// Auth Handler
+app.post('/auth', async (c) => {
+    const body = await c.req.parseBody();
+    const username = body['username'];
+    const password = body['password'];
+
+    const envUser = c.env.AUTH_USERNAME || 'admin';
+    const envPass = c.env.AUTH_PASSWORD || 'password';
+
+    if (username === envUser && password === envPass) {
+        // valid credentials
+        // Set a persistent cookie (30 days)
+        setCookie(c, 'auth_session', 'valid_session_token', {
+            path: '/',
+            secure: true,
+            httpOnly: true,
+            maxAge: 60 * 60 * 24 * 30, // 30 Days
+            sameSite: 'Lax',
         });
-        return auth(c, next);
+        return c.redirect('/');
+    } else {
+        return c.redirect('/login?error=1');
     }
 });
 
-// Mount routes
-// Note: We mount them at root because they define their own paths (/api/...)
+// --- Middleware ---
+
+app.use('/*', async (c, next) => {
+    const url = new URL(c.req.url);
+    const path = url.pathname;
+
+    // List of public paths to bypass auth
+    const publicPaths = [
+        '/login',
+        '/auth',
+        '/favicon.ico',
+        '/manifest.json',
+        '/api/cron-summary', // Debug
+        '/api/health'        // Debug
+    ];
+
+    // Check if path starts with certain prefixes (e.g. static assets)
+    if (publicPaths.includes(path) || path.startsWith('/static/') || path.startsWith('/public/')) {
+        return next();
+    }
+
+    // Check Cookie
+    const session = getCookie(c, 'auth_session');
+    if (session === 'valid_session_token') {
+        return next();
+    }
+
+    // Not authenticated -> Redirect to login
+    return c.redirect('/login');
+});
+
+// --- Protected Routes ---
 app.route('/', dashboardRoutes);
 app.route('/', adminRoutes);
 app.route('/', legacyRoutes);

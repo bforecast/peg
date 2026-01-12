@@ -295,56 +295,11 @@ chatRoutes.post('/api/chat', async (c) => {
                             }
 
                             // 2. Get holdings with now-guaranteed valuation and technical data
-                            const holdings = await db.prepare(
-                                `SELECT gm.symbol, gm.allocation, 
-                                        sq.price, sq.forward_pe, sq.pe_ratio, sq.eps_current_year, sq.eps_next_year,
-                                        ss.change_ytd, ss.change_1y, ss.sma_20, ss.sma_50, ss.sma_200, ss.rs_rank_1m
-                                 FROM group_members gm
-                                 LEFT JOIN (
-                                     SELECT * FROM stock_quotes WHERE rowid IN (
-                                         SELECT MAX(rowid) FROM stock_quotes GROUP BY symbol
-                                     )
-                                 ) sq ON gm.symbol = sq.symbol
-                                 LEFT JOIN (
-                                     SELECT * FROM stock_stats WHERE rowid IN (
-                                         SELECT MAX(rowid) FROM stock_stats GROUP BY symbol
-                                     )
-                                 ) ss ON gm.symbol = ss.symbol
-                                 WHERE gm.group_id = ?
-                                 ORDER BY gm.allocation DESC
-                                 LIMIT 20`
-                            ).bind(group.id).all();
-
-                            localDataContext += `\n\n### Portfolio: ${group.name}\n`;
-                            localDataContext += `**Description**: ${group.description || 'N/A'}\n`;
-                            localDataContext += `### Portfolio Statistics:\n`;
-                            localDataContext += `- **CAGR**: ${group.cagr?.toFixed(1) || 'N/A'}%\n`;
-                            localDataContext += `- **Sharpe Ratio**: ${group.sharpe?.toFixed(2) || 'N/A'}\n`;
-                            localDataContext += `- **Sortino Ratio**: ${group.sortino?.toFixed(2) || 'N/A'}\n`;
-                            localDataContext += `- **Max Drawdown**: ${group.max_drawdown?.toFixed(1) || 'N/A'}%\n`;
-                            localDataContext += `**Top Holdings (with Valuation & Technicals)**:\n`;
-                            if (holdings.results && holdings.results.length > 0) {
-                                for (const h of holdings.results as any[]) {
-                                    const priceVsSma = h.price && h.sma_20 && h.sma_50 && h.sma_200
-                                        ? (h.price > h.sma_20 && h.sma_20 > h.sma_50 ? 'Uptrend' : h.price < h.sma_200 ? 'Downtrend' : 'Neutral')
-                                        : 'N/A';
-                                    const epsCurrent = h.eps_current_year;
-                                    const epsNext = h.eps_next_year;
-                                    let growthStr = 'N/A';
-                                    let pegStr = 'N/A';
-
-                                    if (epsCurrent !== null && epsNext !== null && epsCurrent !== 0) {
-                                        const g = ((epsNext - epsCurrent) / Math.abs(epsCurrent)) * 100;
-                                        growthStr = g.toFixed(1) + '%';
-                                        if (h.forward_pe && g > 0) {
-                                            pegStr = (h.forward_pe / g).toFixed(2);
-                                        }
-                                    }
-
-                                    localDataContext += `- **${h.symbol}**: ${h.allocation?.toFixed(1)}% alloc, Price: $${h.price?.toFixed(2) || 'N/A'}, Forward PE: ${h.forward_pe?.toFixed(1) || 'N/A'}, PEG: ${pegStr}, Growth: ${growthStr}, PE: ${h.pe_ratio?.toFixed(1) || 'N/A'}, RS Rank: ${h.rs_rank_1m || 'N/A'}, Trend: ${priceVsSma}, YTD: ${h.change_ytd?.toFixed(1) || 'N/A'}%, 1Y: ${h.change_1y?.toFixed(1) || 'N/A'}%\n`;
-                                }
+                            const formattedContext = await fetchPortfolioContext(c.env.DB, group.id, group.name);
+                            if (formattedContext) {
+                                localDataContext += formattedContext;
                             } else {
-                                localDataContext += `- No holdings data available\n`;
+                                localDataContext += `\n(No holdings data available)\n`;
                             }
                         }
                     }
@@ -405,6 +360,24 @@ chatRoutes.post('/api/chat', async (c) => {
         // Prepare initial messages for Gemini
         const geminiMessages: any[] = [];
 
+        // Fetch portfolio data for Gemini (similar to Perplexity logic)
+        let geminiLocalContext = '';
+        if (context && context.portfolioId) {
+            try {
+                const results = await fetchPortfolioContext(c.env.DB, context.portfolioId, context.portfolioName);
+                if (results) geminiLocalContext = results;
+            } catch (e) {
+                console.error('[Gemini] Error fetching portfolio data:', e);
+            }
+        }
+
+        // Build enhanced message for Gemini
+        let geminiEnhancedMessage = fullMessage;
+        if (geminiLocalContext) {
+            console.log('[Gemini] Injecting Local Context');
+            geminiEnhancedMessage = `${fullMessage}\n\n--- LOCAL PORTFOLIO DATA ---${geminiLocalContext}\n--- END OF LOCAL DATA ---\n\nAnalyze the above portfolio data to answer the question.`;
+        }
+
         // Add Chat History (limit to last 10 to save tokens)
         if (history && Array.isArray(history)) {
             history.slice(-10).forEach(h => {
@@ -418,7 +391,7 @@ chatRoutes.post('/api/chat', async (c) => {
         // Add Current Message
         geminiMessages.push({
             role: 'user',
-            parts: [{ text: fullMessage }]
+            parts: [{ text: geminiEnhancedMessage }]
         });
 
         // Call Gemini
@@ -450,3 +423,73 @@ chatRoutes.get('/api/search/portfolios', async (c) => {
 });
 
 export default chatRoutes;
+
+// Shared helper function to fetch and format portfolio context
+async function fetchPortfolioContext(db: any, portfolioId: string | number, portfolioName?: string): Promise<string | null> {
+    try {
+        const holdings = await db.prepare(
+            `SELECT gm.symbol, gm.allocation, 
+                    sq.price, sq.forward_pe, sq.pe_ratio, sq.eps_current_year, sq.eps_next_year,
+                    ss.change_ytd, ss.change_1y, ss.sma_20, ss.sma_50, ss.sma_200, ss.rs_rank_1m
+                FROM group_members gm
+                LEFT JOIN (
+                    SELECT * FROM stock_quotes WHERE rowid IN (
+                        SELECT MAX(rowid) FROM stock_quotes GROUP BY symbol
+                    )
+                ) sq ON gm.symbol = sq.symbol
+                LEFT JOIN (
+                    SELECT * FROM stock_stats WHERE rowid IN (
+                        SELECT MAX(rowid) FROM stock_stats GROUP BY symbol
+                    )
+                ) ss ON gm.symbol = ss.symbol
+                WHERE gm.group_id = ?
+                ORDER BY gm.allocation DESC
+                LIMIT 20`
+        ).bind(portfolioId).all();
+
+        if (holdings.results && holdings.results.length > 0) {
+            let contextStr = `\n\n### Portfolio: ${portfolioName || 'Selected Portfolio'}\n`;
+            contextStr += `Total Holdings: ${holdings.results.length}\n\n`;
+
+            for (const h of holdings.results as any[]) {
+                const priceVsSma = h.price && h.sma_20 && h.sma_50 && h.sma_200
+                    ? (h.price > h.sma_20 && h.sma_20 > h.sma_50 ? 'Uptrend' : h.price < h.sma_200 ? 'Downtrend' : 'Neutral')
+                    : 'N/A';
+
+                const epsCurrent = h.eps_current_year;
+                const epsNext = h.eps_next_year;
+                let growthStr = 'N/A';
+                let pegStr = 'N/A';
+
+                if (epsCurrent !== null && epsNext !== null && epsCurrent !== 0) {
+                    const g = ((epsNext - epsCurrent) / Math.abs(epsCurrent)) * 100;
+                    growthStr = g.toFixed(1) + '%';
+                    if (h.forward_pe && g > 0) {
+                        pegStr = (h.forward_pe / g).toFixed(2);
+                    }
+                }
+
+                // Parse RS Rank safely
+                let rsRank = 'N/A';
+                const rawRsRank = h.rs_rank_1m;
+                if (rawRsRank && typeof rawRsRank === 'string') {
+                    if (rawRsRank.includes('data-score=')) {
+                        const match = rawRsRank.match(/data-score="(\d+)"/);
+                        rsRank = match ? match[1] : 'N/A';
+                    } else if (!rawRsRank.startsWith('<svg')) {
+                        rsRank = rawRsRank;
+                    }
+                } else if (typeof rawRsRank === 'number') {
+                    rsRank = rawRsRank.toString();
+                }
+
+                contextStr += `- **${h.symbol}**: ${h.allocation?.toFixed(1) || 0}% alloc, Price: $${h.price?.toFixed(2) || 'N/A'}, Forward PE: ${h.forward_pe?.toFixed(1) || 'N/A'}, PEG: ${pegStr}, Growth: ${growthStr}, PE: ${h.pe_ratio?.toFixed(1) || 'N/A'}, RS Rank: ${rsRank}, Trend: ${priceVsSma}, YTD: ${h.change_ytd?.toFixed(1) || 'N/A'}%, 1Y: ${h.change_1y?.toFixed(1) || 'N/A'}%\n`;
+            }
+            return contextStr;
+        }
+        return null;
+    } catch (e) {
+        console.error('Error in fetchPortfolioContext:', e);
+        return null; // Fail gracefully
+    }
+}
