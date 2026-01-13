@@ -8,12 +8,23 @@ earnings-worker/.wrangler/
 cache/
 *.log
 
+
 # Browser Artifacts
 CachedData/
 Crashpad/
 Local Storage/
 GPUCache/
+DawnGraphiteCache/
+DawnWebGPUCache/
+Code Cache/
+Session Storage/
+Shared Dictionary/
+Network/
+blob_storage/
 Cookies/
 Network Persistent State/
 Preferences/
 TransportSecurity/
+Local State/
+SharedStorage/
+DIPS/
