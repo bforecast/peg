@@ -19,7 +19,7 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
         "SELECT symbol, allocation FROM group_members WHERE group_id = ?"
     ).bind(groupId).all();
 
-    if (!members || members.length === 0) return null;
+    if (!members || members.length === 0) throw new Error(`Batch Calc: No members found for group ${groupId}`);
 
     const symbols = members.map((m: any) => m.symbol);
     const targetAllocations = new Map<string, number>();
@@ -64,8 +64,7 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     // Benchmark Data
     const spyPrices = priceMap.get(BENCHMARK_SYMBOL);
     if (!spyPrices || spyPrices.length < 50) {
-        console.error("Insufficient Benchmark (SPY) data");
-        // Proceed without correlation or return error? Let's try to proceed.
+        throw new Error(`Batch Calc: Insufficient Spy Data (${spyPrices?.length || 0})`);
     }
 
     // 3. Normalize Date Range
@@ -86,24 +85,22 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     }
 
     if (validSymbols.length === 0) {
-        console.error(`[Portfolio Stats] No valid symbols for Group ${groupId}`);
-        return null;
+        throw new Error(`Batch Calc: No valid symbols data for group ${groupId}`);
     }
 
     // Re-normalize allocations if some symbols were dropped
     if (validAllocationSum < 99 && validAllocationSum > 0) {
         const scale = 100 / validAllocationSum;
-        console.log(`[Portfolio Stats]Re - normalizing weights by ${scale.toFixed(2)} (Valid Alloc: ${validAllocationSum}%)`);
         validSymbols.forEach(s => {
             const old = targetAllocations.get(s) || 0;
             targetAllocations.set(s, old * scale);
         });
     }
 
-    console.log(`[Portfolio Stats] Group ${groupId} Simulation Start: ${commonStartDate} (1Y Trailing)`);
-
     // Filter Benchmark to this start date
     const validSpy = spyPrices?.filter(p => p.date >= commonStartDate) || [];
+
+    if (validSpy.length === 0) throw new Error(`Batch Calc: No valid Spy data after ${commonStartDate}`);
 
     // 4. Run Simulation
     // Initial Capital = 100,000
@@ -127,24 +124,36 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     // Daily Value Tracking
     const portfolioCurve: { date: string, value: number }[] = [];
     const benchmarkCurve: { date: string, value: number }[] = [];
-
-    if (validSpy.length === 0) return null;
+    const lastKnownPrices = new Map<string, number>();
 
     // Simulation Loop  
     for (const day of validSpy) {
         const date = day.date;
         let dailyValue = 0;
 
-        // Sum holdings
+        // Sum holdings with Forward Fill
         for (const sym of symbols) {
             const history = priceMap.get(sym);
             const priceObj = history?.find(p => p.date === date);
 
             if (priceObj && priceObj.close) {
-                dailyValue += (shares.get(sym) || 0) * priceObj.close;
+                const close = priceObj.close;
+                dailyValue += (shares.get(sym) || 0) * close;
+                // Update last known price
+                lastKnownPrices.set(sym, close);
             } else {
-                // Missing data for this day, assume value held (simple simulation)
-                // Or if truly missing, skip day logic?
+                // Missing data for this day, use last known price
+                const lastPrice = lastKnownPrices.get(sym);
+                if (lastPrice) {
+                    dailyValue += (shares.get(sym) || 0) * lastPrice;
+                } else {
+                    // No history yet? Assume cash implication or initial price? 
+                    // If it's the very first days and we have no price, we might miss value.
+                    // But 'shares' calc establishes initial price.
+                    // If we can't find price, maybe rely on startPrice used in shares calc?
+                    // For now, if no lastPrice, it means we haven't seen this stock trade yet in simulation window.
+                    // Ideally we should have filtered for common start, but data is messy.
+                }
             }
         }
 
@@ -160,7 +169,11 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
         }
     }
 
-    if (portfolioCurve.length < 30) return null; // Not enough data
+
+
+    if (portfolioCurve.length < 30) {
+        throw new Error(`Batch Calc: Curve too short (${portfolioCurve.length} days). CommonStart: ${commonStartDate}, ValidSpy: ${validSpy.length}`);
+    }
 
     // 5. Calculate Metrics
 
@@ -232,15 +245,76 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
         }
     }
 
+    // I. Diversification Ratio (DR)
+    // Formula: (Sum of Weighted Volatilities of Components) / (Portfolio Volatility)
+    // DR = Sum(w_i * sigma_i) / sigma_p
+    let weightedVolSum = 0;
+
+    // We already have daily returns for the portfolio (variance -> stdDev)
+    // We need to calculate Annualized Standard Deviation for EACH component
+    // We can reuse the priceMap data
+
+    validSymbols.forEach(sym => {
+        const history = priceMap.get(sym)!;
+        // Filter history to match simulation start date
+        const validHistory = history.filter(p => p.date >= commonStartDate);
+
+        if (validHistory.length < 30) return; // Skip if insufficient data
+
+        // Calculate Daily Returns
+        const dailyRets: number[] = [];
+        for (let i = 1; i < validHistory.length; i++) {
+            const prev = validHistory[i - 1].close;
+            const curr = validHistory[i].close;
+            if (prev > 0) dailyRets.push((curr - prev) / prev);
+        }
+
+        if (dailyRets.length === 0) return;
+
+        // Std Dev of Daily Returns
+        const meanR = dailyRets.reduce((a, b) => a + b, 0) / dailyRets.length;
+        const varR = dailyRets.reduce((a, b) => a + Math.pow(b - meanR, 2), 0) / dailyRets.length;
+        const stdDailyR = Math.sqrt(varR);
+        const stdAnnualR = stdDailyR * Math.sqrt(TRADING_DAYS_PER_YEAR) * 100; // Percentage
+
+        // Weight
+        const w = (targetAllocations.get(sym) || 0) / 100; // Decimal weight
+
+        weightedVolSum += w * stdAnnualR;
+    });
+
+    let dr = 0;
+    if (stdDev > 0) {
+        dr = weightedVolSum / stdDev;
+    }
+
+    // Helper to sanitize NaN/Infinity
+    const safeNum = (n: number) => (isNaN(n) || !isFinite(n)) ? null : n;
+
     // 6. Save to DB
     const updateTime = getESTDate();
-    await env.DB.prepare(`
-        INSERT OR REPLACE INTO portfolio_stats(
-                group_id, cagr, std_dev, max_drawdown, sharpe, sortino, correlation_spy, change_1d, updated_at
-            ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `).bind(
-        groupId, cagr, stdDev, maxDD, sharpe, sortino, correlation, change1D, updateTime
-    ).run();
+    try {
+        await env.DB.prepare(`
+            INSERT OR REPLACE INTO portfolio_stats(
+                    group_id, cagr, std_dev, max_drawdown, sharpe, sortino, correlation_spy, change_1d, dr, updated_at
+                ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    `).bind(
+            groupId,
+            safeNum(cagr),
+            safeNum(stdDev),
+            safeNum(maxDD),
+            safeNum(sharpe),
+            safeNum(sortino),
+            safeNum(correlation),
+            safeNum(change1D),
+            safeNum(dr),
+            updateTime
+        ).run();
+    } catch (e: any) {
+        console.error(`[Portfolio Stats] DB Write Error for Group ${groupId}: ${e.message}`);
+        // Return null or partial stats? 
+        // Throwing here causes 500. Let's return stats but log error.
+    }
 
-    return { cagr, stdDev, maxDD, sharpe, sortino, correlation, change1D };
+    return { cagr, stdDev, maxDD, sharpe, sortino, correlation, change1D, dr };
 }

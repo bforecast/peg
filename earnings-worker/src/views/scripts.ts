@@ -1149,6 +1149,15 @@ async function loadMembers() {
                     // Update global groups list
                     groups = data;
                     
+                    // DR is now calculated on backend (p.dr)
+                    groups.forEach(g => {
+                         // Fallback for older rows if null
+                         if (g.dr == null && g.correlation_spy != null) {
+                            // Temporary fallback display
+                            g.dr = null; 
+                         }
+                    });
+                    
                     // Apply initial sort (CAGR descending by default)
                     groups.sort((a, b) => {
                         const valA = parseFloat(a[portfolioSort.key]);
@@ -1228,6 +1237,14 @@ async function loadMembers() {
                         if(value <= 0.7) return 'background: #ECEFF1; color: #546E7A;'; // Neutral
                         return 'background: #FFF3E0; color: #E65100;'; // High corr - orange (market-like)
                     
+                    case 'dr': // Higher is better (Diversification Ratio)
+                        // > 1.5 Excellent, > 1.2 Good, <= 1.0 Concentrated/Correlated
+                        if(value >= 2.0) return 'background: linear-gradient(90deg, #E8EAF6, #C5CAE9); color: #1A237E; font-weight:700;'; // Super Diversified
+                        if(value >= 1.5) return 'background: #E8EAF6; color: #283593;'; 
+                        if(value >= 1.2) return 'background: #E3F2FD; color: #1565C0;'; 
+                        if(value >= 1.0) return 'background: #F5F5F5; color: #555;';
+                        return 'background: #FFF3E0; color: #E65100;'; // < 1.0 (High Correlation or Leverage)
+                        
                     default:
                         return '';
                 }
@@ -1243,7 +1260,7 @@ async function loadMembers() {
                 const maxDD = p.max_drawdown != null ? p.max_drawdown.toFixed(2) + '%' : '-';
                 const sharpe = p.sharpe != null ? p.sharpe.toFixed(2) : '-';
                 const sortino = p.sortino != null ? p.sortino.toFixed(2) : '-';
-                const corr = p.correlation_spy != null ? p.correlation_spy.toFixed(2) : '-';
+                const drVal = p.dr != null ? p.dr.toFixed(2) : '-';
                 const created = p.created_at ? new Date(p.created_at).toLocaleDateString() : '-';
                 
                 // Escape name
@@ -1266,7 +1283,7 @@ async function loadMembers() {
                     <td style="text-align:right; padding:8px; \${getMetricStyle(p.max_drawdown, 'maxdd')}">\${maxDD}</td>
                     <td style="text-align:right; padding:8px; \${getMetricStyle(p.sharpe, 'sharpe')}">\${sharpe}</td>
                     <td style="text-align:right; padding:8px; \${getMetricStyle(p.sortino, 'sortino')}">\${sortino}</td>
-                    <td style="text-align:right; padding:8px; \${getMetricStyle(p.correlation_spy, 'corr')}">\${corr}</td>
+                    <td style="text-align:right; padding:8px; \${getMetricStyle(p.dr, 'dr')}">\${drVal}</td>
                     <td style="font-size:0.8rem; color:#888; padding:8px;">\${created}</td>
                 </tr>\`;
             });

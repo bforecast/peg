@@ -60,7 +60,7 @@ export const HTML = `<!DOCTYPE html>
                                 <th onclick="window.sortPortfolios('max_drawdown')" style="cursor:pointer;">Max DD <span id="sort-p-max_drawdown"></span></th>
                                 <th onclick="window.sortPortfolios('sharpe')" style="cursor:pointer;">Sharpe <span id="sort-p-sharpe"></span></th>
                                 <th onclick="window.sortPortfolios('sortino')" style="cursor:pointer;">Sortino <span id="sort-p-sortino"></span></th>
-                                <th onclick="window.sortPortfolios('correlation_spy')" style="cursor:pointer;" title="Correlation vs SPY">Corr. SPY <span id="sort-p-correlation_spy"></span></th>
+                                <th onclick="window.sortPortfolios('dr')" style="cursor:pointer;" title="Diversification Ratio (Higher is Better)">DR <span id="sort-p-dr"></span></th>
                                 <th>Created</th>
                             </tr>
                         </thead>

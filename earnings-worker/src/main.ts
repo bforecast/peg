@@ -5,6 +5,7 @@ import dashboardRoutes from './routes/dashboard';
 import adminRoutes from './routes/admin';
 import legacyRoutes from './routes/legacy';
 import chatRoutes from './routes/chat';
+import scoringRoutes from './routes/scoring';
 import { scheduled } from './cron';
 import { LOGIN_HTML } from './login_html';
 
@@ -80,6 +81,7 @@ app.route('/', dashboardRoutes);
 app.route('/', adminRoutes);
 app.route('/', legacyRoutes);
 app.route('/', chatRoutes);
+app.route('/', scoringRoutes);
 
 // Export Worker Entry Point
 export default {

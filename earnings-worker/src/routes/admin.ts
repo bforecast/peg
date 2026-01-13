@@ -3,6 +3,7 @@ import { Bindings } from '../types';
 import { updatePrices, updateTicker } from '../db';
 import { getSuperinvestors, getPortfolio } from '../dataroma';
 import { fetchQuotes } from '../yahoo_finance';
+import { calculatePortfolioStats } from '../portfolio';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -246,6 +247,19 @@ app.post('/api/import-superinvestor', async (c) => {
 
 // --- GROUP MANAGEMENT ---
 
+
+// Recalculate stats for a single group
+app.post('/api/admin/recalc/:id', async (c) => {
+    try {
+        const id = c.req.param('id');
+        const stats = await calculatePortfolioStats(c.env, parseInt(id));
+        if (!stats) return c.json({ error: 'Failed to calc stats (returned null)' }, 400);
+        return c.json({ status: 'ok', stats });
+    } catch (e: any) {
+        return c.json({ error: e.message, stack: e.stack }, 200);
+    }
+});
+
 // List Groups with Stats (Portfolios Board Data)
 // List Groups with Stats (Portfolios Board Data)
 app.get('/api/portfolios', async (c) => {
@@ -259,7 +273,7 @@ app.get('/api/portfolios', async (c) => {
         const { results } = await c.env.DB.prepare(`
             SELECT 
                 g.id, g.name, g.description, g.type, g.reference, g.created_at,
-                ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy, ps.change_1d, ps.updated_at as stats_updated_at,
+                ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy, ps.change_1d, ps.dr, ps.updated_at as stats_updated_at,
                 (SELECT count(*) FROM group_members gm WHERE gm.group_id = g.id) as member_count
             FROM groups g
             LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
@@ -334,7 +348,12 @@ app.post('/api/groups', async (c) => {
 app.delete('/api/groups/:id', async (c) => {
     try {
         const id = c.req.param('id');
+
+        // Cascade delete: Remove related records first
+        await c.env.DB.prepare('DELETE FROM group_members WHERE group_id = ?').bind(id).run();
+        await c.env.DB.prepare('DELETE FROM portfolio_stats WHERE group_id = ?').bind(id).run();
         await c.env.DB.prepare('DELETE FROM groups WHERE id = ?').bind(id).run();
+
         return c.json({ success: true });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);

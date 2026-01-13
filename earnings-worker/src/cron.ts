@@ -2,6 +2,7 @@ import { Bindings } from './types';
 import { fetchQuotes } from './yahoo_finance';
 import { logCronStatus, saveQuotesToDB, getLastTradingDate, getESTDate, getESTTimestamp } from './db';
 import { calculateStats } from './stats';
+import { updateScoringMetrics } from './scoring/fetcher';
 
 export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
     console.log('Scheduled Update Triggered');
@@ -137,6 +138,14 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                                         statsUpdated++;
                                     }
                                 }
+
+                                // 4. NEW: Update Scoring Metrics (Industry, Growth, etc)
+                                try {
+                                    await updateScoringMetrics(env, q.symbol);
+                                } catch (errScoring: any) {
+                                    console.error(`[Cron] Scoring update error for ${q.symbol}: ${errScoring.message}`);
+                                }
+
                             } catch (e: any) {
                                 console.error(`[Cron] Price/Stats insert error for ${q.symbol}: ${e.message}`);
                             }
