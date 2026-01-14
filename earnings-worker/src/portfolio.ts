@@ -2,7 +2,6 @@ import { Bindings, StockPrice } from './types';
 import { calculateStats } from './stats';
 import { getESTDate } from './db';
 
-// Helper to get date N days ago
 function getDateDaysAgo(days: number): string {
     const d = new Date();
     d.setDate(d.getDate() - days);
@@ -142,17 +141,10 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
                 // Update last known price
                 lastKnownPrices.set(sym, close);
             } else {
-                // Missing data for this day, use last known price
+                // Missing data for this day - use last known price (forward fill)
                 const lastPrice = lastKnownPrices.get(sym);
                 if (lastPrice) {
                     dailyValue += (shares.get(sym) || 0) * lastPrice;
-                } else {
-                    // No history yet? Assume cash implication or initial price? 
-                    // If it's the very first days and we have no price, we might miss value.
-                    // But 'shares' calc establishes initial price.
-                    // If we can't find price, maybe rely on startPrice used in shares calc?
-                    // For now, if no lastPrice, it means we haven't seen this stock trade yet in simulation window.
-                    // Ideally we should have filtered for common start, but data is messy.
                 }
             }
         }

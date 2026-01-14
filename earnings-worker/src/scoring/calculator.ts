@@ -2,37 +2,35 @@ import { ScoringMetrics, PortfolioScore } from './types';
 import { Bindings } from '../types';
 import { fetchMacroState } from './fetcher';
 
-// Constants
-const WEIGHT_FORWARD = 0.40;
-const WEIGHT_HISTORY = 0.60;
-
 // 1. Single Stock Scoring
-export function calculateStockScore(metrics: ScoringMetrics): { total: number, profitScore: number, industryScore: number } {
+export function calculateStockScore(metrics: ScoringMetrics): { total: number; profitScore: number; industryScore: number } {
     // A. Profit Growth (15 pts)
-    let scoreProfit = 0;
     const g = metrics.profit_growth;
-    if (g >= 0.20) scoreProfit = 15; // >20%
-    else if (g >= 0.10) scoreProfit = 10;
-    else if (g >= 0.00) scoreProfit = 5; // >0%
-    else scoreProfit = 0;
+    let scoreProfit: number;
+    if (g >= 0.20) {
+        scoreProfit = 15;
+    } else if (g >= 0.10) {
+        scoreProfit = 10;
+    } else if (g >= 0.00) {
+        scoreProfit = 5;
+    } else {
+        scoreProfit = 0;
+    }
 
-    // B. Industry (10 pts)
-    let scoreIndustry = 0;
-    const pmi = metrics.industry_pmi;
-    const indG = metrics.industry_growth;
-
-    // "Both > threshold" logic?
-    // User rule: PMI > 50 AND Growth > 10% -> 10 pts
-    // One satisfied -> 5 pts
-    const pmiGood = pmi > 50;
-    const growthGood = indG > 0.10;
-
-    if (pmiGood && growthGood) scoreIndustry = 10;
-    else if (pmiGood || growthGood) scoreIndustry = 5;
-    else scoreIndustry = 0;
+    // B. Industry (10 pts): PMI > 50 AND Growth > 10% -> 10 pts, one satisfied -> 5 pts
+    const pmiGood = metrics.industry_pmi > 50;
+    const growthGood = metrics.industry_growth > 0.10;
+    let scoreIndustry: number;
+    if (pmiGood && growthGood) {
+        scoreIndustry = 10;
+    } else if (pmiGood || growthGood) {
+        scoreIndustry = 5;
+    } else {
+        scoreIndustry = 0;
+    }
 
     return {
-        total: (scoreProfit + scoreIndustry), // This is just the forward part for the stock
+        total: scoreProfit + scoreIndustry,
         profitScore: scoreProfit,
         industryScore: scoreIndustry
     };

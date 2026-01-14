@@ -423,28 +423,17 @@ export async function getDashboardData(env: Bindings, groupId?: string) {
     // 1. Fetch Quotes (Using existing function)
     const quotes = await getLatestQuotes(env, tickers);
 
-    // 2. Fetch Stats & Charts (Efficiently!)
+    // Fetch Stats for all tickers via IN clause
     const statsMap = new Map<string, StockStats>();
-
-    // Batch fetch stats for all tickers
-    // D1 doesn't support "WHERE symbol IN (...)" efficiently with dynamic list in bind, 
-    // but for <50 tickers it's okay to iterate or construct query. 
-    // Let's use Promise.all per chunk for massive concurrency if needed, but here simple loop is fine or single Select with IN if small.
-    // Given the worker environment, let's just fetch all rows if tickers list is small, OR specific ones.
-    // Query builder:
     if (tickers.length > 0) {
-        // Construct `(?, ?, ?)` string
         const placeholders = tickers.map(() => '?').join(',');
         const { results } = await env.DB.prepare(
             `SELECT * FROM stock_stats WHERE symbol IN (${placeholders})`
         ).bind(...tickers).all();
-
         if (results) {
             for (const r of results) {
                 const stat = r as unknown as StockStats;
-                // D1 snake_case to camelCase mapping if needed? 
-                // DB Columns: change_ytd... TS Interface: changeYTD
-                // We need to map manually because D1 returns column names
+                // Map D1 snake_case columns to camelCase interface
                 statsMap.set(stat.symbol, {
                     symbol: stat.symbol,
                     changeYTD: (r as any).change_ytd,

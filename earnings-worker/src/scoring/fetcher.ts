@@ -1,13 +1,8 @@
 import { ScoringMetrics } from './types';
 import { Bindings } from '../types';
 
-// Mock Data Generators for Paid APIs
-
-// 1. Profit Growth (Consensus EPS Growth) - "FactSet / Yahoo"
-// We will try to get this from Yahoo if available, else mock
-// Helper: Map Real Industry String to Mock Data (PMI/Growth)
-// This bridges Real Data (Industry Name) with Logic (Scores) until we have real PMI/Gartner API.
-function mapIndustryToMetrics(industry: string): { pmi: number, growth: number } {
+// Map industry string to mock PMI/Growth data (bridges real data with scoring until we have real PMI API)
+function mapIndustryToMetrics(industry: string): { pmi: number; growth: number } {
     const ind = industry.toLowerCase();
 
     if (ind.includes("software") || ind.includes("cloud") || ind.includes("internet")) {
@@ -110,15 +105,9 @@ async function fetchYahooData(symbol: string): Promise<{ industry: string, growt
                 if (peg > 0) growth = (pe / peg) / 100; // Approx long term growth
             }
 
-            // 3. PE Percentile (Valuation)
-            // Use Forward PE. If < 15 -> Cheap (Good). If > 50 -> Expensive.
+            // PE Percentile: Map PE to 0-1 where 1.0 = Cheapest (low PE = good)
             if (result?.defaultKeyStatistics?.forwardPE?.raw) {
                 const pe = result.defaultKeyStatistics.forwardPE.raw;
-                // Map PE to Percentile (0.0 = Best/Cheap, 1.0 = Worst/Expensive)
-                // Actually scoring uses pe_percentile where higher is better? 
-                // Wait, calculator says "Valuation (10%): Low PE is better". 
-                // If pe_percentile is "Percentile of Cheapness", then 1.0 = Cheapest.
-                // Let's assume 1.0 = Best (Cheap).
                 if (pe < 10) pe_percentile = 1.0;
                 else if (pe > 60) pe_percentile = 0.0;
                 else pe_percentile = 1.0 - ((pe - 10) / 50);
@@ -137,9 +126,7 @@ async function fetchYahooData(symbol: string): Promise<{ industry: string, growt
     return { industry, growth, pe_percentile };
 }
 
-// ... PMI/Growth handled by mapIndustryToMetrics ...
-
-// 4. Macro Policy
+// Macro Policy (static placeholder until real Fed API available)
 export async function fetchMacroState(): Promise<'CUT' | 'HIKE' | 'NEUTRAL'> {
     return 'CUT';
 }

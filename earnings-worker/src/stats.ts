@@ -45,43 +45,27 @@ function generateChart1Y(prices: number[], width: number = 120, height: number =
 function generateRSRank1M(prices: number[], lookback: number = 22, width: number = 100, height: number = 20): string {
     if (prices.length < 5) return '';
 
-    // We only take the last 'lookback' prices for the display
     const displayPrices = prices.slice(-lookback);
-
-    // Normalize to 0-99 rank relative to THIS window
     const min = Math.min(...displayPrices);
     const max = Math.max(...displayPrices);
     const range = max - min;
 
-    const ranks = displayPrices.map(p => {
-        if (range === 0) return 50;
-        return ((p - min) / range); // 0.0 to 1.0
-    });
+    // Normalize to 0-1 range
+    const ranks = displayPrices.map(p => range === 0 ? 0.5 : (p - min) / range);
 
-    // Generate bars
-    // Width per slot
+    // Bar dimensions: 60% width with 20% gap on each side
     const slotWidth = width / ranks.length;
-    // Use 60% of slot for bar, leaving 20% gap on each side
     const barWidth = (slotWidth * 0.6).toFixed(2);
     const offset = slotWidth * 0.2;
 
-    // We want to highlight the MAX rank in a special color if it's the current one?
-    // mimic existing logic: Deep Green for max, Light Green for others.
-
-    let bars = '';
-    ranks.forEach((r, i) => {
+    const bars = ranks.map((r, i) => {
         const x = ((i * slotWidth) + offset).toFixed(1);
-        const barH = Math.max(2, r * height); // Min height 2px
+        const barH = Math.max(2, r * height);
         const y = (height - barH).toFixed(1);
+        const fill = r === 1.0 ? '#15803d' : '#86efac'; // green-700 for max, green-300 for others
+        return `<rect x="${x}" y="${y}" width="${barWidth}" height="${barH.toFixed(1)}" fill="${fill}" />`;
+    }).join('');
 
-        // Color logic: if it's the max value in the set, make it darker/stronger
-        const isMax = r === 1.0;
-        const fill = isMax ? '#15803d' : '#86efac'; // green-700 : green-300
-
-        bars += `<rect x="${x}" y="${y}" width="${barWidth}" height="${barH.toFixed(1)}" fill="${fill}" />`;
-    });
-
-    // Calculate current score (last rank * 100 for 0-100 scale)
     const currentScore = ranks.length > 0 ? (ranks[ranks.length - 1] * 100).toFixed(0) : "0";
 
     return `<svg width="${width}" height="${height}" xmlns="http://www.w3.org/2000/svg" data-score="${currentScore}">
@@ -155,23 +139,20 @@ export function calculateStats(symbol: string, prices: StockPrice[]): StockStats
         change1Y = p1y !== 0 ? ((currentPrice - p1y) / p1y) * 100 : 0;
     }
 
-    // YTD
-    let changeYTD = 0;
+    // YTD - find last close of previous year
     const currentYear = new Date().getFullYear();
     const prevYearStr = (currentYear - 1).toString();
-    // Find last close of previous year
     let startPrice = 0;
-    // Walk backwards
     for (let i = sorted.length - 1; i >= 0; i--) {
         if (sorted[i].date.startsWith(prevYearStr)) {
             startPrice = sorted[i].close || 0;
             break;
         }
     }
-    // Fallback: if no prev year data, use first available
-    if (startPrice === 0 && closes.length > 0) startPrice = closes[0];
-
-    changeYTD = startPrice !== 0 ? ((currentPrice - startPrice) / startPrice) * 100 : 0;
+    if (startPrice === 0 && closes.length > 0) {
+        startPrice = closes[0]; // Fallback to first available
+    }
+    const changeYTD = startPrice !== 0 ? ((currentPrice - startPrice) / startPrice) * 100 : 0;
 
     // 3. Delta 52w High
     // We can calculate this from the price history we have (max 252 days)

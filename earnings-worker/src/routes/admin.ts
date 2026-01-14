@@ -261,7 +261,6 @@ app.post('/api/admin/recalc/:id', async (c) => {
 });
 
 // List Groups with Stats (Portfolios Board Data)
-// List Groups with Stats (Portfolios Board Data)
 app.get('/api/portfolios', async (c) => {
     try {
         // Join groups with portfolio_stats
@@ -817,27 +816,25 @@ app.post('/api/groups/:id/members', async (c) => {
     }
 });
 
-// Helper for Backfill
-async function checkAndBackfill(env: Bindings, symbol: string, ctx: ExecutionContext) {
-    // 1. Check existing history depth
+async function checkAndBackfill(env: Bindings, symbol: string, ctx: ExecutionContext): Promise<boolean> {
     try {
-        const { count } = await env.DB.prepare('SELECT count(*) as count FROM stock_prices WHERE symbol = ?').bind(symbol).first() as { count: number };
+        const result = await env.DB.prepare('SELECT count(*) as count FROM stock_prices WHERE symbol = ?').bind(symbol).first() as { count: number };
+        const count = result?.count ?? 0;
 
-        // If less than 200 days (approx 1 year), treat as missing history
+        // If less than 200 days (approx 1 year), trigger background backfill
         if (count < 200) {
             console.log(`[Backfill] Triggering for ${symbol} (Count: ${count})`);
-
-            // Run in background to avoid blocking response
             ctx.waitUntil((async () => {
                 const { backfillHistory } = await import('../db');
                 await backfillHistory(env, symbol);
             })());
             return true;
         }
+        return false;
     } catch (e) {
         console.error(`[Backfill] Check failed for ${symbol}`, e);
+        return false;
     }
-    return false;
 }
 
 // Remove Member

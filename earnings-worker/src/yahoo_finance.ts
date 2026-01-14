@@ -27,19 +27,16 @@ async function getYahooSession(): Promise<{ cookie: string, crumb: string } | nu
 
     sessionPromise = (async () => {
         try {
-            // 1. Get Cookie
-            // 1. Get Cookie
+            // Get Cookie
             const r1 = await fetchWithTimeout('https://fc.yahoo.com', { headers: { 'User-Agent': USER_AGENT } }, 5000);
             const cookieHeader = r1.headers.get('set-cookie');
-
             if (!cookieHeader) return null;
             const cookie = cookieHeader.split(';')[0];
 
-            // 2. Get Crumb
+            // Get Crumb
             const r2 = await fetchWithTimeout('https://query1.finance.yahoo.com/v1/test/getcrumb', {
                 headers: { 'User-Agent': USER_AGENT, 'Cookie': cookie }
             }, 5000);
-
             if (!r2.ok) return null;
 
             const crumb = await r2.text();
