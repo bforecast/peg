@@ -66,8 +66,10 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
         throw new Error(`Batch Calc: Insufficient Spy Data (${spyPrices?.length || 0})`);
     }
 
-    // 3. Normalize Date Range
-    let commonStartDate = startDate;
+    // 3. Normalize Date Range (Target 365 Days)
+    // We fetched 370 days, but we want the stats to represent "1 Year" (365 days).
+    const targetStartDate = getDateDaysAgo(365);
+    let commonStartDate = targetStartDate;
 
     const validSymbols: string[] = [];
     let validAllocationSum = 0;
@@ -78,7 +80,14 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
             console.warn(`[Portfolio Stats] Missing history for ${sym}, excluding from Group ${groupId} stats.`);
             continue;
         }
-        if (history[0].date > commonStartDate) commonStartDate = history[0].date;
+
+        // Find the actual available start date for this symbol
+        // If symbol IPO'd recently, its start date might be later than targetStartDate
+        const symStartDate = history[0].date;
+        if (symStartDate > commonStartDate) {
+            commonStartDate = symStartDate;
+        }
+
         validSymbols.push(sym);
         validAllocationSum += targetAllocations.get(sym) || 0;
     }
@@ -97,6 +106,7 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     }
 
     // Filter Benchmark to this start date
+    // Note: commonStartDate is now Max(365_days_ago, latest_start_date_of_any_symbol)
     const validSpy = spyPrices?.filter(p => p.date >= commonStartDate) || [];
 
     if (validSpy.length === 0) throw new Error(`Batch Calc: No valid Spy data after ${commonStartDate}`);
@@ -287,10 +297,20 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     const updateTime = getESTDate();
     try {
         await env.DB.prepare(`
-            INSERT OR REPLACE INTO portfolio_stats(
+            INSERT INTO portfolio_stats(
                     group_id, cagr, std_dev, max_drawdown, sharpe, sortino, correlation_spy, change_1d, dr, updated_at
                 ) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    `).bind(
+            ON CONFLICT(group_id) DO UPDATE SET
+                cagr = excluded.cagr,
+                std_dev = excluded.std_dev,
+                max_drawdown = excluded.max_drawdown,
+                sharpe = excluded.sharpe,
+                sortino = excluded.sortino,
+                correlation_spy = excluded.correlation_spy,
+                change_1d = excluded.change_1d,
+                dr = excluded.dr,
+                updated_at = excluded.updated_at
+        `).bind(
             groupId,
             safeNum(cagr),
             safeNum(stdDev),

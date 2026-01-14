@@ -37,12 +37,50 @@ export const SCORING_HTML = `
         .opt-table td { padding: 8px; border-bottom: 1px solid #eee; }
         .text-up { color: #10b981; }
         .text-down { color: #ef4444; }
+        
+        .section-header { background: #f0f9ff; font-weight: 600; }
+        .sub-item td:first-child { padding-left: 24px; color: #666; }
+        
+        .info-icon { 
+            display: inline-flex; align-items: center; justify-content: center;
+            width: 20px; height: 20px; border-radius: 50%; 
+            background: #e0e7ff; color: #4f46e5; font-size: 12px; 
+            cursor: pointer; margin-left: 8px; font-weight: bold;
+        }
+        .info-icon:hover { background: #c7d2fe; }
+        .tooltip { 
+            position: relative; display: inline-block;
+        }
+        .tooltip .tooltip-content {
+            visibility: hidden; opacity: 0;
+            width: 320px; background: #1e293b; color: #fff;
+            text-align: left; border-radius: 8px; padding: 12px;
+            position: absolute; z-index: 100; top: 30px; left: 0;
+            font-size: 12px; line-height: 1.5; font-weight: normal;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            transition: opacity 0.2s;
+        }
+        .tooltip:hover .tooltip-content { visibility: visible; opacity: 1; }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>Dual-Dimension Portfolio Scoring</h1>
+            <div style="display: flex; align-items: center;">
+                <h1>Dual-Dimension Portfolio Scoring</h1>
+                <div class="tooltip">
+                    <span class="info-icon">i</span>
+                    <div class="tooltip-content">
+                        <strong>Scoring Formula:</strong><br>
+                        <b>Total</b> = 65% Performance + 35% Holdings<br><br>
+                        <b>Stock Score</b> = 40% Value + 25% Momentum + 35% Risk<br>
+                        • Value: 70% PEG + 30% PE<br>
+                        • Momentum: 1Y Return<br>
+                        • Risk: Vol + MaxDD + Sharpe<br><br>
+                        <b>Performance</b> = Return + Vol + MaxDD + Sharpe + DR
+                    </div>
+                </div>
+            </div>
             <a href="/" style="text-decoration: none; color: #666; font-size: 14px;">&larr; Back to Dashboard</a>
         </div>
 
@@ -67,33 +105,20 @@ export const SCORING_HTML = `
                     </div>
                 </div>
                 
-                <!-- CSS Grid Layout -->
-                <div style="display: grid; grid-template-columns: 200px 1fr; gap: 0px; align-items: start;">
-                    
-                    <!-- Left Column: Gauge Only -->
-                    <div style="text-align: center; border-right: 1px solid #eee; padding-right: 10px;">
-                        <div style="height: 160px; display: flex; justify-content: center; align-items: center; overflow:hidden;">
-                             <canvas id="gaugeChart" style="max-height:100%; max-width:100%;"></canvas>
-                        </div>
-                    </div>
-
-                    <!-- Right Column: Sectioned Table -->
-                    <div style="padding-left: 15px;">
-                        <table class="opt-table" style="margin-top: 0; width: 100%; font-size: 13px;">
-                            <thead>
-                                <tr>
-                                    <th style="padding: 6px;">Metric</th>
-                                    <th style="padding: 6px;">Max</th>
-                                    <th style="padding: 6px;">Cur</th>
-                                    <th style="padding: 6px;">Opt</th>
-                                </tr>
-                            </thead>
-                            <tbody id="scoreBreakdownBody">
-                                <tr><td colspan="4" style="text-align: center; color: #999;">Loading...</td></tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+                <!-- Breakdown Table -->
+                <table class="opt-table" style="font-size: 13px;">
+                    <thead>
+                        <tr>
+                            <th style="padding: 6px;">Metric</th>
+                            <th style="padding: 6px;">Raw Value</th>
+                            <th style="padding: 6px;">Score</th>
+                            <th id="optColHeader" style="padding: 6px; color: #10b981; display: none;">Optimized</th>
+                        </tr>
+                    </thead>
+                    <tbody id="scoreBreakdownBody">
+                        <tr><td colspan="4" style="text-align: center; color: #999;">Select a portfolio and calculate score</td></tr>
+                    </tbody>
+                </table>
             </div>
 
             <!-- Dimensions Radar -->
@@ -105,6 +130,26 @@ export const SCORING_HTML = `
             </div>
         </div>
 
+        <!-- Stock Details -->
+        <div class="card">
+            <h2>Holdings Details</h2>
+            <table class="opt-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Weight</th>
+                        <th>Value</th>
+                        <th>Momentum</th>
+                        <th>Risk</th>
+                        <th>Total</th>
+                    </tr>
+                </thead>
+                <tbody id="stockDetailsBody">
+                    <tr><td colspan="6" style="text-align: center; color: #999;">--</td></tr>
+                </tbody>
+            </table>
+        </div>
+
         <!-- Optimization -->
         <div class="card">
             <div style="display: flex; justify-content: space-between; align-items: center;">
@@ -113,49 +158,45 @@ export const SCORING_HTML = `
             </div>
             
             <p style="font-size: 14px; color: #666; margin-bottom: 16px;">
-                Maximize Forward Score (Profit + Industry) subject to Risk Constraints (Max Pos 18%).
+                Softmax-based weight optimization with constraints.
                 <br>
-                <small>Note: Optimization focuses on Forward metrics. Total Score may drop if concentration increases (HHI Penalty) or if historical metrics are lower.</small>
+                <small>Position Cap: 40% | Rebalance Limit: ±15% | Min Position: 1%</small>
             </p>
+            
+            <!-- Decision Summary -->
+            <div id="optDecision" style="display: none; padding: 12px; border-radius: 8px; margin-bottom: 16px;"></div>
 
-            <div style="margin-bottom: 20px;">
-                <div>
-                    <h3>Weight Changes</h3>
-                    <table class="opt-table">
-                        <thead>
-                            <tr>
-                                <th>Symbol</th>
-                                <th>Industry</th>
-                                <th>Growth</th>
-                                <th>Current</th>
-                                <th>Optimized</th>
-                                <th>Change</th>
-                            </tr>
-                        </thead>
-                        <tbody id="optBody">
-                            <tr><td colspan="6" style="text-align: center; color: #999;">Run optimization to see results</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+            <table class="opt-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Score</th>
+                        <th>Current</th>
+                        <th>Optimized</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="optBody">
+                    <tr><td colspan="5" style="text-align: center; color: #999;">Run optimization to see results</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
     <script>
         // Init Charts
-        let radarChart, gaugeChart;
-        let currentDataFull = null; // Store full response for breakdown
+        let radarChart;
+        let currentData = null;
         
         function initCharts() {
-            // Radar
             const ctxR = document.getElementById('radarChart').getContext('2d');
             radarChart = new Chart(ctxR, {
                 type: 'radar',
                 data: {
-                    labels: ['Profit Growth', 'Industry', 'Valuation', 'Macro', 'Calmar', 'HHI', 'Diversification'],
+                    labels: ['Value', 'Momentum', 'Stock Risk', 'Return', 'Volatility', 'Max Drawdown', 'Sharpe', 'Diversification'],
                     datasets: [{
                         label: 'Current Score',
-                        data: [0, 0, 0, 0, 0, 0, 0],
+                        data: [0, 0, 0, 0, 0, 0, 0, 0],
                         fill: true,
                         backgroundColor: 'rgba(37, 99, 235, 0.2)',
                         borderColor: 'rgb(37, 99, 235)',
@@ -163,340 +204,395 @@ export const SCORING_HTML = `
                     }]
                 },
                 options: {
-                    scales: { r: { min: 0, max: 25, ticks: { display: false } } } // Approx scale max
+                    scales: { r: { min: 0, max: 100, ticks: { stepSize: 20 } } }
                 }
             });
         }
         
-        /* Renders the Sectioned Breakdown Table */
-        function renderBreakdownTable(current, optimized = null, optRaw = null) {
+        // Store original data for comparison (global scope)
+        let originalBreakdownData = null;
+        
+        function renderBreakdownTable(data, optimizedData = null) {
             const body = document.getElementById('scoreBreakdownBody');
+            const optHeader = document.getElementById('optColHeader');
             body.innerHTML = '';
             
-            const f = (n) => n ? n.toFixed(1) : '0.0';
-            const fRaw = (n, type) => {
-                 if(n === undefined || n === null) return '-';
-                 if(type === 'pct') return (n * 100).toFixed(1) + '%';
-                 return n.toFixed(2);
-            };
-
-            const curComps = current.components;
-            const curRaw = current.raw_metrics || {}; 
-            const optComps = optimized || { forward: {}, history: {} };
-            const isOpt = !!optimized;
-
-            // Define Categories
-            const categories = [
+            const f = (n) => typeof n === 'number' ? n.toFixed(1) : '-';
+            const pct = (n) => typeof n === 'number' ? (n * 100).toFixed(1) + '%' : '-';
+            
+            const perf = data.components.performance;
+            const hold = data.components.holdings;
+            const raw = data.raw_metrics;
+            
+            // Check if we have optimized data
+            const hasOptimized = optimizedData !== null;
+            optHeader.style.display = hasOptimized ? 'table-cell' : 'none';
+            
+            if (hasOptimized) {
+               const perfDiff = optimizedData.performance_score - data.performance_score;
+               const hqDiff = optimizedData.holdings_score - data.holdings_score;
+               const totalDiff = (perfDiff * 0.65) + (hqDiff * 0.35);
+               optHeader.style.color = totalDiff >= -0.01 ? '#10b981' : '#ef4444';
+            }
+            
+            const optPerf = hasOptimized ? optimizedData.components.performance : null;
+            const optHold = hasOptimized ? optimizedData.components.holdings : null;
+            
+            const sections = [
                 {
-                    title: "Forward Metrics (Growth)",
+                    title: 'Portfolio Performance (65%)',
+                    score: data.performance_score,
+                    optScore: hasOptimized ? optimizedData.performance_score : null,
                     items: [
-                        { n: 'Profit Growth', max: 15, key: 'profit', region: 'forward' },
-                        { n: 'Industry Trend', max: 10, key: 'industry', region: 'forward' },
-                        { n: 'Valuation', max: 10, key: 'valuation', region: 'forward' },
-                        { n: 'Macro Policy', max: 5, key: 'macro', region: 'forward' }
+                        { name: 'Return (1Y)', raw: pct(raw.return1Y), score: perf.return, optScore: optPerf?.return },
+                        { name: 'Volatility', raw: pct(raw.volatility), score: perf.volatility, optScore: optPerf?.volatility },
+                        { name: 'Max Drawdown', raw: pct(raw.maxDrawdown), score: perf.maxDrawdown, optScore: optPerf?.maxDrawdown },
+                        { name: 'Sharpe Ratio', raw: f(raw.sharpe), score: perf.sharpe, optScore: optPerf?.sharpe },
+                        { name: 'Diversification Ratio', raw: f(raw.dr), score: perf.dr, optScore: optPerf?.dr },
                     ]
                 },
                 {
-                    title: "Historical Metrics (Risk)",
+                    title: 'Holdings Quality (35%)',
+                    score: data.holdings_score,
+                    optScore: hasOptimized ? optimizedData.holdings_score : null,
                     items: [
-                        { n: 'Calmar Ratio', max: 20, key: 'calmar', region: 'history', rawVal: curRaw.calmar, optRaw: optRaw?.calmar },
-                        { n: 'HHI (Concentration)', max: 25, key: 'hhi', region: 'history', rawVal: curRaw.hhi, optRaw: optRaw?.hhi, type: 'pct' },
-                        { n: 'Diversification', max: 15, key: 'dr', region: 'history', rawVal: curRaw.dr, optRaw: optRaw?.dr }
+                        { name: 'Avg Value Score', raw: '-', score: hold.avgValue, optScore: optHold?.avgValue },
+                        { name: 'Avg Momentum Score', raw: '-', score: hold.avgMomentum, optScore: optHold?.avgMomentum },
+                        { name: 'Avg Risk Score', raw: '-', score: hold.avgRisk, optScore: optHold?.avgRisk },
                     ]
                 }
             ];
-
-            categories.forEach(cat => {
-                // 1. Calculate Sub-Sum
-                let curSum = 0; 
-                let optSum = 0;
-                let maxSum = 0;
-
-                cat.items.forEach(item => {
-                    curSum += curComps[item.region][item.key] || 0;
-                    if(isOpt) optSum += optComps[item.region][item.key] || 0;
-                    maxSum += item.max;
-                });
-
-                // 2. Render Header Row
-                // 2. Render Header Row
-                const headRow = document.createElement('tr');
-                headRow.style.background = '#f8fafc';
-                headRow.style.fontWeight = '600';
-                
-                let headOptText = isOpt ? f(optSum) : '-';
-                let headColor = '';
-                if(isOpt && optSum > curSum) headColor = 'text-up';
-                if(isOpt && optSum < curSum) headColor = 'text-down';
-
-                headRow.innerHTML = \`
-                    <td style="padding: 8px;">\${cat.title}</td>
-                    <td style="color:#666">/\${maxSum}</td>
-                    <td>\${f(curSum)}</td>
-                    <td class="\${headColor}">\${headOptText}</td>
+            
+            sections.forEach(sec => {
+                // Section Header
+                const headerRow = document.createElement('tr');
+                headerRow.className = 'section-header';
+                const optScoreCell = hasOptimized ? \`<td style="font-weight: 700; color: #10b981;">\${f(sec.optScore)}</td>\` : '';
+                headerRow.innerHTML = \`
+                    <td style="padding: 8px;">\${sec.title}</td>
+                    <td></td>
+                    <td style="font-weight: 700;">\${f(sec.score)}</td>
+                    \${optScoreCell}
                 \`;
-                body.appendChild(headRow);
-
-                // 3. Render Items
-                cat.items.forEach(d => {
+                body.appendChild(headerRow);
+                
+                // Items
+                sec.items.forEach(item => {
                     const tr = document.createElement('tr');
+                    tr.className = 'sub-item';
                     
-                    const curPts = curComps[d.region][d.key] || 0;
-                    const optPts = isOpt ? (optComps[d.region][d.key] || 0) : 0;
-
-                    let curText = f(curPts);
-                    if (d.rawVal !== undefined && d.rawVal !== null) {
-                        curText += \` <span style="font-size:11px; color:#999">(\${fRaw(d.rawVal, d.type)})</span>\`;
+                    let optCell = '';
+                    if (hasOptimized) {
+                        const diff = item.optScore - item.score;
+                        const color = diff > 0.1 ? '#10b981' : diff < -0.1 ? '#ef4444' : '#666';
+                        optCell = \`<td style="color: \${color}; font-weight: 500;">\${f(item.optScore)}</td>\`;
                     }
-
-                    let optText = '-';
-                    let diffClass = '';
-                    if (isOpt) {
-                        optText = f(optPts);
-                        if (d.optRaw !== undefined) {
-                            optText += \` <span style="font-size:11px; color:#999">(\${fRaw(d.optRaw, d.type)})</span>\`;
-                        }
-                        if (optPts > curPts + 0.05) diffClass = 'text-up';
-                        else if (optPts < curPts - 0.05) diffClass = 'text-down';
-                    }
-
+                    
                     tr.innerHTML = \`
-                       <td style="padding-left: 20px; color: #444;">\${d.n}</td>
-                       <td style="color:#bbb">/\${d.max}</td>
-                       <td>\${curText}</td>
-                       <td class="\${diffClass}">\${optText}</td>
+                        <td>\${item.name}</td>
+                        <td style="color: #999;">\${item.raw}</td>
+                        <td>\${f(item.score)}</td>
+                        \${optCell}
                     \`;
                     body.appendChild(tr);
                 });
             });
+            
+            // Store for comparison if this is original data
+            if (!optimizedData) {
+                originalBreakdownData = data;
+            }
+        }
+        
+        function renderStockDetails(stocks) {
+            const body = document.getElementById('stockDetailsBody');
+            body.innerHTML = '';
+            
+            if (!stocks || stocks.length === 0) {
+                body.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">No data</td></tr>';
+                return;
+            }
+            
+            const f = (n) => typeof n === 'number' ? n.toFixed(1) : '-';
+            const pct = (n) => typeof n === 'number' ? (n * 100).toFixed(1) + '%' : '-';
+            
+            stocks.sort((a, b) => b.score - a.score);
+            
+            stocks.forEach(s => {
+                const tr = document.createElement('tr');
+                const scoreColor = s.score >= 70 ? '#10b981' : s.score >= 50 ? '#3b82f6' : '#ef4444';
+                tr.innerHTML = \`
+                    <td><strong>\${s.symbol}</strong></td>
+                    <td>\${pct(s.weight)}</td>
+                    <td>\${f(s.components.value)}</td>
+                    <td>\${f(s.components.momentum)}</td>
+                    <td>\${f(s.components.risk)}</td>
+                    <td style="font-weight: 700; color: \${scoreColor}">\${f(s.score)}</td>
+                \`;
+                body.appendChild(tr);
+            });
         }
 
-async function loadPortfolios() {
-    try {
-        const res = await fetch('/api/portfolios');
-        const portfolios = await res.json();
+        async function loadPortfolios() {
+            try {
+                const res = await fetch('/api/portfolios');
+                const portfolios = await res.json();
 
-        const select = document.getElementById('portfolioSelect');
-        select.innerHTML = ''; // Clear default
+                const select = document.getElementById('portfolioSelect');
+                select.innerHTML = '';
 
-        if (portfolios.length === 0) {
-            const option = document.createElement('option');
-            option.text = "No portfolios found";
-            select.add(option);
-            return;
-        }
+                if (portfolios.length === 0) {
+                    const option = document.createElement('option');
+                    option.text = "No portfolios found";
+                    select.add(option);
+                    return;
+                }
 
-        portfolios.forEach(p => {
-            const option = document.createElement('option');
-            option.value = p.id;
-            option.text = p.name;
-            select.add(option);
-        });
-
-        // Bind Change Event to Clear UI
-        select.addEventListener('change', clearOptimization);
-
-    } catch (e) {
-        console.error("Failed to load portfolios", e);
-    }
-}
-
-function clearOptimization() {
-    // Reset Charts/Tables when portfolio changes
-    document.getElementById('totalScore').textContent = '--';
-    document.getElementById('fwdScore').textContent = '--';
-    document.getElementById('histScore').textContent = '--';
-    document.getElementById('optBody').innerHTML = '<tr><td colspan="6" style="text-align: center; color: #999;">Run optimization to see results</td></tr>';
-    document.getElementById('scoreBreakdownBody').innerHTML = '<tr><td colspan="4" style="text-align: center; color: #999;">Run optimization to see comparison</td></tr>';
-
-    currentDataFull = null;
-
-    // Reset Radar
-    radarChart.data.datasets[0].data = [0, 0, 0, 0, 0, 0, 0];
-    if (radarChart.data.datasets[1]) {
-        radarChart.data.datasets.pop(); // Remove optimized set
-    }
-    radarChart.update();
-}
-
-// Load on start
-window.addEventListener('DOMContentLoaded', loadPortfolios);
-
-async function calculateScore() {
-    const gid = document.getElementById('portfolioSelect').value;
-    const btn = document.querySelector('button');
-    btn.disabled = true;
-    btn.textContent = 'Calculating...';
-
-    try {
-        const res = await fetch(\`/api/scoring/\${gid}\`);
-        const data = await res.json();
-
-        if (data.error) { alert(data.error); return; }
-
-        // Update UI
-        const tsEl = document.getElementById('totalScore');
-        const slEl = document.getElementById('scoreLabel'); // New ID
-        
-        // FIX: Backend returns 'total_score', not 'score.total'
-        const totalScore = data.total_score !== undefined ? data.total_score : data.score?.total;
-        
-        tsEl.textContent = totalScore.toFixed(1);
-
-        // Determine Label
-        const s = totalScore;
-        let label = 'Neutral';
-        let color = '#666';
-        if (s >= 80) { label = 'Elite'; color = '#10b981'; } // Green
-        else if (s >= 65) { label = 'Excellent'; color = '#10b981'; }
-        else if (s >= 50) { label = 'Good'; color = '#3b82f6'; } // Blue
-        else if (s >= 35) { label = 'Fair'; color = '#f59e0b'; } // Orange
-        else { label = 'Poor'; color = '#ef4444'; } // Red
-
-        slEl.textContent = label;
-        slEl.style.color = color;
-        tsEl.style.color = color; // Match score color to label
-
-        updateGauge(totalScore);
-        // Update Radar
-        const comps = data.components;
-        currentDataFull = data; // Save full for breakdown
-
-        radarChart.data.datasets[0].data = [
-            comps.forward.profit * 0.6,
-            comps.forward.profit * 0.4,
-            comps.forward.valuation,
-            comps.forward.macro,
-            comps.history.calmar,
-            comps.history.hhi,
-            comps.history.dr
-        ];
-        radarChart.update();
-
-        // Show Breakdown Immediately
-        renderBreakdownTable(data);
-
-    } catch (e) {
-        console.error(e);
-        alert('Error calculating score: ' + e.message); // Improve error visibility
-    } finally {
-        btn.disabled = false;
-        btn.textContent = 'Calculate Score';
-    }
-}
-
-async function runOptimization() {
-    const gid = document.getElementById('portfolioSelect').value;
-    const btn = document.getElementById('optBtn');
-    btn.disabled = true;
-
-    try {
-        const res = await fetch(\`/api/scoring/\${gid}/optimize\`, { method: 'POST' });
-const data = await res.json();
-
-const tbody = document.getElementById('optBody');
-tbody.innerHTML = '';
-
-// Process detailed changes list
-if (data.changes && data.changes.length > 0) {
-    for (const c of data.changes) {
-        const tr = document.createElement('tr');
-        
-        const diffVal = parseFloat(c.diff);
-        let diffClass = '';
-        let diffText = c.diff + '%';
-        if(diffVal > 0) { diffClass = 'text-up'; diffText = '+' + diffText; }
-        else if (diffVal < 0) { diffClass = 'text-down'; }
-        else { diffText = '-'; }
-        
-        tr.innerHTML = \`
-           <td>\${c.symbol}</td>
-           <td style="font-size:12px; color:#666">\${c.industry || '-'}</td>
-           <td style="font-size:12px">\${c.growth || '-'}%</td>
-           <td>\${c.currentWeight}%</td>
-           <td style="font-weight:600">\${c.newWeight}%</td>
-           <td class="\${diffClass}">\${diffText}</td>
-        \`;
-        tbody.appendChild(tr);
-    }
-}
-
-// FIX: Use total_score or score.total safely
-const curScoreVal = (typeof currentDataFull !== 'undefined' && currentDataFull) ? (currentDataFull.total_score || currentDataFull.score?.total) : 0;
-const optScore = data.optimizedScore || data.total_score; // Optimizer returns 'optimizedScore' usually, or check API logic
-
-const tsEl = document.getElementById('totalScore');
-const slEl = document.getElementById('scoreLabel');
-
-// Show transition: "62.4 -> 71.5"
-// Using single quotes to avoid template literal nesting issues
-tsEl.innerHTML = curScoreVal.toFixed(1) + ' <span style="font-size: 1.5rem; color:#999;">➔</span> <span style="color:#10b981">' + optScore.toFixed(1) + '</span>';
-
-// Update Label for Optimized Score
-let label = 'Neutral';
-let color = '#666';
-if (optScore >= 80) { label = 'Elite'; color = '#10b981'; }
-else if (optScore >= 65) { label = 'Excellent'; color = '#10b981'; }
-else if (optScore >= 50) { label = 'Good'; color = '#3b82f6'; }
-else if (optScore >= 35) { label = 'Fair'; color = '#f59e0b'; }
-else { label = 'Poor'; color = '#ef4444'; }
-
-slEl.textContent = label;
-slEl.style.color = color;
-
-// Update Radar with Optimized Dataset
-if (data.optimizedComponents) {
-    const comps = data.optimizedComponents;
-    const optData = [
-        comps.forward.profit * 0.6,
-        comps.forward.profit * 0.4,
-        comps.forward.valuation,
-        comps.forward.macro,
-        comps.history.calmar,
-        comps.history.hhi,
-        comps.history.dr
-    ];
-
-    // Check if dataset exists
-    if (radarChart.data.datasets.length < 2) {
-        radarChart.data.datasets.push({
-            label: 'Optimized Score',
-            data: optData,
-            fill: true,
-            backgroundColor: 'rgba(16, 185, 129, 0.2)', // Green
-            borderColor: 'rgb(16, 185, 129)',
-            pointBackgroundColor: 'rgb(16, 185, 129)',
-        });
-    } else {
-        radarChart.data.datasets[1].data = optData;
-    }
-    radarChart.update();
-
-    // Populate Breakdown Table
-    if (typeof currentDataFull !== 'undefined') {
-        renderBreakdownTable(currentDataFull, data.optimizedComponents, data.optimizedRawMetrics);
-    }
-}
-                
+                portfolios.forEach(p => {
+                    const option = document.createElement('option');
+                    option.value = p.id;
+                    option.text = p.name;
+                    select.add(option);
+                });
             } catch (e) {
-    console.error(e);
-    alert('Optimization failed: ' + e.message);
-} finally {
-    btn.disabled = false;
-}
+                console.error("Failed to load portfolios", e);
+            }
         }
 
-// Helper: Update Gauge Chart
-function updateGauge(score) {
-    if (gaugeChart) {
-        const diff = 100 - score;
-        gaugeChart.data.datasets[0].data = [score, diff];
-        gaugeChart.update();
-    }
-}
+        async function calculateScore() {
+            const gid = document.getElementById('portfolioSelect').value;
+            const btn = document.querySelector('button');
+            btn.disabled = true;
+            btn.textContent = 'Calculating...';
 
-initCharts();
-</script>
-    </body>
-    </html>
-        `;
+            try {
+                const res = await fetch(\`/api/scoring/\${gid}\`);
+                const data = await res.json();
+
+                if (data.error) { alert(data.error); return; }
+
+                currentData = data;
+                
+                // Update Total Score
+                const tsEl = document.getElementById('totalScore');
+                const slEl = document.getElementById('scoreLabel');
+                
+                const totalScore = data.total_score;
+                tsEl.textContent = totalScore.toFixed(1);
+
+                // Determine Label
+                let label = 'Fair';
+                let color = '#666';
+                if (totalScore >= 80) { label = 'Elite'; color = '#10b981'; }
+                else if (totalScore >= 65) { label = 'Excellent'; color = '#10b981'; }
+                else if (totalScore >= 50) { label = 'Good'; color = '#3b82f6'; }
+                else if (totalScore >= 35) { label = 'Fair'; color = '#f59e0b'; }
+                else { label = 'Poor'; color = '#ef4444'; }
+
+                slEl.textContent = label;
+                slEl.style.color = color;
+                tsEl.style.color = color;
+
+                // Clear any previous optimized data from radar chart
+                if (radarChart.data.datasets.length > 1) {
+                    radarChart.data.datasets.pop();
+                }
+                
+                // Hide optimization decision banner
+                const decisionEl = document.getElementById('optDecision');
+                if (decisionEl) decisionEl.style.display = 'none';
+                
+                // Hide Optimized column header
+                const optHeader = document.getElementById('optColHeader');
+                if (optHeader) optHeader.style.display = 'none';
+                
+                // Clear Weight Optimization table
+                const optBody = document.getElementById('optBody');
+                if (optBody) optBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #999;">Run optimization to see results</td></tr>';
+
+                // Update Radar
+                const hold = data.components.holdings;
+                const perf = data.components.performance;
+                
+                radarChart.data.datasets[0].data = [
+                    hold.avgValue,
+                    hold.avgMomentum,
+                    hold.avgRisk,
+                    perf.return,
+                    perf.volatility,
+                    perf.maxDrawdown,
+                    perf.sharpe,
+                    perf.dr
+                ];
+                radarChart.update();
+
+                // Render Breakdown (original only, no optimized comparison)
+                renderBreakdownTable(data);
+                
+                // Render Stock Details
+                renderStockDetails(data.stock_details);
+
+            } catch (e) {
+                console.error(e);
+                alert('Error calculating score: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Calculate Score';
+            }
+        }
+
+        async function runOptimization() {
+            const gid = document.getElementById('portfolioSelect').value;
+            const btn = document.getElementById('optBtn');
+            btn.disabled = true;
+            btn.textContent = 'Optimizing...';
+
+            try {
+                const res = await fetch(\`/api/scoring/\${gid}/optimize\`, { method: 'POST' });
+                const data = await res.json();
+
+                if (data.error) { alert(data.error); return; }
+
+                // Show Decision Summary (Scheme B format)
+                const decisionEl = document.getElementById('optDecision');
+                const recommendation = data.recommendation;
+                const reason = data.reason || '';
+                const hqGain = data.hqGain || 0;
+                const totalChange = data.totalScoreChange || 0;
+                
+                decisionEl.style.display = 'block';
+                
+                if (recommendation === 'REBALANCE') {
+                    decisionEl.style.background = '#ecfdf5';
+                    decisionEl.style.border = '1px solid #10b981';
+                    decisionEl.innerHTML = \`
+                        <strong style="color: #10b981;">✓ REBALANCE RECOMMENDED</strong><br>
+                        <small>Total: \${totalChange >= 0 ? '+' : ''}\${totalChange.toFixed(2)} pts | HQ: +\${hqGain.toFixed(2)} pts</small><br>
+                        <small style="color: #666;">\${reason}</small>
+                    \`;
+                } else if (recommendation === 'PROTECT') {
+                    decisionEl.style.background = '#fef2f2';
+                    decisionEl.style.border = '1px solid #ef4444';
+                    decisionEl.innerHTML = \`
+                        <strong style="color: #ef4444;">⚠ PROTECTION MODE</strong><br>
+                        <small style="color: #666;">\${reason}</small>
+                    \`;
+                } else {
+                    decisionEl.style.background = '#fef3c7';
+                    decisionEl.style.border = '1px solid #f59e0b';
+                    decisionEl.innerHTML = \`
+                        <strong style="color: #f59e0b;">○ HOLD CURRENT</strong><br>
+                        <small>Total: \${totalChange >= 0 ? '+' : ''}\${totalChange.toFixed(2)} pts (below threshold)</small><br>
+                        <small style="color: #666;">\${reason}</small>
+                    \`;
+                }
+
+                const tbody = document.getElementById('optBody');
+                tbody.innerHTML = '';
+
+                if (data.changes && data.changes.length > 0) {
+                    for (const c of data.changes) {
+                        const tr = document.createElement('tr');
+                        
+                        let actionText = c.action;
+                        let actionClass = '';
+                        if (c.action === 'INC') { actionText = '↑ INC'; actionClass = 'text-up'; }
+                        else if (c.action === 'DEC') { actionText = '↓ DEC'; actionClass = 'text-down'; }
+                        else { actionText = '→ HOLD'; }
+                        
+                        tr.innerHTML = \`
+                           <td><strong>\${c.symbol}</strong></td>
+                           <td>\${c.score}</td>
+                           <td>\${c.currentWeight}%</td>
+                           <td style="font-weight:600">\${c.newWeight}%</td>
+                           <td class="\${actionClass}">\${actionText}</td>
+                        \`;
+                        tbody.appendChild(tr);
+                    }
+                }
+
+                // Show score change
+                const tsEl = document.getElementById('totalScore');
+                const origScore = data.originalScore;
+                const optScore = data.optimizedScore;
+                
+                const improvement = optScore > origScore;
+                const changeColor = improvement ? '#10b981' : '#ef4444';
+                
+                tsEl.innerHTML = origScore.toFixed(1) + ' <span style="font-size: 1.5rem; color:#999;">➔</span> <span style="color:' + changeColor + '">' + optScore.toFixed(1) + '</span>';
+                
+                // Update Score Label with optimized score
+                const slEl = document.getElementById('scoreLabel');
+                if (slEl) {
+                    let label = 'Fair';
+                    let color = '#666';
+                    if (optScore >= 80) { label = 'Elite'; color = '#10b981'; }
+                    else if (optScore >= 65) { label = 'Excellent'; color = '#10b981'; }
+                    else if (optScore >= 50) { label = 'Good'; color = '#3b82f6'; }
+                    else if (optScore >= 35) { label = 'Fair'; color = '#f59e0b'; }
+                    else { label = 'Poor'; color = '#ef4444'; }
+                    
+                    slEl.textContent = label;
+                    slEl.style.color = color;
+                }
+
+                // Update Radar with optimized data
+                if (data.optimizedComponents) {
+                    const hold = data.optimizedComponents.holdings;
+                    const perf = data.optimizedComponents.performance;
+                    
+                    if (radarChart.data.datasets.length < 2) {
+                        radarChart.data.datasets.push({
+                            label: 'Optimized',
+                            data: [hold.avgValue, hold.avgMomentum, hold.avgRisk, perf.return, perf.volatility, perf.maxDrawdown, perf.sharpe, perf.dr],
+                            fill: true,
+                            backgroundColor: 'rgba(16, 185, 129, 0.2)',
+                            borderColor: 'rgb(16, 185, 129)',
+                            pointBackgroundColor: 'rgb(16, 185, 129)',
+                        });
+                    } else {
+                        radarChart.data.datasets[1].data = [hold.avgValue, hold.avgMomentum, hold.avgRisk, perf.return, perf.volatility, perf.maxDrawdown, perf.sharpe, perf.dr];
+                    }
+                    radarChart.update();
+                    
+                    // Update breakdown table with BOTH original and optimized data for comparison
+                    if (originalBreakdownData) {
+                        const optimizedData = {
+                            performance_score: data.optimizedPerfScore,
+                            holdings_score: data.optimizedHqScore,
+                            components: data.optimizedComponents,
+                            raw_metrics: data.optimizedRawMetrics
+                        };
+                        renderBreakdownTable(originalBreakdownData, optimizedData);
+                    }
+                }
+                    
+            } catch (e) {
+                console.error(e);
+                alert('Optimization failed: ' + e.message);
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Optimize';
+            }
+        }
+
+        // Init
+        window.addEventListener('DOMContentLoaded', async () => {
+            initCharts();
+            await loadPortfolios();
+            
+            // Auto Select from URL
+            const params = new URLSearchParams(window.location.search);
+            const pid = params.get('portfolioId');
+            if(pid) {
+                const sel = document.getElementById('portfolioSelect');
+                if(sel && sel.querySelector('option[value="' + pid + '"]')) {
+                    sel.value = pid;
+                    calculateScore();
+                }
+            }
+        });
+    </script>
+</body>
+</html>
+    `;

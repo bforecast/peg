@@ -1244,6 +1244,13 @@ async function loadMembers() {
                         if(value >= 1.2) return 'background: #E3F2FD; color: #1565C0;'; 
                         if(value >= 1.0) return 'background: #F5F5F5; color: #555;';
                         return 'background: #FFF3E0; color: #E65100;'; // < 1.0 (High Correlation or Leverage)
+
+                    case 'score': // 0-100 Score
+                        if(value >= 80) return 'background: linear-gradient(90deg, #C8E6C9, #A5D6A7); color: #1B5E20; font-weight:700;';
+                        if(value >= 70) return 'background: #E8F5E9; color: #2E7D32; font-weight:700;';
+                        if(value >= 60) return 'background: #F1F8E9; color: #558B2F;';
+                        if(value >= 50) return 'background: #FFF3E0; color: #E65100;';
+                        return 'background: #FFEBEE; color: #C62828;';
                         
                     default:
                         return '';
@@ -1284,6 +1291,7 @@ async function loadMembers() {
                     <td style="text-align:right; padding:8px; \${getMetricStyle(p.sharpe, 'sharpe')}">\${sharpe}</td>
                     <td style="text-align:right; padding:8px; \${getMetricStyle(p.sortino, 'sortino')}">\${sortino}</td>
                     <td style="text-align:right; padding:8px; \${getMetricStyle(p.dr, 'dr')}">\${drVal}</td>
+                    <td style="text-align:right; padding:8px; cursor:pointer; text-decoration:underline; \${getMetricStyle(p.last_score, 'score')}" onclick="event.stopPropagation(); window.location.href='/scoring?portfolioId=\${p.id}'" title="Click to analyze score">\${p.last_score ? p.last_score.toFixed(1) : '-'}</td>
                     <td style="font-size:0.8rem; color:#888; padding:8px;">\${created}</td>
                 </tr>\`;
             });
@@ -1362,22 +1370,45 @@ async function recalcPortfolios() {
     const btn = document.getElementById('btnRecalcSettings');
     if (btn) {
         btn.disabled = true;
-        btn.innerHTML = '<span>&#9203;</span> Processing...'; // Hourglass
     } 
 
     try {
-        const res = await fetch('/api/admin/recalc-portfolio', { method: 'POST' });
-        const result = await res.json();
-        
-        if (result.success) {
-            await loadPortfolios(); // Refresh data
-            // Use Toast instead of Alert to prevent blocking UI
-            if (window.showToast) window.showToast("Recalculation Complete! Metrics updated.", "success");
-            else console.log("Recalculation Complete");
-        } else {
-            if (window.showToast) window.showToast("Recalculation Failed: " + (result.error || 'Unknown'), "error");
-            else alert("Recalculation Failed");
+        if (!groups || groups.length === 0) {
+            await loadPortfolios();
         }
+        
+        const total = groups.length;
+        let successCount = 0;
+        let failCount = 0;
+
+        for (let i = 0; i < total; i++) {
+            const g = groups[i];
+            if (btn) btn.innerHTML = '<span>&#9203;</span> Processing ' + (i + 1) + '/' + total + '...';
+            
+            try {
+                // Call Single Recalc Endpoint for each group
+                const res = await fetch('/api/admin/recalc/' + g.id, { method: 'POST' });
+                if (res.ok) {
+                    successCount++;
+                } else {
+                    failCount++;
+                    console.error('Failed to recalc group', g.id, await res.text());
+                }
+            } catch (err) {
+                failCount++;
+                console.error('Network error Recalc group', g.id, err);
+            }
+        }
+        
+        // Final Reload
+        await loadPortfolios(); // Refresh data
+        
+        let msg = "Recalculation Complete! Updated " + successCount + " portfolios.";
+        if (failCount > 0) msg += " (" + failCount + " failed)";
+        
+        if (window.showToast) window.showToast(msg, failCount > 0 ? "warning" : "success");
+        else console.log(msg);
+
     } catch (e) {
         if (window.showToast) window.showToast("Error triggering recalc: " + e.message, "error");
         else alert("Error: " + e.message);

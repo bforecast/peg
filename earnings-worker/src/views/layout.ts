@@ -61,6 +61,7 @@ export const HTML = `<!DOCTYPE html>
                                 <th onclick="window.sortPortfolios('sharpe')" style="cursor:pointer;">Sharpe <span id="sort-p-sharpe"></span></th>
                                 <th onclick="window.sortPortfolios('sortino')" style="cursor:pointer;">Sortino <span id="sort-p-sortino"></span></th>
                                 <th onclick="window.sortPortfolios('dr')" style="cursor:pointer;" title="Diversification Ratio (Higher is Better)">DR <span id="sort-p-dr"></span></th>
+                                <th onclick="window.sortPortfolios('last_score')" style="cursor:pointer;" title="Weekly Portfolio Score">Score <span id="sort-p-last_score"></span></th>
                                 <th>Created</th>
                             </tr>
                         </thead>

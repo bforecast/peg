@@ -254,6 +254,17 @@ app.post('/api/admin/recalc/:id', async (c) => {
         const id = c.req.param('id');
         const stats = await calculatePortfolioStats(c.env, parseInt(id));
         if (!stats) return c.json({ error: 'Failed to calc stats (returned null)' }, 400);
+
+        // Update Score (Background)
+        c.executionCtx.waitUntil((async () => {
+            try {
+                const { archivePortfolioScore } = await import('../scoring/archiver');
+                await archivePortfolioScore(c.env, parseInt(id), false);
+            } catch (err) {
+                console.error(`[Recalc] Score update failed for ${id}`, err);
+            }
+        })());
+
         return c.json({ status: 'ok', stats });
     } catch (e: any) {
         return c.json({ error: e.message, stack: e.stack }, 200);
@@ -272,7 +283,7 @@ app.get('/api/portfolios', async (c) => {
         const { results } = await c.env.DB.prepare(`
             SELECT 
                 g.id, g.name, g.description, g.type, g.reference, g.created_at,
-                ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy, ps.change_1d, ps.dr, ps.updated_at as stats_updated_at,
+                ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy, ps.change_1d, ps.dr, ps.last_score, ps.updated_at as stats_updated_at,
                 (SELECT count(*) FROM group_members gm WHERE gm.group_id = g.id) as member_count
             FROM groups g
             LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
@@ -314,11 +325,40 @@ app.post('/api/admin/recalc-portfolio', async (c) => {
         for (const g of targetGroups) {
             try {
                 const res = await calculatePortfolioStats(c.env, g.id);
+
                 statsResults.push({ id: g.id, status: res ? 'ok' : 'failed', stats: res });
             } catch (e: any) {
                 statsResults.push({ id: g.id, status: 'error', error: e.message });
             }
         }
+
+        // Batch Update Scores (Randomized Concurrent Background to improve throughput)
+        c.executionCtx.waitUntil((async () => {
+            const { archivePortfolioScore } = await import('../scoring/archiver');
+
+            // Shuffle logic to prevent getting stuck on same failure
+            const shuffled = [...targetGroups].sort(() => Math.random() - 0.5);
+
+            // Process in chunks of 4 concurrently
+            const CHUNK_SIZE = 4;
+            const chunks = [];
+            for (let i = 0; i < shuffled.length; i += CHUNK_SIZE) {
+                chunks.push(shuffled.slice(i, i + CHUNK_SIZE));
+            }
+
+            for (const chunk of chunks) {
+                await Promise.all(chunk.map(async (g) => {
+                    try {
+                        await archivePortfolioScore(c.env, g.id, false);
+                    } catch (err) {
+                        console.error(`[Recalc] Score update failed for ${g.id}`, err);
+                    }
+                }));
+                // Yield after each chunk
+                await new Promise(r => setTimeout(r, 100));
+            }
+        })());
+
 
         return c.json({ success: true, results: statsResults });
     } catch (e: any) {
@@ -1036,6 +1076,17 @@ app.get('/api/debug-date', async (c) => {
         });
     } catch (e: any) {
         return c.json({ error: e.message, stack: e.stack }, 500);
+    }
+});
+// Archive Scores Manually
+app.post('/api/admin/archive-scores', async (c) => {
+    try {
+        const { updateAllPortfoliosScores } = await import('../scoring/archiver');
+        const isWeekly = c.req.query('weekly') === 'true';
+        await updateAllPortfoliosScores(c.env, isWeekly);
+        return c.json({ success: true, weekly: isWeekly });
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
     }
 });
 

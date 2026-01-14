@@ -1,39 +1,82 @@
+/**
+ * 验证新评分系统 - 基于 scoring.md 测试案例
+ * 
+ * 测试案例:
+ * Stock A: PE=24, PEG=1.2, R=35%, σ=22%, MaxDD=-18%, w=40%
+ * Stock B: PE=45, PEG=0.8, R=80%, σ=35%, MaxDD=-32%, w=30%
+ * Stock C: PE=12, PEG=0.6, R=5%,  σ=12%, MaxDD=-8%,  w=30%
+ * 
+ * 预期:
+ * Stock A: Score=69
+ * Stock B: Score=67
+ * Stock C: Score=76
+ * Holdings_quality = 70.5
+ * Performance_port = 67.5
+ * Score_port = 68.5-69
+ */
+
 import { calculateStockScore } from '../src/scoring/calculator';
-import { optimizePortfolioWeights } from '../src/scoring/optimizer';
-import { ScoringMetrics } from '../src/scoring/types';
+import { StockMetricsInput } from '../src/scoring/types';
 
-// Mock Data
-const stocks: ScoringMetrics[] = [
-    { symbol: 'AAPL', profit_growth: 0.25, industry_pmi: 55, industry_growth: 0.12, pe_percentile: 0.8 }, // Good
-    { symbol: 'GOOGL', profit_growth: 0.12, industry_pmi: 55, industry_growth: 0.05, pe_percentile: 0.4 }, // Mid
-    { symbol: 'TSLA', profit_growth: -0.05, industry_pmi: 45, industry_growth: 0.02, pe_percentile: 0.9 }, // Bad
-    { symbol: 'NVDA', profit_growth: 0.50, industry_pmi: 60, industry_growth: 0.20, pe_percentile: 0.6 }, // Great
-];
+// 生成模拟价格序列
+function generateMockPrices(return1Y: number, volatility: number, maxDD: number): number[] {
+    // 简化: 生成252天的价格序列，满足近似的收益率和波动率
+    const prices: number[] = [100]; // 起始价格
+    const targetEnd = 100 * (1 + return1Y);
 
-console.log("--- 1. Testing Stock Scoring ---");
-stocks.forEach(s => {
-    const score = calculateStockScore(s);
-    console.log(`Stock: ${s.symbol}, Growth: ${(s.profit_growth * 100).toFixed(1)}%, PMI: ${s.industry_pmi}`);
-    console.log(`   -> Profit Score: ${score.profitScore}`);
-    console.log(`   -> Industry Score: ${score.industryScore}`);
-    console.log(`   -> Total Forward: ${score.total}`);
-});
+    // 线性插值 + 加入噪声
+    for (let i = 1; i <= 252; i++) {
+        const progress = i / 252;
+        const basePrice = 100 + (targetEnd - 100) * progress;
+        // 添加一些波动 (简化版)
+        const noise = (Math.random() - 0.5) * volatility * 10;
+        prices.push(Math.max(1, basePrice + noise));
+    }
 
-console.log("\n--- 2. Testing Optimization ---");
-// Setup initial weights (Equal)
-const currentWeights = new Map<string, number>();
-stocks.forEach(s => currentWeights.set(s.symbol, 0.25));
-
-const result = optimizePortfolioWeights(stocks, currentWeights, { maxWeight: 0.40, minWeight: 0 }); // Allow 40% max to see concentration
-
-console.log("Optimized Weights:");
-result.optimizedWeights.forEach((w, s) => {
-    console.log(`   ${s}: ${(w * 100).toFixed(1)}%`);
-});
-console.log(`Score: ${result.optimizedScore.toFixed(2)}`);
-
-if (result.optimizedWeights.get('NVDA')! > 0.25) {
-    console.log("SUCCESS: Optimizer increased weight of high-scoring NVDA.");
-} else {
-    console.error("FAIL: Optimizer did not favor high-scoring NVDA.");
+    return prices;
 }
+
+// Test Data based on scoring.md
+const stockA: StockMetricsInput = {
+    symbol: 'A',
+    weight: 0.40,
+    forwardPE: 24,
+    peg: 1.2,
+    prices: generateMockPrices(0.35, 0.22, -0.18)
+};
+
+const stockB: StockMetricsInput = {
+    symbol: 'B',
+    weight: 0.30,
+    forwardPE: 45,
+    peg: 0.8,
+    prices: generateMockPrices(0.80, 0.35, -0.32)
+};
+
+const stockC: StockMetricsInput = {
+    symbol: 'C',
+    weight: 0.30,
+    forwardPE: 12,
+    peg: 0.6,
+    prices: generateMockPrices(0.05, 0.12, -0.08)
+};
+
+console.log("=== 新评分系统验证 ===\n");
+
+console.log("--- 1. 单股评分测试 ---");
+[stockA, stockB, stockC].forEach(stock => {
+    const result = calculateStockScore(stock);
+    console.log(`\nStock ${stock.symbol}:`);
+    console.log(`  PE=${stock.forwardPE}, PEG=${stock.peg}`);
+    console.log(`  Value Score: ${result.components.value.toFixed(1)}`);
+    console.log(`  Momentum Score: ${result.components.momentum.toFixed(1)}`);
+    console.log(`  Risk Score: ${result.components.risk.toFixed(1)}`);
+    console.log(`  Total Score: ${result.components.total.toFixed(1)}`);
+    console.log(`  原始指标: Return=${(result.raw.return1Y * 100).toFixed(1)}%, Vol=${(result.raw.volatility * 100).toFixed(1)}%, MaxDD=${(result.raw.maxDrawdown * 100).toFixed(1)}%`);
+});
+
+console.log("\n--- 2. 预期对比 ---");
+console.log("预期: Stock A ≈ 69, Stock B ≈ 67, Stock C ≈ 76");
+console.log("注: 由于价格序列是模拟生成，实际分数可能略有差异");
+
+console.log("\n=== 验证完成 ===");

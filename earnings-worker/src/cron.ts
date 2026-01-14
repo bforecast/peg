@@ -3,6 +3,7 @@ import { fetchQuotes } from './yahoo_finance';
 import { logCronStatus, saveQuotesToDB, getLastTradingDate, getESTDate, getESTTimestamp } from './db';
 import { calculateStats } from './stats';
 import { updateScoringMetrics } from './scoring/fetcher';
+import { updateAllPortfoliosScores } from './scoring/archiver';
 
 export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
     console.log('Scheduled Update Triggered');
@@ -197,6 +198,14 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                 }
 
                 const portfolioDuration = Date.now() - portfolioStart;
+                // NEW: Update Scores (and Archive if Friday)
+                try {
+                    const isWeekly = dayOfWeek === 5; // Friday
+                    await updateAllPortfoliosScores(env, isWeekly);
+                } catch (e: any) {
+                    console.error(`[Cron] Score update error: ${e.message}`);
+                }
+
                 await logCronStatus(env, 'STATS',
                     `[3/4] Portfolio Stats: ${portfolioCount}/${groups?.length || 0} recalculated (FINAL)`,
                     `Duration: ${portfolioDuration}ms${portfolioErrors.length > 0 ? ' | Failed: ' + portfolioErrors.join(',') : ''}`
