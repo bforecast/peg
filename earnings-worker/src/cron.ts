@@ -3,7 +3,8 @@ import { fetchQuotes } from './yahoo_finance';
 import { logCronStatus, saveQuotesToDB, getLastTradingDate, getESTDate, getESTTimestamp } from './db';
 import { calculateStats } from './stats';
 import { updateScoringMetrics } from './scoring/fetcher';
-import { updateAllPortfoliosScores } from './scoring/archiver';
+
+const PORTFOLIO_BATCH_SIZE = 10;
 
 export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
     console.log('Scheduled Update Triggered');
@@ -59,32 +60,29 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             // ============================================================
 
             // If all symbols are already fresh, silently return without logging
-            // This prevents excessive SKIPPED logs after a successful full update
-            if (pendingSymbols.length === 0) {
-                console.log(`[Cron] All ${symbols.length} symbols up-to-date, skipping silently`);
-                return;
-            }
-
             const initDuration = Date.now() - runStart;
-            await logCronStatus(env, 'SETUP',
-                `[1/4] Init: ${symbols.length} total, ${freshSymbols.length} fresh, ${pendingSymbols.length} pending`,
-                `Duration: ${initDuration}ms | Cutoff: ${cutoffTime}`
-            );
 
+            // Only log setup if we have symbols to process, to avoid spamming logs 
+            // BUT we must proceed to Portfolio Stats phase
+            if (pendingSymbols.length > 0) {
+                await logCronStatus(env, 'SETUP',
+                    `[1/4] Init: ${symbols.length} total, ${freshSymbols.length} fresh, ${pendingSymbols.length} pending`,
+                    `Duration: ${initDuration}ms | Cutoff: ${cutoffTime}`
+                );
+            } else {
+                console.log(`[Cron] All ${symbols.length} symbols fresh. Skipping Quote Phase...`);
+            }
 
             // ============================================================
             // PHASE 2: FETCH QUOTES & UPDATE PRICES
             // ============================================================
             const MAX_UPDATES_PER_RUN = 10; // Increased to 10 after optimization (execution time ~6-10s)
             const symbolsToProcess = pendingSymbols.slice(0, MAX_UPDATES_PER_RUN);
-
             const quoteStart = Date.now();
             let quotesCount = 0;
             let quoteErrors: string[] = [];
             let pricesUpdated = 0;
             let statsUpdated = 0;
-
-            // Fetch all selected symbols in one go (Yahoo batch supports this easily)
             try {
                 const quotes = await fetchQuotes(symbolsToProcess);
                 if (quotes && quotes.length > 0) {
@@ -169,8 +167,6 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                 `Duration: ${quoteDuration}ms | Symbols: ${symbolsToProcess.join(',')}`
             );
 
-            // NOTE: Phase 3 (Update Earnings) was removed because EPS estimates are already
-            // fetched in Phase 2 via fetchQuotes (earningsTrend module) and saved to stock_quotes.
 
             // ============================================================
             // PHASE 4: PORTFOLIO STATS (Only when all symbols are updated)
@@ -182,34 +178,52 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
             // Only recalculate portfolio stats when ALL pending symbols have been processed
             if (remainingPending === 0) {
-                const { results: groups } = await env.DB.prepare("SELECT id, name FROM groups").all();
 
-                if (groups && groups.length > 0) {
+
+                // Find portfolios updated BEFORE the current cutoffTime (or never updated)
+                const { results: staleGroups } = await env.DB.prepare(`
+                    SELECT g.id, g.name FROM groups g
+                    LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
+                    WHERE ps.updated_at IS NULL OR ps.updated_at < ?
+                    LIMIT ?
+                `).bind(cutoffTime, PORTFOLIO_BATCH_SIZE).all();
+
+                if (staleGroups && staleGroups.length > 0) {
                     const { calculatePortfolioStats } = await import('./portfolio');
-                    for (const g of groups as any[]) {
+                    const { archivePortfolioScore } = await import('./scoring/archiver'); // Import single-group scorer
+
+                    const isWeekly = dayOfWeek === 5; // Friday
+
+                    for (const g of staleGroups as any[]) {
                         try {
+                            // 1. Recalculate Stats
                             await calculatePortfolioStats(env, g.id);
+
+                            // 2. Recalculate & Archive Score (Integrated into batch)
+                            await archivePortfolioScore(env, g.id, isWeekly);
+
                             portfolioCount++;
                         } catch (e: any) {
                             portfolioErrors.push(g.name || `ID:${g.id}`);
-                            console.error(`[Cron] Portfolio stats error for ${g.name}: ${e.message}`);
+                            console.error(`[Cron] Portfolio stats/score error for ${g.name}: ${e.message}`);
                         }
                     }
                 }
 
                 const portfolioDuration = Date.now() - portfolioStart;
-                // NEW: Update Scores (and Archive if Friday)
-                try {
-                    const isWeekly = dayOfWeek === 5; // Friday
-                    await updateAllPortfoliosScores(env, isWeekly);
-                } catch (e: any) {
-                    console.error(`[Cron] Score update error: ${e.message}`);
+
+                if (staleGroups.length > 0) {
+                    await logCronStatus(env, 'STATS',
+                        `[3/4] Portfolio Stats: ${portfolioCount} recalculated (Batch of ${PORTFOLIO_BATCH_SIZE})`,
+                        `Duration: ${portfolioDuration}ms${portfolioErrors.length > 0 ? ' | Failed: ' + portfolioErrors.join(',') : ''} | Portfolios: ${staleGroups.map((g: any) => g.name).join(', ')}`
+                    );
+                } else {
+                    await logCronStatus(env, 'STATS',
+                        `[3/4] Portfolio Stats: SKIPPED (0 stale portfolios)`,
+                        `Duration: ${portfolioDuration}ms`
+                    );
                 }
 
-                await logCronStatus(env, 'STATS',
-                    `[3/4] Portfolio Stats: ${portfolioCount}/${groups?.length || 0} recalculated (FINAL)`,
-                    `Duration: ${portfolioDuration}ms${portfolioErrors.length > 0 ? ' | Failed: ' + portfolioErrors.join(',') : ''}`
-                );
             } else {
                 await logCronStatus(env, 'STATS',
                     `[3/4] Portfolio Stats: SKIPPED (${remainingPending} symbols still pending)`,

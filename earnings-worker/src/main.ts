@@ -57,7 +57,6 @@ app.use('/*', async (c, next) => {
         '/auth',
         '/favicon.ico',
         '/manifest.json',
-        '/api/cron-summary', // Debug
         '/api/health'        // Debug
     ];
 
@@ -75,6 +74,8 @@ app.use('/*', async (c, next) => {
     // Not authenticated -> Redirect to login
     return c.redirect('/login');
 });
+
+
 
 // --- Protected Routes ---
 app.route('/', dashboardRoutes);
