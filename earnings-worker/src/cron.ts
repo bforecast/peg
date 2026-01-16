@@ -69,9 +69,8 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     `[1/4] Init: ${symbols.length} total, ${freshSymbols.length} fresh, ${pendingSymbols.length} pending`,
                     `Duration: ${initDuration}ms | Cutoff: ${cutoffTime}`
                 );
-            } else {
-                console.log(`[Cron] All ${symbols.length} symbols fresh. Skipping Quote Phase...`);
             }
+            // ELSE: silent
 
             // ============================================================
             // PHASE 2: FETCH QUOTES & UPDATE PRICES
@@ -162,10 +161,12 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             }
 
             const quoteDuration = Date.now() - quoteStart;
-            await logCronStatus(env, 'QUOTES',
-                `[2/4] Fetch Quotes & Prices: ${quotesCount} quotes, ${pricesUpdated} prices, ${statsUpdated} stats`,
-                `Duration: ${quoteDuration}ms | Symbols: ${symbolsToProcess.join(',')}`
-            );
+            if (quotesCount > 0 || quoteErrors.length > 0) {
+                await logCronStatus(env, 'QUOTES',
+                    `[2/4] Fetch Quotes & Prices: ${quotesCount} quotes, ${pricesUpdated} prices, ${statsUpdated} stats`,
+                    `Duration: ${quoteDuration}ms | Symbols: ${symbolsToProcess.join(',')}`
+                );
+            }
 
 
             // ============================================================
@@ -217,18 +218,16 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                         `[3/4] Portfolio Stats: ${portfolioCount} recalculated (Batch of ${PORTFOLIO_BATCH_SIZE})`,
                         `Duration: ${portfolioDuration}ms${portfolioErrors.length > 0 ? ' | Failed: ' + portfolioErrors.join(',') : ''} | Portfolios: ${staleGroups.map((g: any) => g.name).join(', ')}`
                     );
-                } else {
+                } else if (portfolioErrors.length > 0) {
                     await logCronStatus(env, 'STATS',
-                        `[3/4] Portfolio Stats: SKIPPED (0 stale portfolios)`,
-                        `Duration: ${portfolioDuration}ms`
+                        `[3/4] Portfolio Stats: FAILED (Batch of ${PORTFOLIO_BATCH_SIZE})`,
+                        `Duration: ${portfolioDuration}ms | Failed: ${portfolioErrors.join(',')}`
                     );
                 }
+                // ELSE: Silent if 0 stale portfolios
 
             } else {
-                await logCronStatus(env, 'STATS',
-                    `[3/4] Portfolio Stats: SKIPPED (${remainingPending} symbols still pending)`,
-                    `Duration: 0ms`
-                );
+                // Silent skip if pending symbols remain
             }
 
             // ============================================================
@@ -251,20 +250,20 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             const verifyDuration = Date.now() - verifyStart;
 
             if (remainingPending > 0) {
-                await logCronStatus(env, 'VERIFY',
-                    `[4/4] Verification: SKIPPED (${remainingPending} symbols still pending)`,
-                    `Duration: ${verifyDuration}ms`
-                );
+                // Silent
             } else if (gapSymbols.length > 0) {
                 await logCronStatus(env, 'WARNING',
                     `[4/4] Verification: ${gapSymbols.length} Quote/Stats gaps`,
                     `Duration: ${verifyDuration}ms | Gaps: ${gapSymbols.join(',')}`
                 );
             } else {
-                await logCronStatus(env, 'VERIFY',
-                    `[4/4] Verification: PASSED (0 gaps)`,
-                    `Duration: ${verifyDuration}ms`
-                );
+                // Log success only if we actually did something (Quote or Portfolio update)
+                if (quotesCount > 0 || portfolioCount > 0) {
+                    await logCronStatus(env, 'VERIFY',
+                        `[4/4] Verification: PASSED (0 gaps)`,
+                        `Duration: ${verifyDuration}ms`
+                    );
+                }
             }
 
             // ============================================================
@@ -274,10 +273,13 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             const hasErrors = quoteErrors.length > 0 || portfolioErrors.length > 0 || (remainingPending === 0 && gapSymbols.length > 0);
             const finalStatus = hasErrors ? 'WARNING' : 'SUCCESS';
 
-            await logCronStatus(env, finalStatus,
-                `Run Complete: ${quotesCount} quotes, ${pricesUpdated} prices, ${statsUpdated} stats`,
-                `Total: ${totalDuration}ms | Pending: ${remainingPending} remaining`
-            );
+            // Log final summary ONLY if we did work or have errors
+            if (quotesCount > 0 || portfolioCount > 0 || hasErrors) {
+                await logCronStatus(env, finalStatus,
+                    `Run Complete: ${quotesCount} quotes, ${pricesUpdated} prices, ${statsUpdated} stats`,
+                    `Total: ${totalDuration}ms | Pending: ${remainingPending} remaining`
+                );
+            }
 
         } catch (e: any) {
             console.error('[Cron] Critical Error', e);

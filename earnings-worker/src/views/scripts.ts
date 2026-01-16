@@ -484,7 +484,13 @@ export const SCRIPTS = `
             const mode = document.querySelector('input[name="createMode"]:checked').value;
             document.getElementById('modeBlank').style.display = mode === 'blank' ? 'block' : 'none';
             document.getElementById('modeImport').style.display = mode === 'import' ? 'block' : 'none';
-            document.getElementById('btnCreateAction').textContent = mode === 'import' ? 'Import' : 'Create';
+            const modeX = document.getElementById('modeX');
+            if(modeX) modeX.style.display = mode === 'x' ? 'block' : 'none';
+
+            const btn = document.getElementById('btnCreateAction');
+            if(mode === 'import') btn.textContent = 'Import';
+            else if(mode === 'x') btn.textContent = 'Import from X';
+            else btn.textContent = 'Create';
             
             if (mode === 'import' && !managersLoaded) {
                 loadManagers();
@@ -514,9 +520,39 @@ export const SCRIPTS = `
             const mode = document.querySelector('input[name="createMode"]:checked').value;
             if (mode === 'blank') {
                 createGroup();
+            } else if (mode === 'x') {
+                importFromX();
             } else {
                 importGroup();
             }
+        }
+
+        async function updateGroupDataBatch(newGroup) {
+             showToast('Imported. Updating data for ' + newGroup.holdings.length + ' stocks...', 'info');
+             
+             let done = 0;
+             const total = newGroup.holdings.length;
+             const BATCH_SIZE = 20;
+             
+             for (let i = 0; i < total; i += BATCH_SIZE) {
+                 const batch = newGroup.holdings.slice(i, i + BATCH_SIZE);
+                 await Promise.all(batch.map(async (holding) => {
+                     try {
+                         await fetch('/api/refresh/' + holding.symbol, { method: 'POST' });
+                     } catch (e) {
+                         console.error('Update failed for', holding.symbol);
+                     } finally {
+                         done++;
+                     }
+                 }));
+                 showToast('Updating data: ' + done + '/' + total + '...', 'info');
+                 await new Promise(r => setTimeout(r, 10));
+             }
+             
+             showToast('Data update complete', 'success');
+             if (currentGroup && currentGroup.id == newGroup.id) {
+                 await loadDashboardData();
+             }
         }
 
         async function importGroup() {
@@ -556,36 +592,51 @@ export const SCRIPTS = `
                 }
 
                 if (newGroup && newGroup.holdings && newGroup.holdings.length > 0) {
-                    showToast('Imported. Updating data for ' + newGroup.holdings.length + ' stocks...', 'info');
-                    
-                    // Client-side sequential update to avoid worker timeouts
-                    let done = 0;
-                    const total = newGroup.holdings.length;
-                    
-                    // Process in batches to speed up (concurrency of 20)
-                    const BATCH_SIZE = 20;
-                    for (let i = 0; i < total; i += BATCH_SIZE) {
-                        const batch = newGroup.holdings.slice(i, i + BATCH_SIZE);
-                        
-                        await Promise.all(batch.map(async (holding) => {
-                            try {
-                                await fetch('/api/refresh/' + holding.symbol, { method: 'POST' });
-                            } catch (e) {
-                                console.error('Update failed for', holding.symbol);
-                            } finally {
-                                done++;
-                            }
-                        }));
-                        
-                        showToast('Updating data: ' + done + '/' + total + '...', 'info');
-                        // Minimized delay
-                        await new Promise(r => setTimeout(r, 10));
-                    }
-                    showToast('Data update complete', 'success');
-                    // Refresh current view to show new data
-                    if (currentGroup && currentGroup.id == newGroup.id) {
-                        await loadDashboardData();
-                    }
+                    await updateGroupDataBatch(newGroup);
+                }
+
+            } catch (e) {
+                showToast('Error importing: ' + e.message, 'error');
+            } finally {
+                btn.textContent = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function importFromX() {
+            const url = document.getElementById('xUrl').value;
+            if (!url) {
+                showToast('Please enter an X URL', 'error');
+                return;
+            }
+            
+            const btn = document.getElementById('btnCreateAction');
+            const originalText = btn.textContent;
+            btn.textContent = 'Importing...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/import-x', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ url })
+                });
+                
+                const result = await res.json();
+                if (!res.ok) throw new Error(result.error || 'Import failed');
+                
+                showToast('Imported ' + result.name + ' (' + result.symbolCount + ' stocks)', 'success');
+                closeModal();
+                await loadPortfolios();
+
+                const newGroup = groups.find(g => g.id === result.id);
+                if (newGroup) {
+                     newGroup.holdings = result.symbols ? result.symbols.map(s => ({symbol: s})) : [];
+                     await selectGroup(newGroup);
+                }
+
+                if (newGroup && newGroup.holdings && newGroup.holdings.length > 0) {
+                    await updateGroupDataBatch(newGroup);
                 }
 
             } catch (e) {

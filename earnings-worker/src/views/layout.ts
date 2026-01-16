@@ -198,6 +198,9 @@ export const HTML = `<!DOCTYPE html>
                 <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
                     <input type="radio" name="createMode" value="import" onchange="toggleCreateMode()"> Import Superinvestor
                 </label>
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    <input type="radio" name="createMode" value="x" onchange="toggleCreateMode()"> Import from X
+                </label>
             </div>
 
             <div id="modeBlank">
@@ -214,6 +217,16 @@ export const HTML = `<!DOCTYPE html>
                  </div>
                  <div style="font-size: 0.85rem; color: #666; margin-bottom: 10px;">
                      This will create a new portfolio with the top holdings from the selected manager.
+                 </div>
+            </div>
+
+            <div id="modeX" style="display:none;">
+                 <div style="margin-bottom: 15px;">
+                     <label style="display:block; font-weight:600; color:#444; margin-bottom:5px;">X Post URL</label>
+                     <input type="text" id="xUrl" class="input-field" placeholder="https://x.com/username/status/..." style="width: 100%;">
+                 </div>
+                 <div style="font-size: 0.85rem; color: #666; margin-bottom: 10px;">
+                     This will create a new portfolio from the stocks mentioned in the post.
                  </div>
             </div>
 

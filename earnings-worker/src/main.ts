@@ -83,6 +83,8 @@ app.route('/', adminRoutes);
 app.route('/', legacyRoutes);
 app.route('/', chatRoutes);
 app.route('/', scoringRoutes);
+import importRoutes from './routes/import';
+app.route('/', importRoutes);
 
 // Export Worker Entry Point
 export default {

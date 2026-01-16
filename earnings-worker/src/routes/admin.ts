@@ -90,18 +90,23 @@ app.get('/api/cron-summary', async (c) => {
 
         // 5. Last Portfolio Stats Recalculation
         const lastPortfolio = await c.env.DB.prepare(
-            "SELECT timestamp, message, details FROM cron_logs WHERE status='STATS' AND message LIKE '%recalculated (FINAL)%' ORDER BY id DESC LIMIT 1"
+            "SELECT timestamp, message, details FROM cron_logs WHERE status='STATS' AND message LIKE '%recalculated%' ORDER BY id DESC LIMIT 1"
         ).first() as any;
 
+        // Count FRESH portfolios (updated in last 24h)
+        const { count: freshPortfolios } = await c.env.DB.prepare(
+            "SELECT count(*) as count FROM portfolio_stats WHERE updated_at >= ?"
+        ).bind(cutoff).first() as any;
+
+        const allGroupsRes = await c.env.DB.prepare('SELECT count(*) as count FROM groups').first() as any;
+
         let portfolioInfo = null;
-        if (lastPortfolio) {
-            // Extract "22/22 recalculated" from message like "[3/4] Portfolio Stats: 22/22 recalculated (FINAL)"
-            const match = lastPortfolio.message.match(/(\d+)\/(\d+) recalculated/);
+        if (allGroupsRes && allGroupsRes.count > 0) {
             portfolioInfo = {
-                timestamp: lastPortfolio.timestamp,
-                success: match ? parseInt(match[1]) : 0,
-                total: match ? parseInt(match[2]) : 0,
-                details: lastPortfolio.details
+                timestamp: lastPortfolio ? lastPortfolio.timestamp : 'Pending...',
+                success: freshPortfolios,
+                total: allGroupsRes.count,
+                details: lastPortfolio ? lastPortfolio.details : ''
             };
         }
 
