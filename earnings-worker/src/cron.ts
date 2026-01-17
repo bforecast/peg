@@ -69,8 +69,11 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     `[1/4] Init: ${symbols.length} total, ${freshSymbols.length} fresh, ${pendingSymbols.length} pending`,
                     `Duration: ${initDuration}ms | Cutoff: ${cutoffTime}`
                 );
+            } else {
+                 // Log a light heartbeat instead of silence, so users know it's running
+                 // But only log it at the END if nothing else happened to avoid duplicate logs?
+                 // Actually, if pending is 0, we skip Quotes phase.
             }
-            // ELSE: silent
 
             // ============================================================
             // PHASE 2: FETCH QUOTES & UPDATE PRICES
@@ -279,6 +282,12 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     `Run Complete: ${quotesCount} quotes, ${pricesUpdated} prices, ${statsUpdated} stats`,
                     `Total: ${totalDuration}ms | Pending: ${remainingPending} remaining`
                 );
+            } else {
+                 // Idle Run - Log CHECKED
+                 await logCronStatus(env, 'CHECKED',
+                    `System Fresh: ${symbols.length} symbols checked`,
+                    `Total: ${totalDuration}ms | Cutoff: ${cutoffTime}`
+                 );
             }
 
         } catch (e: any) {

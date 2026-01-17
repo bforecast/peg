@@ -6,8 +6,8 @@ export default defineWorkersConfig({
             workers: {
                 main: './src/main.ts',
                 miniflare: {
-                    // explicit options if needed
-                    compatibilityDate: '2024-01-01'
+                    compatibilityDate: '2024-01-01',
+                    compatibilityFlags: ['nodejs_compat']
                 }
             },
         },

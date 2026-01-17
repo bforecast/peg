@@ -75,17 +75,18 @@ app.get('/api/cron-summary', async (c) => {
         const { count: quotes } = await c.env.DB.prepare('SELECT count(*) as count FROM stock_quotes WHERE updated_at >= ?').bind(cutoff).first() as any;
         const { count: stats } = await c.env.DB.prepare('SELECT count(*) as count FROM stock_stats WHERE updated_at >= ?').bind(cutoff).first() as any;
 
-        // 3. Last Success
-        const lastSuccess = await c.env.DB.prepare("SELECT timestamp, message FROM cron_logs WHERE status='SUCCESS' ORDER BY id DESC LIMIT 1").first() as any;
+        // 3. Last Success (or Checked)
+        const lastSuccess = await c.env.DB.prepare("SELECT timestamp, message FROM cron_logs WHERE status IN ('SUCCESS', 'CHECKED') ORDER BY id DESC LIMIT 1").first() as any;
 
         // 4. Success Rate
         const logs = await c.env.DB.prepare("SELECT status FROM cron_logs WHERE timestamp >= ?").bind(cutoff).all();
         const logResults = logs.results as any[];
         // Only count rows that represent a "Run Conclusion"
-        const conclusionalStatuses = ['SUCCESS', 'SKIPPED', 'FAILED', 'WARNING'];
+        // Only count rows that represent a "Run Conclusion"
+        const conclusionalStatuses = ['SUCCESS', 'SKIPPED', 'FAILED', 'WARNING', 'CHECKED'];
         const validRuns = logResults.filter(l => conclusionalStatuses.includes(l.status));
         const totalRuns = validRuns.length;
-        const successRuns = validRuns.filter(l => l.status === 'SUCCESS' || l.status === 'SKIPPED').length;
+        const successRuns = validRuns.filter(l => l.status === 'SUCCESS' || l.status === 'SKIPPED' || l.status === 'CHECKED').length;
         const rate = totalRuns > 0 ? Math.round((successRuns / totalRuns) * 100) : 100;
 
         // 5. Last Portfolio Stats Recalculation

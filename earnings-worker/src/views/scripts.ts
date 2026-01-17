@@ -659,7 +659,6 @@ export const SCRIPTS = `
 
                 // Auto-redirect
                 if (newGroup.id) {
-                    console.log('Created ID:', newGroup.id, 'Groups:', groups);
                     const g = groups.find(x => x.id == newGroup.id);
                     if (g) {
                         await selectGroup(g);
@@ -673,9 +672,8 @@ export const SCRIPTS = `
                         await selectGroup(tempG);
                         toggleManager();
                     }
-                    console.log("Calling loadDashboardData from updateGroup");
                     await loadDashboardData();
-                    console.log("loadDashboardData returned in updateGroup");               }
+                }
             } catch (e) { alert('Error creating group'); }
         }
         async function deleteGroup() {

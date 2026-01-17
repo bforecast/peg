@@ -57,7 +57,7 @@ app.use('/*', async (c, next) => {
         '/auth',
         '/favicon.ico',
         '/manifest.json',
-        '/api/health'        // Debug
+        '/api/health'         // Debug
     ];
 
     // Check if path starts with certain prefixes (e.g. static assets)
