@@ -124,95 +124,10 @@ chatRoutes.post('/api/chat', async (c) => {
             // Handle Single Stock Context first
             if (symbolToAnalyze) {
                 const symbol = symbolToAnalyze;
-                try {
-                    console.log('[Perplexity] Fetching context for single stock:', symbol);
-
-                    // Lazy Fetch: Ensure we have quote data
-                    await getLatestQuotes(c.env, [symbol]);
-
-                    // Regenerate stats if needed (for RS Rank, SMAs, etc.)
-                    await regenerateStats(c.env, symbol);
-
-                    const db = c.env.DB;
-
-                    // Fetch Quote & Stats
-                    const quote = await db.prepare(
-                        `SELECT sq.*, ss.* 
-                         FROM stock_quotes sq
-                         LEFT JOIN (SELECT * FROM stock_stats WHERE rowid IN (SELECT MAX(rowid) FROM stock_stats GROUP BY symbol)) ss ON sq.symbol = ss.symbol
-                         WHERE sq.symbol = ? ORDER BY sq.updated_at DESC LIMIT 1`
-                    ).bind(symbol).first();
-
-                    if (quote) {
-                        localDataContext += `\n\n### Stock Analysis: ${symbol}\n`;
-                        localDataContext += `- Price: $${quote.price}\n`;
-                        localDataContext += `- Market Cap: $${(quote.market_cap ? (quote.market_cap / 1000000000).toFixed(2) + 'B' : 'N/A')}\n`;
-                        localDataContext += `- Dividend Yield: ${(quote.dividend_yield ? (quote.dividend_yield * 100).toFixed(2) : '0.00')}%\n`;
-                        localDataContext += `- P/S Ratio: ${quote.ps_ratio}\n`;
-                        localDataContext += `- Change 1Y: ${(quote.change_1y || 0).toFixed(2)}%\n`;
-                        localDataContext += `- Change YTD: ${(quote.change_ytd || 0).toFixed(2)}%\n`;
-                        localDataContext += `- Forward PE: ${quote.forward_pe}\n`;
-                        localDataContext += `- PEG Ratio: ${((quote.forward_pe && quote.eps_next_year && quote.eps_current_year) ? (quote.forward_pe / (((quote.eps_next_year - quote.eps_current_year) / Math.abs(quote.eps_current_year)) * 100)).toFixed(2) : 'N/A')}\n`;
-
-                        // Parse RS Score from SVG if present
-                        let rsRank = 'N/A';
-                        const rawRsRank = quote.rs_rank_1m;
-                        if (rawRsRank && typeof rawRsRank === 'string') {
-                            if (rawRsRank.includes('data-score=')) {
-                                const match = rawRsRank.match(/data-score="(\d+)"/);
-                                rsRank = match ? `${match[1]}/100` : 'See Chart';
-                            } else if (rawRsRank.startsWith('<svg')) {
-                                rsRank = 'See Chart';
-                            } else {
-                                rsRank = rawRsRank;
-                            }
-                        }
-                        localDataContext += `- RS Rank (1M): ${rsRank}\n`;
-                        localDataContext += `- 20 SMA: ${quote.sma_20}\n`;
-                        localDataContext += `- 50 SMA: ${quote.sma_50}\n`;
-                        localDataContext += `- 200 SMA: ${quote.sma_200}\n`;
-                        localDataContext += `- Technical Status: ${(quote.price > quote.sma_20 && quote.sma_20 > quote.sma_50) ? 'Strong Uptrend' : 'Neutral/Mixed'}\n`;
-
-                        // Earnings History
-                        const earnings = await db.prepare(
-                            `SELECT fiscal_date_ending, estimated_eps, reported_eps, surprise_percentage
-                             FROM stock_earnings
-                             WHERE symbol = ?
-                             ORDER BY fiscal_date_ending DESC LIMIT 4`
-                        ).bind(symbol).all();
-
-                        if (earnings.results && earnings.results.length > 0) {
-                            localDataContext += `\n**Recent Earnings:**\n`;
-                            localDataContext += `| Date | Est | Rep | Surprise |\n`;
-                            localDataContext += `|------|-----|-----|----------|\n`;
-                            for (const e of earnings.results as any[]) {
-                                localDataContext += `| ${e.fiscal_date_ending} | ${e.estimated_eps} | ${e.reported_eps} | ${e.surprise_percentage}% |\n`;
-                            }
-                        }
-
-                        // Holdings check
-                        const holdings = await db.prepare(
-                            `SELECT g.name, gm.allocation
-                             FROM group_members gm
-                             JOIN groups g ON gm.group_id = g.id
-                             WHERE gm.symbol = ?`
-                        ).bind(symbol).all();
-
-                        if (holdings.results && holdings.results.length > 0) {
-                            localDataContext += `\n**Your Holdings:**\n`;
-                            for (const h of holdings.results as any[]) {
-                                localDataContext += `- Held in **${h.name}** (${h.allocation}%)\n`;
-                            }
-                        } else {
-                            localDataContext += `\n(Not currently held in any active portfolios)\n`;
-                        }
-
-                        console.log('[Perplexity] Final Context for ' + symbol + ':', localDataContext);
-                    } else {
-                        localDataContext += `\n\n### Stock Context: ${symbol}\n(No local data found in DB, please use web search.)\n`;
-                    }
-                } catch (e) {
-                    console.error('Error fetching single stock context:', e);
+                const stockContext = await fetchStockContext(c, c.env.DB, symbol);
+                if (stockContext) {
+                    localDataContext += stockContext;
+                    console.log('[Perplexity] Final Context for ' + symbol + ' (Length: ' + stockContext.length + ')');
                 }
             } else if (wantsAllPortfolios) {
                 try {
@@ -362,7 +277,20 @@ chatRoutes.post('/api/chat', async (c) => {
 
         // Fetch portfolio data for Gemini (similar to Perplexity logic)
         let geminiLocalContext = '';
-        if (context && context.portfolioId) {
+
+        // 1. Single Stock Context (Priority)
+        // Detect symbol from message or context
+        const geminiStockMatch = message.match(/@([A-Za-z]{1,5})\b/);
+        const geminiSymbol = geminiStockMatch ? geminiStockMatch[1].toUpperCase() : (context && context.symbol ? context.symbol.toUpperCase() : null);
+
+        if (geminiSymbol) {
+            const stockContext = await fetchStockContext(c, c.env.DB, geminiSymbol);
+            if (stockContext) {
+                geminiLocalContext = stockContext;
+            }
+        }
+        // 2. Portfolio Context (Fallback if no single stock)
+        else if (context && context.portfolioId) {
             try {
                 const results = await fetchPortfolioContext(c.env.DB, context.portfolioId, context.portfolioName);
                 if (results) geminiLocalContext = results;
@@ -491,5 +419,101 @@ async function fetchPortfolioContext(db: any, portfolioId: string | number, port
     } catch (e) {
         console.error('Error in fetchPortfolioContext:', e);
         return null; // Fail gracefully
+    }
+}
+
+// Shared helper function to fetch single stock context
+async function fetchStockContext(c: any, db: any, symbol: string): Promise<string | null> {
+    try {
+        console.log('[Shared] Fetching context for single stock:', symbol);
+
+        // Lazy Fetch: Ensure we have quote data
+        await getLatestQuotes(c.env, [symbol]);
+
+        // Regenerate stats if needed
+        await regenerateStats(c.env, symbol);
+
+        // Fetch Quote & Stats
+        const quote = await db.prepare(
+            `SELECT sq.*, ss.* 
+             FROM stock_quotes sq
+             LEFT JOIN (SELECT * FROM stock_stats WHERE rowid IN (SELECT MAX(rowid) FROM stock_stats GROUP BY symbol)) ss ON sq.symbol = ss.symbol
+             WHERE sq.symbol = ? ORDER BY sq.updated_at DESC LIMIT 1`
+        ).bind(symbol).first();
+
+        let context = '';
+
+        if (quote) {
+            context += `\n\n### Stock Analysis: ${symbol}\n`;
+            context += `- Price: $${quote.price}\n`;
+            context += `- Market Cap: $${(quote.market_cap ? (quote.market_cap / 1000000000).toFixed(2) + 'B' : 'N/A')}\n`;
+            context += `- Dividend Yield: ${(quote.dividend_yield ? (quote.dividend_yield * 100).toFixed(2) : '0.00')}%\n`;
+            context += `- P/S Ratio: ${quote.ps_ratio}\n`;
+            context += `- Change 1Y: ${(quote.change_1y || 0).toFixed(2)}%\n`;
+            context += `- Change YTD: ${(quote.change_ytd || 0).toFixed(2)}%\n`;
+            context += `- Forward PE: ${quote.forward_pe}\n`;
+            context += `- PEG Ratio: ${((quote.forward_pe && quote.eps_next_year && quote.eps_current_year) ? (quote.forward_pe / (((quote.eps_next_year - quote.eps_current_year) / Math.abs(quote.eps_current_year)) * 100)).toFixed(2) : 'N/A')}\n`;
+
+            // Parse RS Score
+            let rsRank = 'N/A';
+            const rawRsRank = quote.rs_rank_1m;
+            if (rawRsRank && typeof rawRsRank === 'string') {
+                if (rawRsRank.includes('data-score=')) {
+                    const match = rawRsRank.match(/data-score="(\d+)"/);
+                    rsRank = match ? `${match[1]}/100` : 'See Chart';
+                } else if (rawRsRank.startsWith('<svg')) {
+                    rsRank = 'See Chart';
+                } else {
+                    rsRank = rawRsRank;
+                }
+            }
+            context += `- RS Rank (1M): ${rsRank}\n`;
+            context += `- 20 SMA: ${quote.sma_20}\n`;
+            context += `- 50 SMA: ${quote.sma_50}\n`;
+            context += `- 200 SMA: ${quote.sma_200}\n`;
+            context += `- Technical Status: ${(quote.price > quote.sma_20 && quote.sma_20 > quote.sma_50) ? 'Strong Uptrend' : 'Neutral/Mixed'}\n`;
+
+            // Earnings History
+            const earnings = await db.prepare(
+                `SELECT fiscal_date_ending, estimated_eps, reported_eps, surprise_percentage
+                 FROM stock_earnings
+                 WHERE symbol = ?
+                 ORDER BY fiscal_date_ending DESC LIMIT 4`
+            ).bind(symbol).all();
+
+            if (earnings.results && earnings.results.length > 0) {
+                context += `\n**Recent Earnings:**\n`;
+                context += `| Date | Est | Rep | Surprise |\n`;
+                context += `|------|-----|-----|----------|\n`;
+                for (const e of earnings.results as any[]) {
+                    context += `| ${e.fiscal_date_ending} | ${e.estimated_eps} | ${e.reported_eps} | ${e.surprise_percentage}% |\n`;
+                }
+            }
+
+            // Holdings check
+            const holdings = await db.prepare(
+                `SELECT g.name, gm.allocation
+                 FROM group_members gm
+                 JOIN groups g ON gm.group_id = g.id
+                 WHERE gm.symbol = ?`
+            ).bind(symbol).all();
+
+            if (holdings.results && holdings.results.length > 0) {
+                context += `\n**Your Holdings:**\n`;
+                for (const h of holdings.results as any[]) {
+                    context += `- Held in **${h.name}** (${h.allocation}%)\n`;
+                }
+            } else {
+                context += `\n(Not currently held in any active portfolios)\n`;
+            }
+
+            console.log('[Shared] Final Context for ' + symbol + ' (Length: ' + context.length + ')');
+            return context;
+        } else {
+            return `\n\n### Stock Context: ${symbol}\n(No local data found in DB, please use web search.)\n`;
+        }
+    } catch (e) {
+        console.error('Error fetching single stock context:', e);
+        return null;
     }
 }

@@ -12,6 +12,8 @@ export const HTML = `<!DOCTYPE html>
     <meta http-equiv="Expires" content="0">
     <title>Brilliant Forecast Portfolios</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#ffffff">
     <style>${STYLES}</style>
 </head>
 <body class="desktop-hidden">
@@ -347,6 +349,13 @@ export const HTML = `<!DOCTYPE html>
 
     <script>${CLIENT_JS}</script>
     <script>${SCRIPTS}</script>
+    <script>
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+          navigator.serviceWorker.register('/sw.js');
+        });
+      }
+    </script>
 </body>
 </html>`;
 

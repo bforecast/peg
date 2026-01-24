@@ -1,0 +1,24 @@
+{
+    "name": "earnings-mcp-adapter",
+    "version": "1.0.0",
+    "description": "MCP Bridge Adapter for the Earnings Worker",
+    "main": "bridge.js",
+    "type": "module",
+    "bin": {
+        "earnings-mcp-adapter": "./bridge.js"
+    },
+    "scripts": {
+        "start": "node bridge.js"
+    },
+    "engines": {
+        "node": ">=18"
+    },
+    "keywords": [
+        "mcp",
+        "ai",
+        "bridge",
+        "earnings"
+    ],
+    "author": "Antigravity",
+    "license": "MIT"
+}

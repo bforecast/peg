@@ -4,7 +4,7 @@ import { logCronStatus, saveQuotesToDB, getLastTradingDate, getESTDate, getESTTi
 import { calculateStats } from './stats';
 import { updateScoringMetrics } from './scoring/fetcher';
 
-const PORTFOLIO_BATCH_SIZE = 10;
+const PORTFOLIO_BATCH_SIZE = 5;
 
 export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
     console.log('Scheduled Update Triggered');
@@ -70,9 +70,9 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     `Duration: ${initDuration}ms | Cutoff: ${cutoffTime}`
                 );
             } else {
-                 // Log a light heartbeat instead of silence, so users know it's running
-                 // But only log it at the END if nothing else happened to avoid duplicate logs?
-                 // Actually, if pending is 0, we skip Quotes phase.
+                // Log a light heartbeat instead of silence, so users know it's running
+                // But only log it at the END if nothing else happened to avoid duplicate logs?
+                // Actually, if pending is 0, we skip Quotes phase.
             }
 
             // ============================================================
@@ -283,11 +283,24 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     `Total: ${totalDuration}ms | Pending: ${remainingPending} remaining`
                 );
             } else {
-                 // Idle Run - Log CHECKED
-                 await logCronStatus(env, 'CHECKED',
-                    `System Fresh: ${symbols.length} symbols checked`,
-                    `Total: ${totalDuration}ms | Cutoff: ${cutoffTime}`
-                 );
+                // Idle Run - Log CHECKED only once every 30 mins to reduce noise
+                const lastChecked = await env.DB.prepare(
+                    "SELECT timestamp FROM cron_logs WHERE status = 'CHECKED' ORDER BY id DESC LIMIT 1"
+                ).first() as any;
+
+                let shouldLog = true;
+                if (lastChecked?.timestamp) {
+                    const lastTime = new Date(lastChecked.timestamp + ' EST').getTime();
+                    const now = Date.now();
+                    shouldLog = (now - lastTime) > 30 * 60 * 1000; // 30 minutes
+                }
+
+                if (shouldLog) {
+                    await logCronStatus(env, 'CHECKED',
+                        `System Fresh: ${symbols.length} symbols checked`,
+                        `Total: ${totalDuration}ms | Cutoff: ${cutoffTime}`
+                    );
+                }
             }
 
         } catch (e: any) {

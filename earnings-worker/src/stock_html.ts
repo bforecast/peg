@@ -263,7 +263,7 @@ export const STOCK_HTML = `<!DOCTYPE html>
                 Forward PEG AI Expert
                 <div class="header-subtitle">
                     <span class="status-dot"></span>
-                    Context: <span id="chatContext">@\${symbol}</span>
+                    Context: <span id="chatContext">Loading...</span>
                 </div>
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
@@ -289,8 +289,8 @@ export const STOCK_HTML = `<!DOCTYPE html>
         </div>
         
         <div id="chatMessages" class="chat-messages">
-            <div class="message bot">
-                Hello! I can analyze \${symbol} for you. Ask about earnings, valuation, or technical trends.
+            <div class="message bot" id="welcomeMessage">
+                Hello! I can analyze this stock for you. Ask about earnings, valuation, or technical trends.
             </div>
         </div>
 
@@ -305,7 +305,7 @@ export const STOCK_HTML = `<!DOCTYPE html>
                  <button class="translate-btn" onclick="requestTranslation()" title="Translate last reply to Chinese" style="background:none; border:none; cursor:pointer; padding:0 8px; color:#666;">
                     <span style="font-size: 1.2rem;">文</span>
                 </button>
-                <input type="text" id="chatInput" class="chat-input" placeholder="Ask about \${symbol}..." onkeydown="handleChatInput(event)">
+                <input type="text" id="chatInput" class="chat-input" placeholder="Ask about this stock..." onkeydown="handleChatInput(event)">
                 <button class="send-btn" onclick="sendChat()">
                     <svg  xmlns="http://www.w3.org/2000/svg"  width="20"  height="20"  viewBox="0 0 24 24"  fill="none"  stroke="currentColor"  stroke-width="2"  stroke-linecap="round"  stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 14l11 -11" /><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5" /></svg>
                 </button>
@@ -321,6 +321,49 @@ export const STOCK_HTML = `<!DOCTYPE html>
     // Utility for colors
     const GREEN = '#00BA7C';
     const RED = '#F91880';
+
+    // Xueqiu Deep Link Handler - tries app first on mobile, falls back to web
+    function openXueqiu(sym) {
+        const webUrl = 'https://xueqiu.com/S/' + sym;
+        // Try format matching web URL: xueqiu://S/{symbol}
+        const deepLink = 'xueqiu://S/' + sym;
+        
+        // Check if mobile device
+        const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const isAndroid = /Android/i.test(navigator.userAgent);
+        
+        if (!isMobile) {
+            // Desktop: just open in new tab
+            window.open(webUrl, '_blank');
+            return false;
+        }
+        
+        // Mobile: try deep link first
+        const startTime = Date.now();
+        
+        // Create hidden iframe to try deep link (avoids blank page on failure)
+        const iframe = document.createElement('iframe');
+        iframe.style.display = 'none';
+        iframe.src = deepLink;
+        document.body.appendChild(iframe);
+        
+        // Also try location change for iOS
+        window.location.href = deepLink;
+        
+        // Fallback: if still here after 1.5s, app likely not installed
+        setTimeout(function() {
+            // If we're still on this page (didn't switch to app), open web
+            if (Date.now() - startTime < 2000) {
+                window.open(webUrl, '_blank');
+            }
+            // Cleanup iframe
+            if (iframe.parentNode) {
+                iframe.parentNode.removeChild(iframe);
+            }
+        }, 1500);
+        
+        return false; // Prevent default link behavior
+    }
 
 
     // -- CHAT LOGIC --
@@ -457,6 +500,11 @@ export const STOCK_HTML = `<!DOCTYPE html>
     }
 
     async function init() {
+        // Update Static Chat Elements with Symbol
+        document.getElementById('chatContext').innerText = '@' + symbol;
+        document.getElementById('welcomeMessage').innerText = 'Hello! I can analyze ' + symbol + ' for you. Ask about earnings, valuation, or technical trends.';
+        document.getElementById('chatInput').placeholder = 'Ask about ' + symbol + '...';
+        
         try {
             const res = await fetch('/api/stock-details/' + symbol);
             if(!res.ok) throw new Error(res.statusText);
@@ -500,7 +548,7 @@ export const STOCK_HTML = `<!DOCTYPE html>
                     <span class="change-pill" style="background:\${changeColor}20; color:\${changeColor}">
                         \${arrow} \${fmtNum(Math.abs(priceChange), 2, '%')}
                     </span>
-                    <a href="https://xueqiu.com/S/\${q.symbol}" target="_blank" style="display:flex; align-items:center; justify-content:center; text-decoration:none; background:#f5f8fa; padding:4px 8px; border-radius:12px; transition:background 0.2s; margin-left:4px;" onmouseover="this.style.background='#e1e8ed'" onmouseout="this.style.background='#f5f8fa'" title="View on Xueqiu">
+                    <a href="https://xueqiu.com/S/\${q.symbol}" onclick="return openXueqiu('\${q.symbol}')" style="display:flex; align-items:center; justify-content:center; text-decoration:none; background:#f5f8fa; padding:4px 8px; border-radius:12px; transition:background 0.2s; margin-left:4px;" onmouseover="this.style.background='#e1e8ed'" onmouseout="this.style.background='#f5f8fa'" title="View on Xueqiu">
                         <img src="https://xueqiu.com/favicon.ico" width="16" height="16" alt="xueqiu" style="border-radius:2px;">
                     </a>
                 </div>

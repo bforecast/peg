@@ -5,6 +5,7 @@ export type Bindings = {
     PERPLEXITY_API_KEY?: string;
     AUTH_USERNAME?: string;
     AUTH_PASSWORD?: string;
+    MCP_SHARED_SECRET?: string;
 };
 
 export interface StockPrice {

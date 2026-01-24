@@ -8,6 +8,7 @@ import chatRoutes from './routes/chat';
 import scoringRoutes from './routes/scoring';
 import { scheduled } from './cron';
 import { LOGIN_HTML } from './login_html';
+import { MANIFEST_JSON, SW_JS } from './pwa_assets';
 
 console.log('Worker Environment (main.ts) v2.0 - Cookie Auth');
 
@@ -18,6 +19,19 @@ const app = new Hono<{ Bindings: Bindings }>();
 // Login Page
 app.get('/login', (c) => {
     return c.html(LOGIN_HTML);
+});
+
+// PWA Assets
+app.get('/manifest.json', (c) => {
+    return c.text(MANIFEST_JSON, 200, {
+        'Content-Type': 'application/json'
+    });
+});
+
+app.get('/sw.js', (c) => {
+    return c.text(SW_JS, 200, {
+        'Content-Type': 'application/javascript'
+    });
 });
 
 // Auth Handler
@@ -57,11 +71,18 @@ app.use('/*', async (c, next) => {
         '/auth',
         '/favicon.ico',
         '/manifest.json',
+        '/sw.js',
         '/api/health'         // Debug
     ];
 
     // Check if path starts with certain prefixes (e.g. static assets)
     if (publicPaths.includes(path) || path.startsWith('/static/') || path.startsWith('/public/')) {
+        return next();
+    }
+
+    // Check for API Key / Shared Secret (for MCP Server)
+    const authToken = c.req.header('X-Auth-Token');
+    if (authToken && c.env.MCP_SHARED_SECRET && authToken === c.env.MCP_SHARED_SECRET) {
         return next();
     }
 
