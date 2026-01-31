@@ -194,17 +194,15 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
                 if (staleGroups && staleGroups.length > 0) {
                     const { calculatePortfolioStats } = await import('./portfolio');
-                    const { archivePortfolioScore } = await import('./scoring/archiver'); // Import single-group scorer
 
-                    const isWeekly = dayOfWeek === 5; // Friday
+
+
 
                     for (const g of staleGroups as any[]) {
                         try {
                             // 1. Recalculate Stats
                             await calculatePortfolioStats(env, g.id);
 
-                            // 2. Recalculate & Archive Score (Integrated into batch)
-                            await archivePortfolioScore(env, g.id, isWeekly);
 
                             portfolioCount++;
                         } catch (e: any) {
