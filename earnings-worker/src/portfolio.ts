@@ -1,6 +1,6 @@
 import { Bindings, StockPrice } from './types';
 import { calculateStats } from './stats';
-import { getESTDate } from './db';
+import { getESTTimestamp } from './db';
 
 function getDateDaysAgo(days: number): string {
     const d = new Date();
@@ -294,7 +294,7 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     const safeNum = (n: number) => (isNaN(n) || !isFinite(n)) ? null : n;
 
     // 6. Save to DB
-    const updateTime = getESTDate();
+    const updateTime = getESTTimestamp();
     try {
         await env.DB.prepare(`
             INSERT INTO portfolio_stats(

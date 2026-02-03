@@ -54,6 +54,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
             const freshSymbols = freshRows.map((r: any) => r.symbol);
             const pendingSymbols = symbols.filter(s => !freshSymbols.includes(s));
+            let remainingPending = pendingSymbols.length;
 
             // ============================================================
             // PHASE 1: INITIALIZATION
@@ -158,7 +159,10 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                 } else {
                     quoteErrors.push(...symbolsToProcess);
                 }
-            } catch (e: any) {
+
+                remainingPending -= symbolsToProcess.length;
+            }
+            catch (e: any) {
                 quoteErrors.push(...symbolsToProcess);
                 console.error(`[Cron] Quote fetch error: ${e.message}`);
             }
@@ -173,98 +177,103 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
 
             // ============================================================
-            // PHASE 4: PORTFOLIO STATS (Only when all symbols are updated)
+            // PHASE 4: PORTFOLIO STATS (Best-effort batching)
             // ============================================================
             const portfolioStart = Date.now();
-            const remainingPending = pendingSymbols.length - symbolsToProcess.length;
             let portfolioCount = 0;
             let portfolioErrors: string[] = [];
 
-            // Only recalculate portfolio stats when ALL pending symbols have been processed
-            if (remainingPending === 0) {
+            // Find portfolios updated BEFORE the current cutoffTime (or never updated)
+            const { results: staleGroups } = await env.DB.prepare(`
+                SELECT g.id, g.name FROM groups g
+                LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
+                WHERE ps.updated_at IS NULL OR ps.updated_at < ?
+                LIMIT ?
+            `).bind(cutoffTime, PORTFOLIO_BATCH_SIZE).all();
 
+            if (staleGroups && staleGroups.length > 0) {
+                const { calculatePortfolioStats } = await import('./portfolio');
 
-                // Find portfolios updated BEFORE the current cutoffTime (or never updated)
-                const { results: staleGroups } = await env.DB.prepare(`
-                    SELECT g.id, g.name FROM groups g
-                    LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
-                    WHERE ps.updated_at IS NULL OR ps.updated_at < ?
-                    LIMIT ?
-                `).bind(cutoffTime, PORTFOLIO_BATCH_SIZE).all();
+                for (const g of staleGroups as any[]) {
+                    try {
+                        // Check if ALL symbols in THIS group are fresh
+                        const { results: memberStatus } = await env.DB.prepare(`
+                            SELECT gm.symbol, s.updated_at 
+                            FROM group_members gm
+                            LEFT JOIN stock_stats s ON gm.symbol = s.symbol
+                            WHERE gm.group_id = ?
+                        `).bind(g.id).all();
 
-                if (staleGroups && staleGroups.length > 0) {
-                    const { calculatePortfolioStats } = await import('./portfolio');
+                        // A portfolio is "ready" if all its members are >= cutoffTime
+                        const staleMembers = memberStatus.filter((m: any) => !m.updated_at || m.updated_at < cutoffTime);
 
+                        if (staleMembers.length > 0) {
+                            // Dead Symbol Threshold: 2 days ago (don't wait for these)
+                            const twoDaysAgo = new Date(now);
+                            twoDaysAgo.setDate(now.getDate() - 2);
+                            const tdaStr = twoDaysAgo.toISOString().split('T')[0];
 
+                            const nonDeadStaleMembers = staleMembers.filter((m: any) => !m.updated_at || m.updated_at > tdaStr);
 
-
-                    for (const g of staleGroups as any[]) {
-                        try {
-                            // 1. Recalculate Stats
-                            await calculatePortfolioStats(env, g.id);
-
-
-                            portfolioCount++;
-                        } catch (e: any) {
-                            portfolioErrors.push(g.name || `ID:${g.id}`);
-                            console.error(`[Cron] Portfolio stats/score error for ${g.name}: ${e.message}`);
+                            if (nonDeadStaleMembers.length > 0) {
+                                // Still waiting for legitimate updates for this portfolio
+                                continue;
+                            }
+                            // Else: Proceed with update using whatever data we have for the "dead" ones
                         }
+
+                        // 1. Recalculate Stats
+                        await calculatePortfolioStats(env, g.id);
+                        portfolioCount++;
+                    } catch (e: any) {
+                        portfolioErrors.push(g.name || `ID:${g.id}`);
+                        console.error(`[Cron] Portfolio stats error for ${g.name}: ${e.message}`);
                     }
                 }
-
-                const portfolioDuration = Date.now() - portfolioStart;
-
-                if (staleGroups.length > 0) {
-                    await logCronStatus(env, 'STATS',
-                        `[3/4] Portfolio Stats: ${portfolioCount} recalculated (Batch of ${PORTFOLIO_BATCH_SIZE})`,
-                        `Duration: ${portfolioDuration}ms${portfolioErrors.length > 0 ? ' | Failed: ' + portfolioErrors.join(',') : ''} | Portfolios: ${staleGroups.map((g: any) => g.name).join(', ')}`
-                    );
-                } else if (portfolioErrors.length > 0) {
-                    await logCronStatus(env, 'STATS',
-                        `[3/4] Portfolio Stats: FAILED (Batch of ${PORTFOLIO_BATCH_SIZE})`,
-                        `Duration: ${portfolioDuration}ms | Failed: ${portfolioErrors.join(',')}`
-                    );
-                }
-                // ELSE: Silent if 0 stale portfolios
-
-            } else {
-                // Silent skip if pending symbols remain
             }
 
+            const portfolioDuration = Date.now() - portfolioStart;
+
+            if (portfolioCount > 0) {
+                await logCronStatus(env, 'STATS',
+                    `[3/4] Portfolio Stats: ${portfolioCount} recalculated (Batch of ${PORTFOLIO_BATCH_SIZE})`,
+                    `Duration: ${portfolioDuration}ms${portfolioErrors.length > 0 ? ' | Failed: ' + portfolioErrors.join(',') : ''} | Portfolios: ${staleGroups.filter((g: any) => !portfolioErrors.includes(g.name)).map((g: any) => g.name).join(', ')}`
+                );
+            } else if (portfolioErrors.length > 0) {
+                await logCronStatus(env, 'STATS',
+                    `[3/4] Portfolio Stats: FAILED (Batch of ${PORTFOLIO_BATCH_SIZE})`,
+                    `Duration: ${portfolioDuration}ms | Failed: ${portfolioErrors.join(',')}`
+                );
+            }
+
+
             // ============================================================
-            // PHASE 5: VERIFICATION (Only meaningful when all symbols processed)
+            // PHASE 5: VERIFICATION
             // ============================================================
             const verifyStart = Date.now();
             let gapSymbols: string[] = [];
 
-            // Only run gap check when all symbols are processed (remainingPending === 0)
-            if (remainingPending === 0) {
-                const { results: gapRows } = await env.DB.prepare(`
-                    SELECT q.symbol FROM stock_quotes q
-                    LEFT JOIN stock_stats s ON q.symbol = s.symbol
-                    WHERE q.updated_at > ? AND (s.updated_at IS NULL OR s.updated_at <= ?)
-                `).bind(cutoffTime, cutoffTime).all();
+            const { results: gapRows } = await env.DB.prepare(`
+                SELECT q.symbol FROM stock_quotes q
+                LEFT JOIN stock_stats s ON q.symbol = s.symbol
+                WHERE q.updated_at > ? AND (s.updated_at IS NULL OR s.updated_at <= ?)
+            `).bind(cutoffTime, cutoffTime).all();
 
-                gapSymbols = gapRows.map((r: any) => r.symbol);
-            }
+            gapSymbols = gapRows.map((r: any) => r.symbol);
+
 
             const verifyDuration = Date.now() - verifyStart;
 
-            if (remainingPending > 0) {
-                // Silent
-            } else if (gapSymbols.length > 0) {
+            if (gapSymbols.length > 0) {
                 await logCronStatus(env, 'WARNING',
                     `[4/4] Verification: ${gapSymbols.length} Quote/Stats gaps`,
                     `Duration: ${verifyDuration}ms | Gaps: ${gapSymbols.join(',')}`
                 );
-            } else {
-                // Log success only if we actually did something (Quote or Portfolio update)
-                if (quotesCount > 0 || portfolioCount > 0) {
-                    await logCronStatus(env, 'VERIFY',
-                        `[4/4] Verification: PASSED (0 gaps)`,
-                        `Duration: ${verifyDuration}ms`
-                    );
-                }
+            } else if (quotesCount > 0 || portfolioCount > 0) {
+                await logCronStatus(env, 'VERIFY',
+                    `[4/4] Verification: PASSED (0 gaps)`,
+                    `Duration: ${verifyDuration}ms`
+                );
             }
 
             // ============================================================
