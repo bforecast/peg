@@ -4,6 +4,8 @@ import { DASHBOARD_HTML } from '../dashboard_html';
 import { getDashboardData } from '../db';
 import { UI_HTML } from '../ui_html';
 import { FAVICON_BASE64 } from '../favicon';
+import { AccuratePortfolioHealthMonitor } from '../market_entropy';
+import { PriceData } from '../types';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -35,6 +37,12 @@ app.get('/portfolio/:id', (c) => {
 app.get('/stock/:symbol', async (c) => {
     const { STOCK_HTML } = await import('../stock_html');
     return c.html(STOCK_HTML);
+});
+
+app.get('/test-html', async (c) => {
+    const html = '<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><title>Test</title></head><body><h1>Test Page</h1></body></html>';
+    c.header('Content-Type', 'text/html; charset=utf-8');
+    return c.text(html);
 });
 
 app.get('/favicon.ico', (c) => {
@@ -83,15 +91,10 @@ app.get('/api/stock-details/:symbol', async (c) => {
         // Merge stats into quote for frontend convenience
         const mergedQuote = { ...quote, ...stats };
 
-        // 2. Get Price History (Last 370 days for full year chart)
-        // Get date 1 year ago
-        const d = new Date();
-        d.setDate(d.getDate() - 370);
-        const startDate = d.toISOString().split('T')[0];
-
+        // 2. Get Price History (Pull all data to support 5Y and All period shortcuts)
         const { results: history } = await c.env.DB.prepare(
-            'SELECT date, close FROM stock_prices WHERE symbol = ? AND date >= ? ORDER BY date ASC'
-        ).bind(symbol, startDate).all();
+            'SELECT date, open, high, low, close, volume FROM stock_prices WHERE symbol = ? ORDER BY date ASC'
+        ).bind(symbol).all();
 
         // 3. Get Earnings Estimates/History
         const { results: earnings } = await c.env.DB.prepare(
@@ -115,6 +118,60 @@ app.get('/api/stock-details/:symbol', async (c) => {
         });
 
     } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// Portfolio Health Index API
+app.get('/api/portfolio-health', async (c) => {
+    try {
+        const tickersParam = c.req.query('tickers');
+        const windowParam = c.req.query('window');
+
+        if (!tickersParam) {
+            return c.json({ error: 'tickers parameter is required' }, 400);
+        }
+
+        const tickers = tickersParam.split(',').map(t => t.trim().toUpperCase());
+        const window = windowParam ? parseInt(windowParam, 10) : 30;
+
+        // Get price data for all tickers (last 2 years)
+        const twoYearsAgo = new Date();
+        twoYearsAgo.setFullYear(twoYearsAgo.getFullYear() - 2);
+        const startDate = twoYearsAgo.toISOString().split('T')[0];
+
+        const priceDataMap: { [ticker: string]: PriceData[] } = {};
+
+        for (const ticker of tickers) {
+            const { results: prices } = await c.env.DB.prepare(
+                'SELECT date, open, high, low, close, volume FROM stock_prices WHERE symbol = ? AND date >= ? ORDER BY date ASC'
+            ).bind(ticker, startDate).all();
+
+            if (prices && prices.length > 0) {
+                priceDataMap[ticker] = prices.map(p => ({
+                    date: String(p.date),
+                    open: Number(p.open || 0),
+                    high: Number(p.high || 0),
+                    low: Number(p.low || 0),
+                    close: Number(p.close || 0),
+                    volume: Number(p.volume || 0)
+                }));
+            }
+        }
+
+        // If no data found for any tickers
+        if (Object.keys(priceDataMap).length === 0) {
+            return c.json({ error: 'No price data found for specified tickers' }, 404);
+        }
+
+        // Create monitor and run analysis
+        const monitor = new AccuratePortfolioHealthMonitor(Object.keys(priceDataMap), window);
+        const result = monitor.runAnalysis(priceDataMap);
+
+        return c.json(result);
+
+    } catch (e: any) {
+        console.error('Error in portfolio health API:', e);
         return c.json({ error: e.message }, 500);
     }
 });

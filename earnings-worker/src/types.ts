@@ -72,3 +72,38 @@ export interface Portfolio {
     value: string;
     holdings: PortfolioHolding[];
 }
+
+export interface PriceData {
+    date: string;
+    open: number;
+    high: number;
+    low: number;
+    close: number;
+    volume: number;
+}
+
+export interface AssetIndicators {
+    [date: string]: {
+        RSI: number;
+        BBW: number;
+        ATR: number;
+        VolOsc: number;
+        CMF: number;
+    };
+}
+
+export interface HealthResult {
+    date: string;
+    Health_Index: number;
+}
+
+export interface PricePoint {
+    date: string;
+    close: number;
+}
+
+export interface PortfolioHealthData {
+    results: HealthResult[];
+    prices: { [ticker: string]: PricePoint[] };
+    indicators: { [ticker: string]: AssetIndicators };
+}

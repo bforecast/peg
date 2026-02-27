@@ -13,12 +13,17 @@ const TRADING_DAYS_PER_YEAR = 252;
 const RISK_FREE_RATE = 0.04; // 4% approximation for Sharpe
 
 export async function calculatePortfolioStats(env: Bindings, groupId: number) {
-    // 1. Get Portfolio Members & Allocations
-    const { results: members } = await env.DB.prepare(
-        "SELECT symbol, allocation FROM group_members WHERE group_id = ?"
-    ).bind(groupId).all();
+    console.log(`[Portfolio Stats] Starting calculation for group ${groupId}`);
+    
+    try {
+        // 1. Get Portfolio Members & Allocations
+        const { results: members } = await env.DB.prepare(
+            "SELECT symbol, allocation FROM group_members WHERE group_id = ?"
+        ).bind(groupId).all();
 
-    if (!members || members.length === 0) throw new Error(`Batch Calc: No members found for group ${groupId}`);
+        if (!members || members.length === 0) throw new Error(`Batch Calc: No members found for group ${groupId}`);
+        
+        console.log(`[Portfolio Stats] Found ${members.length} members for group ${groupId}`);
 
     const symbols = members.map((m: any) => m.symbol);
     const targetAllocations = new Map<string, number>();
@@ -328,5 +333,10 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
         // Throwing here causes 500. Let's return stats but log error.
     }
 
+    console.log(`[Portfolio Stats] Calculation completed for group ${groupId}`);
     return { cagr, stdDev, maxDD, sharpe, sortino, correlation, change1D, dr };
+    } catch (e: any) {
+        console.error(`[Portfolio Stats] Critical error for group ${groupId}:`, e);
+        throw e;
+    }
 }

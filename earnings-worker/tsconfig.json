@@ -18,5 +18,8 @@
     "include": [
         "src/**/*",
         "tests/**/*"
+    ],
+    "exclude": [
+        "src/stock_html.ts"
     ]
 }

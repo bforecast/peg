@@ -352,18 +352,42 @@ export async function backfillHistory(env: Bindings, symbol: string) {
 
         if (prices && prices.length > 0) {
             const stmt = env.DB.prepare(`INSERT OR REPLACE INTO stock_prices (symbol, date, open, high, low, close, volume, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`);
-            const batch = [];
             const updatedAt = getESTTimestamp();
 
-            for (const p of prices) {
-                batch.push(stmt.bind(symbol, p.date, p.open, p.high, p.low, p.close, p.volume, updatedAt));
-            }
+            let insertedCount = 0;
+            let failedCount = 0;
+            const failedDates: string[] = [];
 
             const CHUNK = 50;
-            for (let k = 0; k < batch.length; k += CHUNK) {
-                await env.DB.batch(batch.slice(k, k + CHUNK));
+            for (let k = 0; k < prices.length; k += CHUNK) {
+                const chunk = prices.slice(k, k + CHUNK);
+                const batch = chunk.map(p => stmt.bind(symbol, p.date, p.open, p.high, p.low, p.close, p.volume, updatedAt));
+
+                try {
+                    await env.DB.batch(batch);
+                    insertedCount += chunk.length;
+                } catch (batchErr: any) {
+                    console.error(`[Backfill] Batch insert failed for ${symbol} at chunk ${k}-${k+CHUNK}:`, batchErr.message);
+                    
+                    for (const p of chunk) {
+                        try {
+                            await env.DB.prepare(
+                                `INSERT OR REPLACE INTO stock_prices (symbol, date, open, high, low, close, volume, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+                            ).bind(symbol, p.date, p.open, p.high, p.low, p.close, p.volume, updatedAt).run();
+                            insertedCount++;
+                        } catch (singleErr: any) {
+                            failedCount++;
+                            failedDates.push(p.date);
+                            console.error(`[Backfill] Single insert failed for ${symbol} on ${p.date}:`, singleErr.message);
+                        }
+                    }
+                }
             }
-            console.log(`[Backfill] Saved ${prices.length} days for ${symbol}`);
+
+            console.log(`[Backfill] Saved ${insertedCount} days for ${symbol}${failedCount > 0 ? `, ${failedCount} failed` : ''}`);
+            if (failedDates.length > 0) {
+                console.log(`[Backfill] Failed dates: ${failedDates.join(', ')}`);
+            }
 
             // --- BACKFILL STATS ---
             const pricesAsc = prices.sort((a: any, b: any) => a.date.localeCompare(b.date));
@@ -386,8 +410,8 @@ export async function backfillHistory(env: Bindings, symbol: string) {
         } else {
             console.log(`[Backfill] No history found for ${symbol}`);
         }
-    } catch (e) {
-        console.error(`[Backfill] Failed for ${symbol}`, e);
+    } catch (e: any) {
+        console.error(`[Backfill] Failed for ${symbol}`, e.message || e);
     }
 }
 

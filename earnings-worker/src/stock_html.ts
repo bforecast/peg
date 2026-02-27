@@ -1,11 +1,11 @@
-export const STOCK_HTML = `<!DOCTYPE html>
+﻿export const STOCK_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Stock Analysis</title>
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         :root {
@@ -48,6 +48,31 @@ export const STOCK_HTML = `<!DOCTYPE html>
             gap: 10px;
         }
 
+        /* Period Buttons */
+        .chart-periods {
+            display: flex;
+            gap: 4px;
+            overflow-x: auto;
+            scrollbar-width: none;
+        }
+        .period-btn {
+            background: transparent;
+            border: none;
+            cursor: pointer;
+            padding: 4px 10px;
+            font-size: 14px;
+            color: #111827;
+            border-radius: 4px;
+            font-weight: 500;
+        }
+        .period-btn:hover {
+            background: #E5E7EB;
+        }
+        .period-btn.active {
+            background: #E5E7EB;
+            color: #000;
+        }
+
         /* Layout */
         .container {
             max-width: 1200px;
@@ -58,6 +83,7 @@ export const STOCK_HTML = `<!DOCTYPE html>
             grid-template-areas: 
                 "header header"
                 "chart metrics"
+                "health health"
                 "earnings holdings";
             gap: 20px;
         }
@@ -65,6 +91,7 @@ export const STOCK_HTML = `<!DOCTYPE html>
         .symbol-header { grid-area: header; }
         .chart-section { grid-area: chart; }
         .metrics-section { grid-area: metrics; }
+        .health-section { grid-area: health; }
         .earnings-section { grid-area: earnings; }
         .holdings-section { grid-area: holdings; }
 
@@ -140,12 +167,7 @@ export const STOCK_HTML = `<!DOCTYPE html>
         /* Chart */
         .chart-container {
             position: relative;
-            height: 400px;
             width: 100%;
-        }
-        canvas {
-            width: 100% !important;
-            height: 100% !important;
         }
 
         /* Metrics Grid */
@@ -506,41 +528,62 @@ export const STOCK_HTML = `<!DOCTYPE html>
         document.getElementById('chatInput').placeholder = 'Ask about ' + symbol + '...';
         
         try {
+            console.log('Fetching stock data...');
             const res = await fetch('/api/stock-details/' + symbol);
             if(!res.ok) throw new Error(res.statusText);
             const data = await res.json();
+            
+            // 1. Initial calculation on FULL historical data for stability
+            if (data.history && data.history.length > 0) {
+                preCalculateAll(data.history);
+            }
+            
+            // 2. Render Page Sections
             render(data);
+            
+            // 3. Set Initial View Period to 1Y
+            const btn1Y = Array.from(document.querySelectorAll('.period-btn')).find(b => b.innerText === '1Y');
+            if (btn1Y) {
+                setChartPeriod('1Y', btn1Y);
+            }
         } catch(e) {
-            loadEl.style.display = 'none';
+            console.error('Init error:', e);
+            if (loadEl) loadEl.style.display = 'none';
             container.innerHTML = \`<div class="full-width error-msg">Error loading data: \${e.message}</div>\`;
         }
     }
 
     function fmtNum(n, decimals=2, suffix='') {
-        if(n == null) return '-';
-        return n.toLocaleString(undefined, {minimumFractionDigits: decimals, maximumFractionDigits: decimals}) + suffix;
+        if (n === null || n === undefined || isNaN(n)) return '-';
+        try {
+            const val = typeof n === 'number' ? n : Number(n);
+            if (isNaN(val)) return '-';
+            return val.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals }) + suffix;
+        } catch (e) {
+            return '-';
+        }
     }
 
-    function render(data) {
-        loadEl.remove();
-        const q = data.quote;
-        
-        // Calculate Derived Metrics
-        const epsC = q.eps_current_year || 0;
-        const epsN = q.eps_next_year || 0;
-        const growth = epsC !== 0 ? ((epsN - epsC) / Math.abs(epsC)) * 100 : 0;
-        const peg = (growth > 0 && q.forward_pe > 0) ? (q.forward_pe / growth) : null;
-        
-        // Scale Percentages (DB stores decimals 0.01 = 1%)
-        const priceChange = (q.change_percent || 0) * 100;
-        const offHigh = (q.fifty_two_week_high_change_percent || 0) * 100;
-        const divYield = (q.dividend_yield || 0) * 100;
+function render(data) {
+    loadEl.remove();
+    const q = data.quote;
 
-        const changeColor = priceChange >= 0 ? GREEN : RED;
-        const arrow = priceChange >= 0 ? '&#8599;' : '&#8600;';
+    // Calculate Derived Metrics
+    const epsC = q.eps_current_year || 0;
+    const epsN = q.eps_next_year || 0;
+    const growth = epsC !== 0 ? ((epsN - epsC) / Math.abs(epsC)) * 100 : 0;
+    const peg = (growth > 0 && q.forward_pe > 0) ? (q.forward_pe / growth) : null;
 
-        // 1. Header & Quote Section
-        const headerHtml = \`
+    // Scale Percentages (DB stores decimals 0.01 = 1%)
+    const priceChange = (q.change_percent || 0) * 100;
+    const offHigh = (q.fifty_two_week_high_change_percent || 0) * 100;
+    const divYield = (q.dividend_yield || 0) * 100;
+
+    const changeColor = priceChange >= 0 ? GREEN : RED;
+    const arrow = priceChange >= 0 ? '&#8599;' : '&#8600;';
+
+    // 1. Header & Quote Section
+    const headerHtml = \`
             <div class="full-width symbol-header">
                 <div class="ticker">\${q.symbol}</div>
                 <div class="price-info">
@@ -560,18 +603,66 @@ export const STOCK_HTML = `<!DOCTYPE html>
 
         const chartHtml = \`
             <div class="card chart-section">
-                <h3>Price History (1Y)</h3>
-                <div class="chart-container">
-                    <canvas id="priceChart"></canvas>
+                <!-- Header with Period Buttons -->
+                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 10px; gap: 10px;">
+                    <h3 style="margin: 0;">Price History</h3>
+                    <div class="chart-periods">
+                        <button class="period-btn" onclick="setChartPeriod('5D', this)">5D</button>
+                        <button class="period-btn" onclick="setChartPeriod('1M', this)">1M</button>
+                        <button class="period-btn" onclick="setChartPeriod('3M', this)">3M</button>
+                        <button class="period-btn" onclick="setChartPeriod('6M', this)">6M</button>
+                        <button class="period-btn" onclick="setChartPeriod('YTD', this)">YTD</button>
+                        <button class="period-btn active" onclick="setChartPeriod('1Y', this)">1Y</button>
+                        <button class="period-btn" onclick="setChartPeriod('5Y', this)">5Y</button>
+                        <button class="period-btn" onclick="setChartPeriod('All', this)">All</button>
+                    </div>
+                </div>
+
+                <!-- Main Price Chart -->
+                <div id="priceChartWrap" style="position: relative;">
+                    <div id="mainLegend" style="position: absolute; z-index: 10; font-size: 11px; padding: 4px 8px; font-family: sans-serif; pointer-events: none; display: flex; gap: 8px; flex-wrap: wrap;"></div>
+                    <div class="chart-container" id="priceChart" style="height: 300px;"></div>
+                </div>
+
+                <!-- Stacked Subchart Panes -->
+                <div id="volPane" class="sub-pane" style="position: relative; margin-top: 2px;">
+                    <div id="volLegend" class="sub-legend" style="position: absolute; z-index: 10; font-size: 11px; padding: 2px 8px; font-family: sans-serif; pointer-events: none; display: flex; gap: 8px;"></div>
+                    <div id="volChart" style="height: 100px;"></div>
+                </div>
+                <div id="macdPane" class="sub-pane" style="position: relative; margin-top: 2px; display: none;">
+                    <div id="macdLegend" class="sub-legend" style="position: absolute; z-index: 10; font-size: 11px; padding: 2px 8px; font-family: sans-serif; pointer-events: none; display: flex; gap: 8px;"></div>
+                    <div id="macdChart" style="height: 100px;"></div>
+                </div>
+                <div id="rsiPane" class="sub-pane" style="position: relative; margin-top: 2px; display: none;">
+                    <div id="rsiLegend" class="sub-legend" style="position: absolute; z-index: 10; font-size: 11px; padding: 2px 8px; font-family: sans-serif; pointer-events: none; display: flex; gap: 8px;"></div>
+                    <div id="rsiChart" style="height: 100px;"></div>
+                </div>
+                <div id="kdjPane" class="sub-pane" style="position: relative; margin-top: 2px; display: none;">
+                    <div id="kdjLegend" class="sub-legend" style="position: absolute; z-index: 10; font-size: 11px; padding: 2px 8px; font-family: sans-serif; pointer-events: none; display: flex; gap: 8px;"></div>
+                    <div id="kdjChart" style="height: 100px;"></div>
+                </div>
+
+                <!-- Indicator Selection Bar (below all charts) -->
+                <div class="indicator-bar" style="display: flex; align-items: center; font-size: 0.85rem; border-top: 1px solid #eff3f4; padding: 6px 0; margin-top: 2px; position: relative;">
+                    <button id="indScrollLeft" onclick="scrollIndicators(-1)" style="display:none; background:none; border:none; cursor:pointer; font-size:16px; color:#536471; padding:0 4px;">&laquo;</button>
+                    <div id="indBarInner" style="display: flex; gap: 0; overflow: hidden; flex: 1;">
+                        <a href="javascript:void(0)" class="ind-toggle active" id="ind_MA" onclick="toggleIndicator('MA')" style="padding: 4px 12px; text-decoration: none; font-weight: bold; color: #1D9BF0;">MA</a>
+                        <a href="javascript:void(0)" class="ind-toggle" id="ind_BOLL" onclick="toggleIndicator('BOLL')" style="padding: 4px 12px; text-decoration: none; color: #536471;">BOLL</a>
+                        <a href="javascript:void(0)" class="ind-toggle active" id="ind_VOL" onclick="toggleIndicator('VOL')" style="padding: 4px 12px; text-decoration: none; font-weight: bold; color: #1D9BF0;">VOLUME</a>
+                        <a href="javascript:void(0)" class="ind-toggle" id="ind_MACD" onclick="toggleIndicator('MACD')" style="padding: 4px 12px; text-decoration: none; color: #536471;">MACD</a>
+                        <a href="javascript:void(0)" class="ind-toggle" id="ind_RSI" onclick="toggleIndicator('RSI')" style="padding: 4px 12px; text-decoration: none; color: #536471;">RSI</a>
+                        <a href="javascript:void(0)" class="ind-toggle" id="ind_KDJ" onclick="toggleIndicator('KDJ')" style="padding: 4px 12px; text-decoration: none; color: #536471;">KDJ</a>
+                    </div>
+                    <button id="indScrollRight" onclick="scrollIndicators(1)" style="background:none; border:none; cursor:pointer; font-size:16px; color:#536471; padding:0 4px; display:none;">&raquo;</button>
                 </div>
             </div>
         \`;
 
-        // Calculate YTD Change
-        // Find price at start of current year (e.g. 2024-01-01)
-        const currentYear = new Date().getFullYear();
-        // Use first trading day of current year
-        const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-01\`)?.close;
+// Calculate YTD Change
+// Find price at start of current year (e.g. 2024-01-01)
+const currentYear = new Date().getFullYear();
+// Use first trading day of current year
+const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-01\`)?.close;
         const ytdChange = startOfYearPrice ? ((q.price - startOfYearPrice) / startOfYearPrice) * 100 : 0;
         const ytdColor = ytdChange >= 0 ? GREEN : RED;
 
@@ -724,62 +815,667 @@ export const STOCK_HTML = `<!DOCTYPE html>
         initChart(data.history);
     }
 
-    function initChart(history) {
-        if(!history || history.length === 0) return;
-        
-        const ctx = document.getElementById('priceChart').getContext('2d');
-        const prices = history.map(h => h.close);
-        const dates = history.map(h => h.date);
-        
-        // Gradient
-        const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-        gradient.addColorStop(0, 'rgba(0, 186, 124, 0.2)');
-        gradient.addColorStop(1, 'rgba(0, 186, 124, 0)');
+    let chart;
+    let candleSeries, ma5Series, ma10Series, ma20Series, ma60Series, ma200Series, bollUpper, bollMid, bollLower;
+    let fullHistoryData = [];
+    let lastHoveredTime = null;
+    let computedDataCache = {};
 
-        new Chart(ctx, {
-            type: 'line',
-            data: {
-                labels: dates,
-                datasets: [{
-                    label: 'Price',
-                    data: prices,
-                    borderColor: '#00BA7C',
-                    backgroundColor: gradient,
-                    borderWidth: 2,
-                    pointRadius: 0,
-                    pointHoverRadius: 4,
-                    fill: true,
-                    tension: 0.1
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                interaction: {
-                    mode: 'index',
-                    intersect: false,
-                },
-                plugins: {
-                    legend: { display: false },
-                    tooltip: {
-                        callbacks: {
-                            label: (ctx) => '$' + ctx.parsed.y.toFixed(2)
-                        }
-                    }
-                },
-                scales: {
-                    x: {
-                        grid: { display: false },
-                        ticks: { maxTicksLimit: 6, maxRotation: 0 }
-                    },
-                    y: {
-                        border: { display: false },
-                        grid: { color: '#f0f0f0' }
-                    }
+    // Each subchart is an independent LightweightCharts instance
+    const subCharts = {}; // { VOL: {chart, series...}, MACD: {chart, series...}, RSI: {chart, series...} }
+    const indicatorState = { MA: true, BOLL: false, VOL: true, MACD: false, RSI: false, KDJ: false };
+    // Order matters for determining which is the bottom chart
+    const subChartOrder = ['VOL', 'MACD', 'RSI', 'KDJ'];
+    
+    const group1 = ['MA', 'BOLL'];
+    const group2 = ['VOL', 'MACD', 'RSI', 'KDJ'];
+    let g2ActiveQueue = ['VOL']; // Tracks the order of Group 2 indicators to enforce the max of 2
+
+    // ── Calculation helpers ──
+    function calculateSMA(data, period) {
+        let sma = new Array(data.length).fill(null);
+        if (data.length < period) return sma;
+        let sum = 0;
+        for (let i = 0; i < period; i++) sum += data[i];
+        sma[period - 1] = sum / period;
+        for (let i = period; i < data.length; i++) {
+            sum = sum - data[i - period] + data[i];
+            sma[i] = sum / period;
+        }
+        return sma;
+    }
+
+    function calculateEMA(data, period) {
+        const ema = new Array(data.length).fill(null);
+        if (data.length < period) return ema;
+
+        const k = 2 / (period + 1);
+        let sum = 0;
+        let count = 0;
+        let startIdx = -1;
+
+        // Find the starting SMA over the first 'period' non-null bars
+        for (let i = 0; i < data.length; i++) {
+            const val = data[i];
+            if (val !== null && val !== undefined) {
+                sum += val;
+                count++;
+                if (count === period) {
+                    startIdx = i;
+                    break;
                 }
             }
+        }
+        
+        if (startIdx === -1) return ema;
+        
+        let currentEma = sum / period;
+        ema[startIdx] = currentEma;
+        
+        // Compute EMA for subsequent bars
+        for (let i = startIdx + 1; i < data.length; i++) {
+            const val = data[i];
+            if (val === null || val === undefined) {
+                ema[i] = ema[i - 1]; // carry forward
+            } else {
+                currentEma = (val - currentEma) * k + currentEma;
+                ema[i] = currentEma;
+            }
+        }
+
+        return ema;
+    }
+
+    function calculateRSI(data, period = 14) {
+        const rsi = new Array(data.length).fill(null);
+        if (data.length <= period) return rsi;
+        
+        let gains = 0;
+        let losses = 0;
+
+        // Calculate initial SMA of gains and losses
+        for (let i = 1; i <= period; i++) {
+            const diff = data[i] - data[i - 1];
+            if (diff > 0) gains += diff; 
+            else losses -= diff;
+        }
+        
+        let avgGain = gains / period;
+        let avgLoss = losses / period;
+        
+        const calcRSI = (g, l) => (l === 0 ? 100 : (g === 0 ? 0 : 100 - (100 / (1 + g / l))));
+        rsi[period] = calcRSI(avgGain, avgLoss);
+        
+        // Apply Wilder's Smoothing
+        for (let i = period + 1; i < data.length; i++) {
+            const diff = data[i] - data[i - 1];
+            const gain = diff > 0 ? diff : 0;
+            const loss = diff < 0 ? -diff : 0;
+            
+            avgGain = (avgGain * (period - 1) + gain) / period;
+            avgLoss = (avgLoss * (period - 1) + loss) / period;
+            rsi[i] = calcRSI(avgGain, avgLoss);
+        }
+
+        return rsi;
+    }
+
+    function calculateBOLL(data, period = 20, multiplier = 2) {
+        const mid = calculateSMA(data, period);
+        const upper = new Array(data.length).fill(null);
+        const lower = new Array(data.length).fill(null);
+        for (let i = period - 1; i < data.length; i++) {
+            let slice = data.slice(i - period + 1, i + 1);
+            let avg = mid[i];
+            let squareDiffs = slice.map(v => Math.pow(v - avg, 2));
+            let variance = squareDiffs.reduce((a, b) => a + b, 0) / period;
+            let sd = Math.sqrt(variance);
+            upper[i] = avg + multiplier * sd;
+            lower[i] = avg - multiplier * sd;
+        }
+        return { upper, mid, lower };
+    }
+
+    function calculateKDJ(data, n = 9, m1 = 3, m2 = 3) {
+        let k = new Array(data.length).fill(null);
+        let d = new Array(data.length).fill(null);
+        let j = new Array(data.length).fill(null);
+        if (data.length < n) return { k, d, j };
+        
+        let currK = 50, currD = 50;
+        for (let i = 0; i < data.length; i++) {
+            let slice = data.slice(Math.max(0, i - n + 1), i + 1);
+            let low = Math.min(...slice.map(h => h.lo));
+            let high = Math.max(...slice.map(h => h.hi));
+            let close = data[i].c;
+            let rsv = (high === low) ? 50 : ((close - low) / (high - low)) * 100;
+            
+            currK = (rsv + (m1 - 1) * currK) / m1;
+            currD = (currK + (m2 - 1) * currD) / m2;
+            k[i] = currK;
+            d[i] = currD;
+            j[i] = 3 * currK - 2 * currD;
+        }
+        return { k, d, j };
+    }
+
+    function calculateMACD(data, fast = 12, slow = 26, signal = 9) {
+        const emaFast = calculateEMA(data, fast);
+        const emaSlow = calculateEMA(data, slow);
+        const macdLine = emaFast.map((f, i) => (f !== null && emaSlow[i] !== null) ? f - emaSlow[i] : null);
+        
+        // Seed signal line from the first valid MACD point
+        const signalLine = calculateEMA(macdLine, signal);
+        
+        const histogram = macdLine.map((m, i) => {
+            const s = signalLine[i];
+            return (m !== null && s !== null) ? (m - s) * 2 : null;
+        });
+        return { macd: macdLine, signal: signalLine, histogram };
+    }
+
+    let isSyncingCrosshair = false;
+    function syncCrosshair(sourceChart, param) {
+        if (isSyncingCrosshair) return;
+        isSyncingCrosshair = true;
+
+        const targets = [{ c: chart, s: candleSeries }];
+        
+        for (const k of subChartOrder) {
+            if (indicatorState[k] && subCharts[k]) {
+                const entry = subCharts[k];
+                targets.push({ 
+                    c: entry.chart, 
+                    s: entry.series || entry.macd || entry.rsi6 || entry.k 
+                });
+            }
+        }
+
+        for (const item of targets) {
+            if (item.c === sourceChart) continue;
+
+            try {
+                if (!param?.point || !param?.time) {
+                    item.c.clearCrosshairPosition();
+                } else {
+                    item.c.setCrosshairPosition(undefined, param.time, item.s);
+                }
+            } catch (e) {
+                // Ignore sync errors for charts that might be improperly initialized
+            }
+        }
+
+        isSyncingCrosshair = false;
+    }
+
+    // ── Shared chart options factory ──
+    function makeChartOpts(el, showTimeAxis) {
+        return {
+            width: el.clientWidth,
+            height: el.clientHeight,
+            layout: { background: { type: 'solid', color: '#ffffff' }, textColor: '#333', fontSize: 11 },
+            grid: { vertLines: { color: '#f0f3fa' }, horzLines: { color: '#f0f3fa' } },
+            localization: { locale: 'en-US', dateFormat: 'yyyy-MM-dd' },
+            timeScale: { visible: showTimeAxis, timeVisible: false, borderColor: '#D1D4DC', borderVisible: true, shiftVisibleRangeOnNewBar: true },
+            rightPriceScale: { borderColor: '#D1D4DC', minimumWidth: 60, borderVisible: true },
+            crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
+        };
+    }
+
+    // ── Timescale sync helpers ──
+    let isSyncing = false;
+    function syncLogicalRange(sourceChart) {
+        if (isSyncing || !sourceChart) return;
+        isSyncing = true;
+        try {
+            const ts = sourceChart.timeScale();
+            const range = ts.getVisibleLogicalRange();
+            if (range) {
+                // Determine target charts (main chart + visible sub-charts)
+                const targets = [chart];
+                subChartOrder.forEach(k => {
+                    if (indicatorState[k] && subCharts[k]) targets.push(subCharts[k].chart);
+                });
+
+                targets.forEach(c => {
+                    if (c !== sourceChart) {
+                        c.timeScale().setVisibleLogicalRange(range);
+                    }
+                });
+            }
+        } catch (e) {}
+        isSyncing = false;
+    }
+
+    // ── X-axis visibility: only the bottom-most visible chart shows dates ──
+    function updateTimeAxisVisibility() {
+        // Determine which chart is at the very bottom
+        var bottomKey = null;
+        for (var i = subChartOrder.length - 1; i >= 0; i--) {
+            if (indicatorState[subChartOrder[i]] && subCharts[subChartOrder[i]]) {
+                bottomKey = subChartOrder[i];
+                break;
+            }
+        }
+
+        // Hide time on main chart unless no subcharts visible
+        chart.applyOptions({ timeScale: { visible: !bottomKey } });
+        // Show/hide time on each subchart
+        for (var j = 0; j < subChartOrder.length; j++) {
+            var k = subChartOrder[j];
+            if (subCharts[k]) {
+                subCharts[k].chart.applyOptions({ timeScale: { visible: (k === bottomKey) } });
+            }
+        }
+    }
+
+    // ── Init main chart ──
+    function initChart(history) {
+        if (!history || history.length === 0) return;
+        fullHistoryData = history;
+
+        const priceEl = document.getElementById('priceChart');
+        chart = LightweightCharts.createChart(priceEl, makeChartOpts(priceEl, false));
+
+        candleSeries = chart.addCandlestickSeries({
+            upColor: '#00BA7C', downColor: '#F91880', borderVisible: false,
+            wickUpColor: '#00BA7C', wickDownColor: '#F91880'
+        });
+        ma5Series = chart.addLineSeries({ color: '#E5C158', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true });
+        ma10Series = chart.addLineSeries({ color: '#2962FF', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true });
+        ma20Series = chart.addLineSeries({ color: '#FF6D00', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true });
+        ma60Series = chart.addLineSeries({ color: '#7E57C2', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true });
+        ma200Series = chart.addLineSeries({ color: '#26a69a', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true });
+        bollUpper = chart.addLineSeries({ color: '#7E57C2', lineWidth: 1, lineStyle: 2, crosshairMarkerVisible: false, visible: false });
+        bollMid = chart.addLineSeries({ color: '#26a69a', lineWidth: 1, crosshairMarkerVisible: false, visible: false });
+        bollLower = chart.addLineSeries({ color: '#7E57C2', lineWidth: 1, lineStyle: 2, crosshairMarkerVisible: false, visible: false });
+
+        chart.timeScale().subscribeVisibleLogicalRangeChange(() => syncLogicalRange(chart));
+        chart.subscribeCrosshairMove(p => { 
+            syncCrosshair(chart, p);
+            if (p.time) { lastHoveredTime = p.time; updateLegends(p.time); } 
+        });
+
+        // Create subcharts
+        createSubChart('VOL', 'volChart');
+        createSubChart('MACD', 'macdChart');
+        createSubChart('RSI', 'rsiChart');
+        createSubChart('KDJ', 'kdjChart');
+
+        seedAllData(history);
+        updateTimeAxisVisibility();
+
+        window.addEventListener('resize', () => {
+            const w = priceEl.clientWidth;
+            chart.applyOptions({ width: w });
+            Object.values(subCharts).forEach(sc => sc.chart.applyOptions({ width: w }));
+            updateScrollArrows();
+        });
+
+        // Initialize scroll arrows after small delay to ensure rendering
+        setTimeout(updateScrollArrows, 500);
+        document.getElementById('indBarInner').addEventListener('scroll', updateScrollArrows);
+
+        // Set initial period to 1Y
+        var btn1Y = Array.from(document.querySelectorAll('.period-btn')).find(b => b.innerText === '1Y');
+        if (btn1Y) {
+            setChartPeriod('1Y', btn1Y);
+        } else {
+            chart.timeScale().fitContent();
+        }
+    }
+
+    function createSubChart(key, elId) {
+        const el = document.getElementById(elId);
+        if (!el) return;
+        const sc = LightweightCharts.createChart(el, makeChartOpts(el, false));
+        sc.timeScale().subscribeVisibleLogicalRangeChange(() => syncLogicalRange(sc));
+        sc.subscribeCrosshairMove(p => { 
+            syncCrosshair(sc, p);
+            if (p.time) { lastHoveredTime = p.time; updateLegends(p.time); } 
+        });
+
+        const entry = { chart: sc };
+        if (key === 'VOL') {
+            entry.series = sc.addHistogramSeries({ 
+                priceFormat: { type: 'volume' },
+                priceLineVisible: false,
+                lastValueVisible: true,
+                priceScaleId: 'right'
+            });
+        } else if (key === 'MACD') {
+            entry.hist = sc.addHistogramSeries({ priceFormat: { type: 'custom', minMove: 0.01, formatter: v => v.toFixed(2) } });
+            entry.macd = sc.addLineSeries({ color: '#2962FF', lineWidth: 1.5 });
+            entry.signal = sc.addLineSeries({ color: '#FF6D00', lineWidth: 1.5 });
+        } else if (key === 'RSI') {
+            entry.rsi6 = sc.addLineSeries({ color: '#E5C158', lineWidth: 1.5 });
+            entry.rsi12 = sc.addLineSeries({ color: '#2962FF', lineWidth: 1.5 });
+            entry.rsi24 = sc.addLineSeries({ color: '#FF6D00', lineWidth: 1.5 });
+        } else if (key === 'KDJ') {
+            entry.k = sc.addLineSeries({ color: '#E5C158', lineWidth: 1.5 });
+            entry.d = sc.addLineSeries({ color: '#2962FF', lineWidth: 1.5 });
+            entry.j = sc.addLineSeries({ color: '#FF6D00', lineWidth: 1.5 });
+        }
+        subCharts[key] = entry;
+        console.log('Created subChart:', key, Object.keys(entry));
+    }
+
+    // -- Pre-calculate indicators on FULL dataset once --
+    let fullComputedMap = {}; 
+    function preCalculateAll(history) {
+        // Explicitly cast all history data once to avoid concatenation bugs
+        const hNum = history.map(h => ({
+            t: h.date,
+            o: Number(h.open || 0),
+            hi: Number(h.high || 0),
+            lo: Number(h.low || 0),
+            c: Number(h.close || 0),
+            v: Number(h.volume || 0)
+        }));
+        
+        const closes = hNum.map(h => h.c);
+        const ma5 = calculateSMA(closes, 5);
+        const ma10 = calculateSMA(closes, 10);
+        const ma20 = calculateSMA(closes, 20);
+        const ma60 = calculateSMA(closes, 60);
+        const ma200 = calculateSMA(closes, 200);
+        const boll = calculateBOLL(closes, 20, 2);
+        const macd = calculateMACD(closes, 12, 26, 9);
+        const rsi6 = calculateRSI(closes, 6);
+        const rsi12 = calculateRSI(closes, 12);
+        const rsi24 = calculateRSI(closes, 24);
+        const kdj = calculateKDJ(hNum, 9, 3, 3);
+
+        fullComputedMap = {};
+        hNum.forEach((h, i) => {
+            fullComputedMap[h.t] = {
+                ...h,
+                ma5: ma5[i], ma10: ma10[i], ma20: ma20[i], ma60: ma60[i], ma200: ma200[i],
+                bu: boll.upper[i], bm: boll.mid[i], bl: boll.lower[i],
+                macd: macd.macd[i], signal: macd.signal[i], hist: macd.histogram[i],
+                rsi6: rsi6[i], rsi12: rsi12[i], rsi24: rsi24[i],
+                k: kdj.k[i], d: kdj.d[i], j: kdj.j[i]
+            };
         });
     }
+
+    function seedAllData(history) {
+        // history provided here is already filtered by period (3M, 1Y etc.)
+        // We Pull pre-calculated values from fullComputedMap for stability
+        const cd=[], vd=[], m5d=[], m10d=[], m20d=[], m60d=[], m200d=[], bud=[], bmd=[], bld=[];
+        const macdD=[], sigD=[], histD=[], rsi6D=[], rsi12D=[], rsi24D=[], kd=[], dd=[], jd=[];
+
+        history.forEach(h => {
+                const d = fullComputedMap[h.date] || {};
+                const date = h.date;
+                computedDataCache[date] = d; // for legend
+                
+                cd.push({ time: date, open: h.open, high: h.high, low: h.low, close: h.close });
+                
+                if (d.ma5 !== undefined) m5d.push({ time: date, value: d.ma5 });
+                if (d.ma10 !== undefined) m10d.push({ time: date, value: d.ma10 });
+                if (d.ma20 !== undefined) m20d.push({ time: date, value: d.ma20 });
+                if (d.ma60 !== undefined) m60d.push({ time: date, value: d.ma60 });
+                if (d.ma200 !== undefined) m200d.push({ time: date, value: d.ma200 });
+                if (d.bm !== undefined) { // Check for mid-band as an indicator of BOLL data presence
+                    bmd.push({ time: date, value: d.bm });
+                    bud.push({ time: date, value: d.bu });
+                    bld.push({ time: date, value: d.bl });
+                }
+
+                // Subcharts: Use null for missing data to maintain identical indexing for sync
+                vd.push({ time: date, value: h.volume, color: (h.close >= h.open ? '#00BA7C88' : '#F9188088') });
+
+                macdD.push({ time: date, value: d.macd !== undefined ? d.macd : null });
+                sigD.push({ time: date, value: d.signal !== undefined ? d.signal : null });
+                histD.push({ time: date, value: d.hist !== undefined ? d.hist : null, color: (d.hist >= 0 ? '#00BA7C' : '#F91880') });
+
+                rsi6D.push({ time: date, value: d.rsi6 !== undefined ? d.rsi6 : null });
+                rsi12D.push({ time: date, value: d.rsi12 !== undefined ? d.rsi12 : null });
+                rsi24D.push({ time: date, value: d.rsi24 !== undefined ? d.rsi24 : null });
+
+                kd.push({ time: date, value: d.k !== undefined ? d.k : null });
+                dd.push({ time: date, value: d.d !== undefined ? d.d : null });
+                jd.push({ time: date, value: d.j !== undefined ? d.j : null });
+        });
+
+
+        candleSeries.setData(cd);
+        ma5Series.setData(m5d);
+        ma10Series.setData(m10d);
+        ma20Series.setData(m20d);
+        ma60Series.setData(m60d);
+        ma200Series.setData(m200d);
+        bollUpper.setData(bud);
+        bollMid.setData(bmd);
+        bollLower.setData(bld);
+        
+        console.log('Seeding subcharts...', {
+            VOL: vd.length, 
+            MACD: macdD.length, 
+            RSI: rsi6D.length, 
+            KDJ: kd.length
+        });
+
+        if (subCharts.VOL) subCharts.VOL.series.setData(vd);
+        if (subCharts.MACD) {
+            subCharts.MACD.hist.setData(histD);
+            subCharts.MACD.macd.setData(macdD);
+            subCharts.MACD.signal.setData(sigD);
+        }
+        if (subCharts.RSI) {
+            subCharts.RSI.rsi6.setData(rsi6D);
+            subCharts.RSI.rsi12.setData(rsi12D);
+            subCharts.RSI.rsi24.setData(rsi24D);
+        }
+        if (subCharts.KDJ) {
+            subCharts.KDJ.k.setData(kd);
+            subCharts.KDJ.d.setData(dd);
+            subCharts.KDJ.j.setData(jd);
+        }
+        lastHoveredTime = history[history.length - 1].date;
+        updateLegends(lastHoveredTime);
+    }
+
+    function updateLegends(time) {
+        const d = computedDataCache[time];
+        if (!d) return;
+        const ml = document.getElementById('mainLegend');
+        let mh = '';
+        if (indicatorState.MA) {
+            mh += '<span style="font-weight:bold;">MA</span> ';
+            if (d.ma5 != null) mh += '<span style="color:#E5C158">MA5:' + d.ma5.toFixed(2) + '</span> ';
+            if (d.ma10 != null) mh += '<span style="color:#2962FF">MA10:' + d.ma10.toFixed(2) + '</span> ';
+            if (d.ma20 != null) mh += '<span style="color:#FF6D00">MA20:' + d.ma20.toFixed(2) + '</span> ';
+            if (d.ma60 != null) mh += '<span style="color:#7E57C2">MA60:' + d.ma60.toFixed(2) + '</span> ';
+            if (d.ma200 != null) mh += '<span style="color:#26a69a">MA200:' + d.ma200.toFixed(2) + '</span> ';
+        }
+        if (indicatorState.BOLL) {
+            if (d.bm != null) mh += '<span style="color:#26a69a">BOLL(20,2) MID:' + d.bm.toFixed(2) + '</span> ';
+            if (d.bu != null) mh += '<span style="color:#7E57C2">UP:' + d.bu.toFixed(2) + '</span> ';
+            if (d.bl != null) mh += '<span style="color:#7E57C2">LOW:' + d.bl.toFixed(2) + '</span> ';
+        }
+        ml.innerHTML = mh;
+
+        var vl = document.getElementById('volLegend');
+        if (vl) {
+            let vStr = '-';
+            if (d && d.v != null && !isNaN(d.v)) {
+                try { vStr = d.v.toLocaleString(); } catch(e) {}
+            }
+            const color = (d.c >= d.o) ? '#00BA7C' : '#F91880';
+            vl.innerHTML = '<span>VOLUME</span> <span style="color:' + color + '">' + vStr + '</span>';
+        }
+
+        var ml2 = document.getElementById('macdLegend');
+        if (ml2) ml2.innerHTML = '<span>MACD(12,26,9)</span> ' + 
+            '<span style="color:#2962FF">DIF:' + (d.macd != null ? d.macd.toFixed(2) : '-') + '</span> ' +
+            '<span style="color:#FF6D00">DEA:' + (d.signal != null ? d.signal.toFixed(2) : '-') + '</span> ' +
+            '<span style="color:' + (d.hist >= 0 ? '#00BA7C' : '#F91880') + '">MACD:' + (d.hist != null ? d.hist.toFixed(2) : '-') + '</span>';
+
+        var rl = document.getElementById('rsiLegend');
+        if (rl) rl.innerHTML = '<span>RSI(6,12,24)</span> ' + 
+            '<span style="color:#E5C158">6:' + (d.rsi6 != null ? d.rsi6.toFixed(2) : '-') + '</span> ' +
+            '<span style="color:#2962FF">12:' + (d.rsi12 != null ? d.rsi12.toFixed(2) : '-') + '</span> ' +
+            '<span style="color:#FF6D00">24:' + (d.rsi24 != null ? d.rsi24.toFixed(2) : '-') + '</span>';
+
+        var kl = document.getElementById('kdjLegend');
+        if (kl) kl.innerHTML = '<span>KDJ(9,3,3)</span> ' +
+            '<span style="color:#E5C158">K:' + (d.k != null ? d.k.toFixed(2) : '-') + '</span> ' +
+            '<span style="color:#2962FF">D:' + (d.d != null ? d.d.toFixed(2) : '-') + '</span> ' +
+            '<span style="color:#FF6D00">J:' + (d.j != null ? d.j.toFixed(2) : '-') + '</span>';
+    }
+
+    // ── Public toggle function: lights on / lights off ──
+    function setIndicatorState(key, state) {
+        if (indicatorState[key] === state) return;
+        indicatorState[key] = state;
+        
+        const btn = document.getElementById('ind_' + key);
+        if (btn) {
+            if (state) {
+                btn.style.color = '#1D9BF0';
+                btn.style.fontWeight = 'bold';
+                btn.classList.add('active');
+            } else {
+                btn.style.color = '#536471';
+                btn.style.fontWeight = 'normal';
+                btn.classList.remove('active');
+            }
+        }
+        
+        // Apply overlay visibility
+        if (key === 'MA') {
+            ma5Series.applyOptions({ visible: state });
+            ma10Series.applyOptions({ visible: state });
+            ma20Series.applyOptions({ visible: state });
+            ma60Series.applyOptions({ visible: state });
+            ma200Series.applyOptions({ visible: state });
+        } else if (key === 'BOLL') {
+            bollUpper.applyOptions({ visible: state });
+            bollMid.applyOptions({ visible: state });
+            bollLower.applyOptions({ visible: state });
+        } else if (subCharts[key]) {
+            // Toggle subchart pane visibility
+            const pane = document.getElementById(key.toLowerCase() + 'Pane');
+            if (pane) pane.style.display = state ? 'block' : 'none';
+            // Resize the chart after making it visible
+            if (state) {
+                const el = document.getElementById(key.toLowerCase() + 'Chart');
+                if (el) {
+                    subCharts[key].chart.applyOptions({ width: el.clientWidth, height: el.clientHeight });
+                }
+            }
+        }
+    }
+
+    window.toggleIndicator = function(key) {
+        const isTurningOn = !indicatorState[key];
+        
+        if (isTurningOn) {
+            if (group1.includes(key)) {
+                // Max 1 out of Group 1
+                group1.forEach(k => {
+                    if (k !== key && indicatorState[k]) {
+                        setIndicatorState(k, false);
+                    }
+                });
+            } else if (group2.includes(key)) {
+                // Max 2 out of Group 2
+                if (g2ActiveQueue.length >= 2) {
+                    const toEvict = g2ActiveQueue.shift();
+                    setIndicatorState(toEvict, false);
+                }
+                g2ActiveQueue.push(key);
+            }
+        } else {
+            // Turning off
+            if (group2.includes(key)) {
+                g2ActiveQueue = g2ActiveQueue.filter(k => k !== key);
+            }
+        }
+
+        setIndicatorState(key, isTurningOn);
+
+        updateTimeAxisVisibility();
+        // Sync timescale from main chart to all visible subcharts
+        const ts = chart.timeScale();
+        const mainRange = ts.getVisibleLogicalRange();
+        const scrollPos = ts.scrollPosition();
+        if (mainRange) {
+            for (const sk of subChartOrder) {
+                if (indicatorState[sk] && subCharts[sk]) {
+                    try { 
+                        const sts = subCharts[sk].chart.timeScale();
+                        sts.setVisibleLogicalRange(mainRange);
+                        sts.scrollToPosition(scrollPos, false);
+                    } catch(e) {}
+                }
+            }
+        }
+        updateLegends(lastHoveredTime);
+    };
+
+    window.scrollIndicators = function(dir) {
+        var bar = document.getElementById('indBarInner');
+        if (bar) bar.scrollBy({ left: dir * 120, behavior: 'smooth' });
+    };
+
+    function updateScrollArrows() {
+        const bar = document.getElementById('indBarInner');
+        const leftBtn = document.getElementById('indScrollLeft');
+        const rightBtn = document.getElementById('indScrollRight');
+        if (!bar || !leftBtn || !rightBtn) return;
+        
+        const hasOverflow = bar.scrollWidth > bar.clientWidth;
+        leftBtn.style.display = hasOverflow ? 'block' : 'none';
+        rightBtn.style.display = hasOverflow ? 'block' : 'none';
+        
+        leftBtn.style.opacity = bar.scrollLeft > 5 ? '1' : '0.3';
+        rightBtn.style.opacity = (bar.scrollLeft + bar.clientWidth < bar.scrollWidth - 5) ? '1' : '0.3';
+    }
+
+    window.setChartPeriod = function(period, btn) {
+        document.querySelectorAll('.period-btn').forEach(function(b) { b.classList.remove('active'); });
+        btn.classList.add('active');
+        if (!fullHistoryData || fullHistoryData.length === 0) return;
+
+        var lastDate = new Date(fullHistoryData[fullHistoryData.length - 1].date);
+        var startDate = new Date(lastDate);
+
+        switch (period) {
+            case '5D': startDate.setDate(lastDate.getDate() - 5); break;
+            case '1M': startDate.setMonth(lastDate.getMonth() - 1); break;
+            case '3M': startDate.setMonth(lastDate.getMonth() - 3); break;
+            case '6M': startDate.setMonth(lastDate.getMonth() - 6); break;
+            case 'YTD': startDate = new Date(lastDate.getFullYear(), 0, 1); break;
+            case '1Y': startDate.setFullYear(lastDate.getFullYear() - 1); break;
+            case '5Y': startDate.setFullYear(lastDate.getFullYear() - 5); break;
+            case 'All':
+                chart.timeScale().fitContent();
+                return;
+        }
+
+        const startTimestamp = startDate.toISOString().split('T')[0];
+        const endTimestamp = lastDate.toISOString().split('T')[0];
+        const firstAvailableDate = fullHistoryData[0].date;
+        const validStart = startTimestamp < firstAvailableDate ? firstAvailableDate : startTimestamp;
+        
+        // Apply to main chart
+        chart.timeScale().setVisibleRange({ from: validStart, to: endTimestamp });
+        
+        // Force immediate sync to visible subcharts
+        setTimeout(() => {
+            const range = chart.timeScale().getVisibleLogicalRange();
+            if (range) {
+                subChartOrder.forEach(k => {
+                    if (indicatorState[k] && subCharts[k]) {
+                        subCharts[k].chart.timeScale().setVisibleLogicalRange(range);
+                    }
+                });
+            }
+        }, 50);
+    };
 
     init();
 </script>

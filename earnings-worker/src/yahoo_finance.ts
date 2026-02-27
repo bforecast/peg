@@ -161,11 +161,18 @@ async function fetchQuotesInternal(symbols: string[]): Promise<YahooQuote[]> {
                     return null;
                 }
 
-                if (!res.ok) return null;
+                if (!res.ok) {
+                    const errorText = await res.text();
+                    console.error(`[Yahoo] Fetch failed for ${symbol}: ${res.status} ${res.statusText} - ${errorText}`);
+                    return null;
+                }
 
                 const data: any = await res.json();
                 const result = data.quoteSummary?.result?.[0];
-                if (!result) return null;
+                if (!result) {
+                    console.warn(`[Yahoo] No result for ${symbol}: ${JSON.stringify(data)}`);
+                    return null;
+                }
 
                 const summary = result.summaryDetail || {};
                 const financial = result.financialData || {};

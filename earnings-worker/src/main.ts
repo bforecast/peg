@@ -72,8 +72,14 @@ app.use('/*', async (c, next) => {
         '/favicon.ico',
         '/manifest.json',
         '/sw.js',
-        '/api/health'         // Debug
+        '/api/health',
+        '/api/portfolio-health'
     ];
+    
+    // Stock page and its API
+    if (path.startsWith('/stock/') || path.startsWith('/api/stock-')) {
+        return next();
+    }
 
     // Check if path starts with certain prefixes (e.g. static assets)
     if (publicPaths.includes(path) || path.startsWith('/static/') || path.startsWith('/public/')) {

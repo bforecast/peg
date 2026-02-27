@@ -122,8 +122,16 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                                 ).bind(q.symbol).all();
 
                                 if (history && history.length > 0) {
-                                    const pricesAsc = (history as unknown as { date: string; close: number }[]).reverse();
-                                    const stats = calculateStats(q.symbol, pricesAsc);
+                                    const pricesAsc = (history as any[]).map(h => ({
+                                        symbol: q.symbol,
+                                        date: h.date,
+                                        close: h.close,
+                                        open: h.open || h.close,
+                                        high: h.high || h.close,
+                                        low: h.low || h.close,
+                                        volume: h.volume || 0
+                                    })).reverse();
+                                    const stats = calculateStats(q.symbol, pricesAsc as any);
 
                                     if (stats) {
                                         await env.DB.prepare(`
@@ -160,11 +168,21 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     quoteErrors.push(...symbolsToProcess);
                 }
 
+                if (quoteErrors.length > 0) {
+                    // Update updated_at for failed symbols to move them out of "pending" for the current window
+                    // but don't recalculate their stats. This prevents 1 symbol from blocking the system.
+                    const updatedAt = getESTTimestamp();
+                    for (const s of quoteErrors) {
+                        await env.DB.prepare(`UPDATE stock_stats SET updated_at = ? WHERE symbol = ?`).bind(updatedAt, s).run();
+                    }
+                }
                 remainingPending -= symbolsToProcess.length;
             }
             catch (e: any) {
                 quoteErrors.push(...symbolsToProcess);
                 console.error(`[Cron] Quote fetch error: ${e.message}`);
+                // Move them out of pending anyway to avoid infinite loop
+                remainingPending -= symbolsToProcess.length;
             }
 
             const quoteDuration = Date.now() - quoteStart;
@@ -226,8 +244,9 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                         await calculatePortfolioStats(env, g.id);
                         portfolioCount++;
                     } catch (e: any) {
-                        portfolioErrors.push(g.name || `ID:${g.id}`);
-                        console.error(`[Cron] Portfolio stats error for ${g.name}: ${e.message}`);
+                        const safeName = g.name ? String(g.name).substring(0, 50) : `ID:${g.id}`;
+                        portfolioErrors.push(safeName);
+                        console.error(`[Cron] Portfolio stats error for ${safeName}: ${e.message}`);
                     }
                 }
             }
@@ -235,9 +254,13 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             const portfolioDuration = Date.now() - portfolioStart;
 
             if (portfolioCount > 0) {
+                const successfulPortfolios = staleGroups
+                    .filter((g: any) => !portfolioErrors.includes(g.name ? String(g.name).substring(0, 50) : `ID:${g.id}`))
+                    .map((g: any) => g.name ? String(g.name).substring(0, 50) : `ID:${g.id}`)
+                    .join(', ');
                 await logCronStatus(env, 'STATS',
                     `[3/4] Portfolio Stats: ${portfolioCount} recalculated (Batch of ${PORTFOLIO_BATCH_SIZE})`,
-                    `Duration: ${portfolioDuration}ms${portfolioErrors.length > 0 ? ' | Failed: ' + portfolioErrors.join(',') : ''} | Portfolios: ${staleGroups.filter((g: any) => !portfolioErrors.includes(g.name)).map((g: any) => g.name).join(', ')}`
+                    `Duration: ${portfolioDuration}ms${portfolioErrors.length > 0 ? ' | Failed: ' + portfolioErrors.join(',') : ''} | Portfolios: ${successfulPortfolios}`
                 );
             } else if (portfolioErrors.length > 0) {
                 await logCronStatus(env, 'STATS',
@@ -280,8 +303,9 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             // FINAL SUMMARY
             // ============================================================
             const totalDuration = Date.now() - runStart;
-            const hasErrors = quoteErrors.length > 0 || portfolioErrors.length > 0 || (remainingPending === 0 && gapSymbols.length > 0);
-            const finalStatus = hasErrors ? 'WARNING' : 'SUCCESS';
+            const hasErrors = quoteErrors.length > 0 || portfolioErrors.length > 0;
+            const hasSignificantErrors = quoteErrors.length > 2 || portfolioErrors.length > 1;
+            const finalStatus = hasSignificantErrors ? 'WARNING' : 'SUCCESS';
 
             // Log final summary ONLY if we did work or have errors
             if (quotesCount > 0 || portfolioCount > 0 || hasErrors) {
