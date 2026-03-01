@@ -7,6 +7,7 @@
     <link rel="icon" type="image/x-icon" href="/favicon.ico">
     <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/numeric/1.2.6/numeric.min.js"></script>
     <style>
         :root {
             --bg-color: #f8f9fa;
@@ -641,6 +642,10 @@ function render(data) {
                     <div id="kdjLegend" class="sub-legend" style="position: absolute; z-index: 10; font-size: 11px; padding: 2px 8px; font-family: sans-serif; pointer-events: none; display: flex; gap: 8px;"></div>
                     <div id="kdjChart" style="height: 100px;"></div>
                 </div>
+                <div id="entPane" class="sub-pane" style="position: relative; margin-top: 2px; display: none;">
+                    <div id="entLegend" class="sub-legend" style="position: absolute; z-index: 10; font-size: 11px; padding: 2px 8px; font-family: sans-serif; pointer-events: none; display: flex; gap: 8px;"></div>
+                    <div id="entChart" style="height: 100px;"></div>
+                </div>
 
                 <!-- Indicator Selection Bar (below all charts) -->
                 <div class="indicator-bar" style="display: flex; align-items: center; font-size: 0.85rem; border-top: 1px solid #eff3f4; padding: 6px 0; margin-top: 2px; position: relative;">
@@ -652,6 +657,7 @@ function render(data) {
                         <a href="javascript:void(0)" class="ind-toggle" id="ind_MACD" onclick="toggleIndicator('MACD')" style="padding: 4px 12px; text-decoration: none; color: #536471;">MACD</a>
                         <a href="javascript:void(0)" class="ind-toggle" id="ind_RSI" onclick="toggleIndicator('RSI')" style="padding: 4px 12px; text-decoration: none; color: #536471;">RSI</a>
                         <a href="javascript:void(0)" class="ind-toggle" id="ind_KDJ" onclick="toggleIndicator('KDJ')" style="padding: 4px 12px; text-decoration: none; color: #536471;">KDJ</a>
+                        <a href="javascript:void(0)" class="ind-toggle" id="ind_ENT" onclick="toggleIndicator('ENT')" style="padding: 4px 12px; text-decoration: none; color: #536471;">ENT</a>
                     </div>
                     <button id="indScrollRight" onclick="scrollIndicators(1)" style="background:none; border:none; cursor:pointer; font-size:16px; color:#536471; padding:0 4px; display:none;">&raquo;</button>
                 </div>
@@ -823,12 +829,12 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
 
     // Each subchart is an independent LightweightCharts instance
     const subCharts = {}; // { VOL: {chart, series...}, MACD: {chart, series...}, RSI: {chart, series...} }
-    const indicatorState = { MA: true, BOLL: false, VOL: true, MACD: false, RSI: false, KDJ: false };
+    const indicatorState = { MA: true, BOLL: false, VOL: true, MACD: false, RSI: false, KDJ: false, ENT: false };
     // Order matters for determining which is the bottom chart
-    const subChartOrder = ['VOL', 'MACD', 'RSI', 'KDJ'];
+    const subChartOrder = ['VOL', 'MACD', 'RSI', 'KDJ', 'ENT'];
     
     const group1 = ['MA', 'BOLL'];
-    const group2 = ['VOL', 'MACD', 'RSI', 'KDJ'];
+    const group2 = ['VOL', 'MACD', 'RSI', 'KDJ', 'ENT'];
     let g2ActiveQueue = ['VOL']; // Tracks the order of Group 2 indicators to enforce the max of 2
 
     // ── Calculation helpers ──
@@ -974,6 +980,133 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
         return { macd: macdLine, signal: signalLine, histogram };
     }
 
+    function calculateENT(data) {
+        const N = data.length;
+        let res = new Array(N).fill(null);
+        if (N < 30) return res;
+
+        let f1 = new Array(N).fill(null);
+        let f2 = new Array(N).fill(null);
+        let f3 = new Array(N).fill(null);
+        let f4 = new Array(N).fill(null);
+        let f5 = new Array(N).fill(null);
+
+        let gains = new Array(N).fill(0), losses = new Array(N).fill(0);
+        for (let i = 1; i < N; i++) {
+            let diff = data[i].c - data[i-1].c;
+            gains[i] = diff > 0 ? diff : 0;
+            losses[i] = diff < 0 ? -diff : 0;
+        }
+        for (let i = 14; i < N; i++) {
+            let sg = 0, sl = 0;
+            for (let j = 0; j < 14; j++) { sg += gains[i-j]; sl += losses[i-j]; }
+            let g = sg/14, ls = sl/14;
+            f1[i] = 100 - (100 / (1 + g/(ls + 1e-9)));
+        }
+
+        for (let i = 19; i < N; i++) {
+            let sum = 0;
+            for (let j = 0; j < 20; j++) sum += data[i-j].c;
+            let mean = sum/20, diffSq = 0;
+            for (let j = 0; j < 20; j++) diffSq += Math.pow(data[i-j].c - mean, 2);
+            let std = Math.sqrt(diffSq / 19);
+            f2[i] = (4 * std) / (mean + 1e-9);
+        }
+
+        let tr = new Array(N).fill(0);
+        for (let i = 1; i < N; i++) {
+             tr[i] = Math.max( data[i].hi - data[i].lo, Math.abs(data[i].hi - data[i-1].c), Math.abs(data[i].lo - data[i-1].c) );
+        }
+        for (let i = 14; i < N; i++) {
+             let sTR = 0;
+             for (let j = 0; j < 14; j++) sTR += tr[i-j];
+             f3[i] = (sTR/14) / (data[i].c + 1e-9);
+        }
+
+        for(let i = 19; i < N; i++) {
+             let s5 = 0, s20 = 0;
+             for(let j=0; j<5; j++) s5 += data[i-j].v;
+             for(let j=0; j<20; j++) s20 += data[i-j].v;
+             f4[i] = (s5/5 - s20/20) / (s20/20 + 1e-9);
+        }
+
+        let mfv = new Array(N).fill(0);
+        for(let i=0; i<N; i++) {
+             let HL = data[i].hi - data[i].lo;
+             let m = ((data[i].c - data[i].lo) - (data[i].hi - data[i].c)) / (HL + 1e-9);
+             mfv[i] = m * data[i].v;
+        }
+        for(let i = 19; i < N; i++) {
+             let sM = 0, sV = 0;
+             for(let j=0; j<20; j++) { sM += mfv[i-j]; sV += data[i-j].v; }
+             f5[i] = sM / (sV + 1e-9);
+        }
+
+        // Helper for normalization (Z-score)
+        const normalize = (arr) => {
+            const valid = arr.filter(v => v !== null);
+            if (valid.length < 2) return arr.map(() => 0);
+            const sum = valid.reduce((a, b) => a + b, 0);
+            const mean = sum / valid.length;
+            const sqDiff = valid.reduce((a, b) => a + Math.pow(b - mean, 2), 0);
+            const std = Math.sqrt(sqDiff / (valid.length - 1)) + 1e-9;
+            return arr.map(v => v === null ? 0 : (v - mean) / std);
+        };
+
+        // Standardize features before rolling correlation
+        f1 = normalize(f1); f2 = normalize(f2); f3 = normalize(f3); f4 = normalize(f4); f5 = normalize(f5);
+
+        for (let i = 48; i < N; i++) {
+             let w1=[], w2=[], w3=[], w4=[], w5=[];
+             // Looking back 'window' (30) days
+             for(let j=0; j<30; j++) {
+                 let idx = i - 29 + j;
+                 w1.push(f1[idx]); w2.push(f2[idx]); w3.push(f3[idx]);
+                 w4.push(f4[idx]); w5.push(f5[idx]);
+             }
+             const getCorr = (A,B) => {
+                 let mA=0, mB=0;
+                 for(let z=0; z<30; z++) { mA+=A[z]; mB+=B[z]; }
+                 mA/=30; mB/=30;
+                 let cov=0, vA=0, vB=0;
+                 for(let z=0; z<30; z++) {
+                     let dA=A[z]-mA, dB=B[z]-mB;
+                     cov+=dA*dB; vA+=dA*dA; vB+=dB*dB;
+                 }
+                 if(vA===0 || vB===0) return 0;
+                 return cov/Math.sqrt(vA*vB);
+             };
+
+             let cols = [w1, w2, w3, w4, w5];
+             let C = [], hasNaN=false;
+             for(let r=0; r<5; r++) {
+                 C[r]=[];
+                 for(let c=0; c<5; c++) {
+                     if(r===c) C[r][c]=1;
+                     else if(r<c) { let v = getCorr(cols[r], cols[c]); if(isNaN(v)) hasNaN=true; C[r][c]=v; }
+                     else C[r][c]=C[c][r];
+                 }
+             }
+             if(hasNaN || isNaN(C[0][0])) { res[i] = null; continue; }
+             
+             let evs;
+             try { evs = numeric.eig(C).lambda.x; } catch(e) { res[i] = null; continue; }
+             
+             let sumEig = 0;
+             for(let k=0; k<5; k++) { evs[k] = Math.abs(evs[k]); sumEig += evs[k]; }
+             if(sumEig === 0) { res[i] = 0; continue; }
+             
+             let H = 0;
+             for(let k=0; k<5; k++) {
+                 let p = evs[k] / sumEig;
+                 if(p > 1e-12) H -= p * Math.log2(p);
+             }
+             let score = Math.max(0, Math.min(1, H / Math.log2(5))) * 100;
+             res[i] = score;
+        }
+        return res;
+    }
+
     let isSyncingCrosshair = false;
     function syncCrosshair(sourceChart, param) {
         if (isSyncingCrosshair) return;
@@ -1101,6 +1234,7 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
         createSubChart('MACD', 'macdChart');
         createSubChart('RSI', 'rsiChart');
         createSubChart('KDJ', 'kdjChart');
+        createSubChart('ENT', 'entChart');
 
         seedAllData(history);
         updateTimeAxisVisibility();
@@ -1155,6 +1289,33 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
             entry.k = sc.addLineSeries({ color: '#E5C158', lineWidth: 1.5 });
             entry.d = sc.addLineSeries({ color: '#2962FF', lineWidth: 1.5 });
             entry.j = sc.addLineSeries({ color: '#FF6D00', lineWidth: 1.5 });
+        } else if (key === 'ENT') {
+            // Background Zones using AreaSeries to simulate fill_between
+            const zoneRisk = sc.addAreaSeries({ 
+                topColor: 'rgba(249, 24, 128, 0.08)', bottomColor: 'rgba(249, 24, 128, 0.08)', 
+                lineVisible: false, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false 
+            });
+            const zoneAttn = sc.addAreaSeries({ 
+                topColor: 'rgba(255, 109, 0, 0.08)', bottomColor: 'rgba(255, 109, 0, 0.08)', 
+                lineVisible: false, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false 
+            });
+            const zoneHealth = sc.addAreaSeries({ 
+                topColor: 'rgba(0, 186, 124, 0.08)', bottomColor: 'rgba(0, 186, 124, 0.08)', 
+                lineVisible: false, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false 
+            });
+
+            entry.series = sc.addLineSeries({ color: '#26a69a', lineWidth: 2 });
+            entry.series.createPriceLine({ price: 50, color: '#00BA7C', lineStyle: LightweightCharts.LineStyle.Dashed, lineWidth: 1, title: 'HEALTHY' });
+            entry.series.createPriceLine({ price: 30, color: '#F91880', lineStyle: LightweightCharts.LineStyle.Dashed, lineWidth: 1, title: 'RISK' });
+            
+            entry.series.applyOptions({ 
+                autoscaleInfoProvider: () => ({ priceRange: { minValue: 0, maxValue: 100 } }),
+                lastValueVisible: true,
+                priceLineVisible: false
+            });
+
+            // Store zones to push data during seed
+            entry.zones = { risk: zoneRisk, attn: zoneAttn, health: zoneHealth };
         }
         subCharts[key] = entry;
         console.log('Created subChart:', key, Object.keys(entry));
@@ -1185,6 +1346,7 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
         const rsi12 = calculateRSI(closes, 12);
         const rsi24 = calculateRSI(closes, 24);
         const kdj = calculateKDJ(hNum, 9, 3, 3);
+        const ent = calculateENT(hNum);
 
         fullComputedMap = {};
         hNum.forEach((h, i) => {
@@ -1194,7 +1356,8 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
                 bu: boll.upper[i], bm: boll.mid[i], bl: boll.lower[i],
                 macd: macd.macd[i], signal: macd.signal[i], hist: macd.histogram[i],
                 rsi6: rsi6[i], rsi12: rsi12[i], rsi24: rsi24[i],
-                k: kdj.k[i], d: kdj.d[i], j: kdj.j[i]
+                k: kdj.k[i], d: kdj.d[i], j: kdj.j[i],
+                ent: ent[i]
             };
         });
     }
@@ -1203,7 +1366,7 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
         // history provided here is already filtered by period (3M, 1Y etc.)
         // We Pull pre-calculated values from fullComputedMap for stability
         const cd=[], vd=[], m5d=[], m10d=[], m20d=[], m60d=[], m200d=[], bud=[], bmd=[], bld=[];
-        const macdD=[], sigD=[], histD=[], rsi6D=[], rsi12D=[], rsi24D=[], kd=[], dd=[], jd=[];
+        const macdD=[], sigD=[], histD=[], rsi6D=[], rsi12D=[], rsi24D=[], kd=[], dd=[], jd=[], entD=[];
 
         history.forEach(h => {
                 const d = fullComputedMap[h.date] || {};
@@ -1237,6 +1400,7 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
                 kd.push({ time: date, value: d.k !== undefined ? d.k : null });
                 dd.push({ time: date, value: d.d !== undefined ? d.d : null });
                 jd.push({ time: date, value: d.j !== undefined ? d.j : null });
+                entD.push({ time: date, value: d.ent !== undefined ? d.ent : null });
         });
 
 
@@ -1272,6 +1436,16 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
             subCharts.KDJ.k.setData(kd);
             subCharts.KDJ.d.setData(dd);
             subCharts.KDJ.j.setData(jd);
+        }
+        if (subCharts.ENT) {
+            subCharts.ENT.series.setData(entD);
+            // Populate background health zones
+            const zd_risk = entD.map(d => ({ time: d.time, value: 30 }));
+            const zd_attn = entD.map(d => ({ time: d.time, value: 50 }));
+            const zd_health = entD.map(d => ({ time: d.time, value: 100 }));
+            subCharts.ENT.zones.risk.setData(zd_risk);
+            subCharts.ENT.zones.attn.setData(zd_attn);
+            subCharts.ENT.zones.health.setData(zd_health);
         }
         lastHoveredTime = history[history.length - 1].date;
         updateLegends(lastHoveredTime);
@@ -1324,6 +1498,20 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
             '<span style="color:#E5C158">K:' + (d.k != null ? d.k.toFixed(2) : '-') + '</span> ' +
             '<span style="color:#2962FF">D:' + (d.d != null ? d.d.toFixed(2) : '-') + '</span> ' +
             '<span style="color:#FF6D00">J:' + (d.j != null ? d.j.toFixed(2) : '-') + '</span>';
+            
+        var el = document.getElementById('entLegend');
+        if (el) {
+            let entVal = d.ent != null ? d.ent.toFixed(2) : '-';
+            let entColor = '#536471';
+            let status = 'Calculating...';
+            if (d.ent != null) {
+                if (d.ent >= 50) { entColor = '#00BA7C'; status = 'Healthy'; }
+                else if (d.ent >= 30) { entColor = '#FF6D00'; status = 'Attention'; }
+                else { entColor = '#F91880'; status = 'High Risk'; }
+            }
+            el.innerHTML = '<span>ENT(Health)</span> ' +
+            '<span style="color:' + entColor + '; font-weight:bold;">' + entVal + ' (' + status + ')</span>';
+        }
     }
 
     // ── Public toggle function: lights on / lights off ──
