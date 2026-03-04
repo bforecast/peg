@@ -1,5 +1,5 @@
 import { Bindings } from './types';
-import { fetchQuotes } from './yahoo_finance';
+import { fetchQuotes } from './yahoo';
 import { logCronStatus, saveQuotesToDB, getLastTradingDate, getESTDate, getESTTimestamp } from './db';
 import { calculateStats } from './stats';
 import { updateScoringMetrics } from './scoring/fetcher';
@@ -64,22 +64,20 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             const initDuration = Date.now() - runStart;
 
             // Only log setup if we have symbols to process, to avoid spamming logs 
-            // BUT we must proceed to Portfolio Stats phase
             if (pendingSymbols.length > 0) {
                 await logCronStatus(env, 'SETUP',
                     `[1/4] Init: ${symbols.length} total, ${freshSymbols.length} fresh, ${pendingSymbols.length} pending`,
                     `Duration: ${initDuration}ms | Cutoff: ${cutoffTime}`
                 );
-            } else {
-                // Log a light heartbeat instead of silence, so users know it's running
-                // But only log it at the END if nothing else happened to avoid duplicate logs?
-                // Actually, if pending is 0, we skip Quotes phase.
+            } else if (now.getMinutes() === 0) {
+                // Once an hour log a heartbeat even if fresh
+                await logCronStatus(env, 'SKIP', 'System Fresh: All symbols up to date.', `Cutoff: ${cutoffTime}`);
             }
 
             // ============================================================
             // PHASE 2: FETCH QUOTES & UPDATE PRICES
             // ============================================================
-            const MAX_UPDATES_PER_RUN = 10; // Increased to 10 after optimization (execution time ~6-10s)
+            const MAX_UPDATES_PER_RUN = 10; // Restored to 10 as wall-clock duration (~12.6s for 5) can safely scale to 10.
             const symbolsToProcess = pendingSymbols.slice(0, MAX_UPDATES_PER_RUN);
             const quoteStart = Date.now();
             let quotesCount = 0;
@@ -149,11 +147,13 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                                     }
                                 }
 
-                                // 4. NEW: Update Scoring Metrics (Industry, Growth, etc)
+                                // 4. NEW: Update Earnings & Scoring Metrics
                                 try {
+                                    const { updateTicker } = await import('./db');
+                                    await updateTicker(env, q.symbol);
                                     await updateScoringMetrics(env, q.symbol);
-                                } catch (errScoring: any) {
-                                    console.error(`[Cron] Scoring update error for ${q.symbol}: ${errScoring.message}`);
+                                } catch (errSync: any) {
+                                    console.error(`[Cron] Earnings/Scoring update error for ${q.symbol}: ${errSync.message}`);
                                 }
 
                             } catch (e: any) {
@@ -168,22 +168,26 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     quoteErrors.push(...symbolsToProcess);
                 }
 
-                if (quoteErrors.length > 0) {
-                    // Update updated_at for failed symbols to move them out of "pending" for the current window
-                    // but don't recalculate their stats. This prevents 1 symbol from blocking the system.
-                    const updatedAt = getESTTimestamp();
-                    for (const s of quoteErrors) {
-                        await env.DB.prepare(`UPDATE stock_stats SET updated_at = ? WHERE symbol = ?`).bind(updatedAt, s).run();
-                    }
-                }
-                remainingPending -= symbolsToProcess.length;
             }
             catch (e: any) {
                 quoteErrors.push(...symbolsToProcess);
                 console.error(`[Cron] Quote fetch error: ${e.message}`);
-                // Move them out of pending anyway to avoid infinite loop
-                remainingPending -= symbolsToProcess.length;
             }
+
+            if (quoteErrors.length > 0) {
+                // Update updated_at for failed symbols to move them out of "pending" for the current window
+                // but don't recalculate their stats. This prevents 1 symbol from blocking the system.
+                const updatedAt = getESTTimestamp();
+                for (const s of quoteErrors) {
+                    try {
+                        await env.DB.prepare(`UPDATE stock_stats SET updated_at = ? WHERE symbol = ?`).bind(updatedAt, s).run();
+                    } catch (dbErr: any) {
+                        console.error(`[Cron] Failed to update error timestamp for ${s}: ${dbErr.message}`);
+                    }
+                }
+            }
+
+            remainingPending -= symbolsToProcess.length;
 
             const quoteDuration = Date.now() - quoteStart;
             if (quotesCount > 0 || quoteErrors.length > 0) {
@@ -195,8 +199,15 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
 
             // ============================================================
-            // PHASE 4: PORTFOLIO STATS (Best-effort batching)
+            // PHASE 4: PORTFOLIO STATS (Batching)
+            // Only starts once ALL symbols are fresh for the current cutoff.
             // ============================================================
+            if (remainingPending > 0) {
+                // If we updated quotes this run, the overall SUCCESS marker will cover it.
+                // Otherwise, verify phase won't log either since we're still capturing.
+                return;
+            }
+
             const portfolioStart = Date.now();
             let portfolioCount = 0;
             let portfolioErrors: string[] = [];
@@ -226,10 +237,10 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                         const staleMembers = memberStatus.filter((m: any) => !m.updated_at || m.updated_at < cutoffTime);
 
                         if (staleMembers.length > 0) {
-                            // Dead Symbol Threshold: 2 days ago (don't wait for these)
-                            const twoDaysAgo = new Date(now);
-                            twoDaysAgo.setDate(now.getDate() - 2);
-                            const tdaStr = twoDaysAgo.toISOString().split('T')[0];
+                            // Dead Symbol Threshold: 7 days ago (don't wait for these, e.g. delisted/halted)
+                            const daysAgoThreshold = new Date(now);
+                            daysAgoThreshold.setDate(now.getDate() - 7);
+                            const tdaStr = daysAgoThreshold.toISOString().split('T')[0];
 
                             const nonDeadStaleMembers = staleMembers.filter((m: any) => !m.updated_at || m.updated_at > tdaStr);
 

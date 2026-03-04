@@ -1,7 +1,6 @@
 import { Bindings, StockPrice, StockQuote, EarningsEstimate, GroupMember } from './types';
 import { fetchEarnings } from './alpha_vantage';
-import { fetchQuotes, YahooQuote, fetchPriceHistory as fetchYahooHistory } from './yahoo_finance';
-import { fetchYahooEstimates, fetchYahooPrices } from './yahoo';
+import { fetchQuotes, YahooQuote, fetchPriceHistory as fetchYahooHistory, fetchYahooEstimates, fetchYahooPrices } from './yahoo';
 import { AI_TICKERS } from './tickers';
 import { calculateStats, StockStats } from './stats';
 
@@ -213,23 +212,42 @@ export async function updateTicker(env: Bindings, symbol: string) {
     }
 
     try {
-        const yahooData = await fetchYahooEstimates(symbol);
-        if (yahooData) {
-            const { maxDate } = await env.DB.prepare(`SELECT max(date) as maxDate FROM stock_prices WHERE symbol = ?`).bind(symbol).first() as { maxDate: string };
-            let targetDate = yahooData.fiscal_date_ending;
-            if (maxDate) {
-                const today = new Date(maxDate);
-                const year = today.getFullYear();
-                const month = today.getMonth();
-                const qEndMonth = 2 + (Math.floor(month / 3) * 3);
-                const d = new Date(year, qEndMonth + 1, 0);
-                const isoDate = d.toISOString().split('T')[0];
-                if (yahooData.fiscal_date_ending < maxDate) targetDate = isoDate;
-            }
+        const yahooDataArray = await fetchYahooEstimates(symbol);
+        if (yahooDataArray && Array.isArray(yahooDataArray)) {
             const updatedAt = getESTTimestamp();
-            await env.DB.prepare(`INSERT OR REPLACE INTO earnings_estimates (symbol, fiscal_date_ending, estimated_eps, report_date, updated_at) VALUES (?, ?, ?, ?, ?)`).bind(symbol, targetDate, yahooData.estimated_eps, null, updatedAt).run();
+            for (const yahooData of yahooDataArray) {
+                let targetDate = yahooData.fiscal_date_ending;
+                // Basic sanitation/formatting if needed, but Yahoo fmt is usually YYYY-MM-DD
+                if (!targetDate || targetDate === '1970-01-01') continue;
+
+                if (yahooData.reported_eps !== null) {
+                    // It's a reported quarter
+                    await env.DB.prepare(`
+                        INSERT OR REPLACE INTO earnings_estimates (
+                            symbol, fiscal_date_ending, estimated_eps, reported_eps, surprise, surprise_percentage, updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    `).bind(
+                        symbol,
+                        targetDate,
+                        yahooData.estimated_eps,
+                        yahooData.reported_eps,
+                        yahooData.reported_eps - (yahooData.estimated_eps || 0),
+                        yahooData.estimated_eps ? ((yahooData.reported_eps - yahooData.estimated_eps) / Math.abs(yahooData.estimated_eps)) * 100 : 0,
+                        updatedAt
+                    ).run();
+                } else {
+                    // It's an estimate
+                    await env.DB.prepare(`
+                        INSERT OR REPLACE INTO earnings_estimates (
+                            symbol, fiscal_date_ending, estimated_eps, updated_at
+                        ) VALUES (?, ?, ?, ?)
+                    `).bind(symbol, targetDate, yahooData.estimated_eps, updatedAt).run();
+                }
+            }
         }
-    } catch (e) { }
+    } catch (e) {
+        console.error(`[updateTicker] Error updating ${symbol}:`, e);
+    }
     return { count: avCount, message: avMsg };
 }
 
@@ -361,14 +379,14 @@ export async function backfillHistory(env: Bindings, symbol: string) {
             const CHUNK = 50;
             for (let k = 0; k < prices.length; k += CHUNK) {
                 const chunk = prices.slice(k, k + CHUNK);
-                const batch = chunk.map(p => stmt.bind(symbol, p.date, p.open, p.high, p.low, p.close, p.volume, updatedAt));
+                const batch = chunk.map((p: StockPrice) => stmt.bind(symbol, p.date, p.open, p.high, p.low, p.close, p.volume, updatedAt));
 
                 try {
                     await env.DB.batch(batch);
                     insertedCount += chunk.length;
                 } catch (batchErr: any) {
-                    console.error(`[Backfill] Batch insert failed for ${symbol} at chunk ${k}-${k+CHUNK}:`, batchErr.message);
-                    
+                    console.error(`[Backfill] Batch insert failed for ${symbol} at chunk ${k}-${k + CHUNK}:`, batchErr.message);
+
                     for (const p of chunk) {
                         try {
                             await env.DB.prepare(
