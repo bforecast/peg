@@ -2,7 +2,7 @@ import { Hono } from 'hono';
 import { Bindings } from '../types';
 import { updatePrices, updateTicker } from '../db';
 import { getSuperinvestors, getPortfolio } from '../dataroma';
-import { fetchQuotes } from '../yahoo_finance';
+import { fetchQuotes } from '../yahoo';
 import { calculatePortfolioStats } from '../portfolio';
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -453,7 +453,7 @@ app.on(['GET', 'POST'], '/api/admin/trigger-cron', async (c) => {
     };
 
     try {
-        const { fetchQuotes } = await import('../yahoo_finance');
+        const { fetchQuotes } = await import('../yahoo');
         const { logCronStatus, saveQuotesToDB, updatePrices, updateTicker, getESTDate } = await import('../db');
 
         // Parse query parameters
@@ -979,7 +979,7 @@ app.post('/api/refresh-batch', async (c) => {
             symbols = AI_TICKERS;
         }
 
-        const { fetchQuotes } = await import('../yahoo_finance');
+        const { fetchQuotes } = await import('../yahoo');
         const { saveQuotesToDB } = await import('../db');
 
         // Fetch in chunks of 50 (since fetchQuotes handles internal batching of 5, we can pass larger chunks)
@@ -998,7 +998,7 @@ app.post('/api/refresh-batch', async (c) => {
                 results.push(...batchSuccess);
 
                 // Track failures
-                const batchFailed = batch.filter(s => !batchSuccess.includes(s));
+                const batchFailed = batch.filter((s: string) => !batchSuccess.includes(s));
                 failed.push(...batchFailed);
             } else {
                 failed.push(...batch);

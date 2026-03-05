@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { Bindings } from '../types';
-import { fetchQuotes } from '../yahoo_finance';
+import { fetchQuotes } from '../yahoo';
 import { updatePrices, updateTicker } from '../db';
 
 const app = new Hono<{ Bindings: Bindings }>();
@@ -58,7 +58,7 @@ app.post('/api/import-x', async (c) => {
             return c.json({ error: `Failed to fetch tweet. Upstream: ${res.status}` }, 502);
         }
 
-        const data = await res.json();
+        const data: any = await res.json();
         const tweet = data.tweet;
 
         if (!tweet) {

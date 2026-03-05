@@ -76,17 +76,31 @@
 
         /* Layout */
         .container {
-            max-width: 1200px;
-            margin: 20px auto;
-            padding: 0 20px;
+            max-width: 100%;
+            margin: 0;
+            padding: 10px 20px;
             display: grid;
-            grid-template-columns: 2fr 1fr;
+            grid-template-columns: 1fr;
             grid-template-areas: 
-                "header header"
-                "chart metrics"
-                "health health"
-                "earnings holdings";
+                "header"
+                "chart"
+                "metrics"
+                "health"
+                "earnings"
+                "holdings";
             gap: 20px;
+        }
+
+        /* Responsive overrides for wider screens */
+        @media (min-width: 1200px) {
+            .container {
+                grid-template-columns: 1fr 1fr;
+                grid-template-areas: 
+                    "header header"
+                    "chart chart"
+                    "metrics health"
+                    "earnings holdings";
+            }
         }
 
         .symbol-header { grid-area: header; }
@@ -98,9 +112,7 @@
 
         @media (max-width: 1024px) {
             .container { 
-                display: flex !important; 
-                flex-direction: column !important; 
-                padding: 0 10px;
+                padding: 5px 10px;
             }
             .chart-section { order: 1; }
             .metrics-section { order: 2; }
@@ -135,6 +147,8 @@
             padding: 20px;
             box-shadow: 0 1px 3px rgba(0,0,0,0.05);
             margin-bottom: 20px;
+            min-width: 0; /* Important for grid item shrinking */
+            overflow: hidden; 
         }
         .full-width { grid-column: 1 / -1; }
 
@@ -235,7 +249,7 @@
         /* Chat UI Styles */
         .fab-btn { position: fixed; bottom: 30px; right: 30px; background: linear-gradient(135deg, #2563EB, #1D4ED8); color: white; width: 60px; height: 60px; border-radius: 30px; display: flex; align-items: center; justify-content: center; box-shadow: 0 4px 15px rgba(37, 99, 235, 0.3); cursor: pointer; transition: transform 0.2s, box-shadow 0.2s; z-index: 2000; }
         .fab-btn:hover { transform: scale(1.05); box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4); }
-        .chat-container { position: fixed; bottom: 80px; right: 20px; width: 600px; height: 800px; max-height: 90vh; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 20px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15); display: flex; flex-direction: column; overflow: hidden; z-index: 2000; display: none; }
+        .chat-container { position: fixed; bottom: 80px; right: 20px; width: 600px; max-width: calc(100vw - 40px); height: 800px; max-height: 90vh; background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.5); border-radius: 20px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15); display: flex; flex-direction: column; overflow: hidden; z-index: 2000; display: none; }
         .chat-header { padding: 20px; background: rgba(255, 255, 255, 0.8); border-bottom: 1px solid rgba(0, 0, 0, 0.05); display: flex; justify-content: space-between; align-items: center; }
         .header-title { font-weight: 600; font-size: 16px; color: #111827; display: flex; flex-direction: column; gap: 2px; }
         .header-subtitle { font-size: 11px; color: #6B7280; font-weight: 500; display: flex; align-items: center; gap: 6px; }
@@ -1150,7 +1164,7 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
             grid: { vertLines: { color: '#f0f3fa' }, horzLines: { color: '#f0f3fa' } },
             localization: { locale: 'en-US', dateFormat: 'yyyy-MM-dd' },
             timeScale: { visible: showTimeAxis, timeVisible: false, borderColor: '#D1D4DC', borderVisible: true, shiftVisibleRangeOnNewBar: true },
-            rightPriceScale: { borderColor: '#D1D4DC', minimumWidth: 60, borderVisible: true },
+            rightPriceScale: { borderColor: '#D1D4DC', minimumWidth: 85, borderVisible: true },
             crosshair: { mode: LightweightCharts.CrosshairMode.Normal }
         };
     }
@@ -1212,16 +1226,17 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
 
         candleSeries = chart.addCandlestickSeries({
             upColor: '#00BA7C', downColor: '#F91880', borderVisible: false,
-            wickUpColor: '#00BA7C', wickDownColor: '#F91880'
+            wickUpColor: '#00BA7C', wickDownColor: '#F91880',
+            priceLineVisible: false
         });
-        ma5Series = chart.addLineSeries({ color: '#E5C158', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true });
-        ma10Series = chart.addLineSeries({ color: '#2962FF', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true });
-        ma20Series = chart.addLineSeries({ color: '#FF6D00', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true });
-        ma60Series = chart.addLineSeries({ color: '#7E57C2', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true });
-        ma200Series = chart.addLineSeries({ color: '#26a69a', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true });
-        bollUpper = chart.addLineSeries({ color: '#7E57C2', lineWidth: 1, lineStyle: 2, crosshairMarkerVisible: false, visible: false });
-        bollMid = chart.addLineSeries({ color: '#26a69a', lineWidth: 1, crosshairMarkerVisible: false, visible: false });
-        bollLower = chart.addLineSeries({ color: '#7E57C2', lineWidth: 1, lineStyle: 2, crosshairMarkerVisible: false, visible: false });
+        ma5Series = chart.addLineSeries({ color: '#E5C158', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true, priceLineVisible: false });
+        ma10Series = chart.addLineSeries({ color: '#2962FF', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true, priceLineVisible: false });
+        ma20Series = chart.addLineSeries({ color: '#FF6D00', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true, priceLineVisible: false });
+        ma60Series = chart.addLineSeries({ color: '#7E57C2', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true, priceLineVisible: false });
+        ma200Series = chart.addLineSeries({ color: '#26a69a', lineWidth: 1.5, crosshairMarkerVisible: false, visible: true, priceLineVisible: false });
+        bollUpper = chart.addLineSeries({ color: '#7E57C2', lineWidth: 1, lineStyle: 2, crosshairMarkerVisible: false, visible: false, priceLineVisible: false });
+        bollMid = chart.addLineSeries({ color: '#26a69a', lineWidth: 1, crosshairMarkerVisible: false, visible: false, priceLineVisible: false });
+        bollLower = chart.addLineSeries({ color: '#7E57C2', lineWidth: 1, lineStyle: 2, crosshairMarkerVisible: false, visible: false, priceLineVisible: false });
 
         chart.timeScale().subscribeVisibleLogicalRangeChange(() => syncLogicalRange(chart));
         chart.subscribeCrosshairMove(p => { 
@@ -1278,17 +1293,20 @@ const startOfYearPrice = data.history.find(h => h.date >= \`\${currentYear}-01-0
                 priceScaleId: 'right'
             });
         } else if (key === 'MACD') {
-            entry.hist = sc.addHistogramSeries({ priceFormat: { type: 'custom', minMove: 0.01, formatter: v => v.toFixed(2) } });
-            entry.macd = sc.addLineSeries({ color: '#2962FF', lineWidth: 1.5 });
-            entry.signal = sc.addLineSeries({ color: '#FF6D00', lineWidth: 1.5 });
+            entry.hist = sc.addHistogramSeries({ 
+                priceFormat: { type: 'custom', minMove: 0.01, formatter: v => v.toFixed(2) },
+                priceLineVisible: false
+            });
+            entry.macd = sc.addLineSeries({ color: '#2962FF', lineWidth: 1.5, priceLineVisible: false });
+            entry.signal = sc.addLineSeries({ color: '#FF6D00', lineWidth: 1.5, priceLineVisible: false });
         } else if (key === 'RSI') {
-            entry.rsi6 = sc.addLineSeries({ color: '#E5C158', lineWidth: 1.5 });
-            entry.rsi12 = sc.addLineSeries({ color: '#2962FF', lineWidth: 1.5 });
-            entry.rsi24 = sc.addLineSeries({ color: '#FF6D00', lineWidth: 1.5 });
+            entry.rsi6 = sc.addLineSeries({ color: '#E5C158', lineWidth: 1.5, priceLineVisible: false });
+            entry.rsi12 = sc.addLineSeries({ color: '#2962FF', lineWidth: 1.5, priceLineVisible: false });
+            entry.rsi24 = sc.addLineSeries({ color: '#FF6D00', lineWidth: 1.5, priceLineVisible: false });
         } else if (key === 'KDJ') {
-            entry.k = sc.addLineSeries({ color: '#E5C158', lineWidth: 1.5 });
-            entry.d = sc.addLineSeries({ color: '#2962FF', lineWidth: 1.5 });
-            entry.j = sc.addLineSeries({ color: '#FF6D00', lineWidth: 1.5 });
+            entry.k = sc.addLineSeries({ color: '#E5C158', lineWidth: 1.5, priceLineVisible: false });
+            entry.d = sc.addLineSeries({ color: '#2962FF', lineWidth: 1.5, priceLineVisible: false });
+            entry.j = sc.addLineSeries({ color: '#FF6D00', lineWidth: 1.5, priceLineVisible: false });
         } else if (key === 'ENT') {
             // Background Zones using AreaSeries to simulate fill_between
             const zoneRisk = sc.addAreaSeries({ 

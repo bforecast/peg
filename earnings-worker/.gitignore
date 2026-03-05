@@ -6,3 +6,4 @@ _py_cache_/
 *.log
 .DS_Store
 *.pyc
+db.sqlite

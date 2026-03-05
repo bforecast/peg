@@ -75,7 +75,7 @@ app.use('/*', async (c, next) => {
         '/api/health',
         '/api/portfolio-health'
     ];
-    
+
     // Stock page and its API
     if (path.startsWith('/stock/') || path.startsWith('/api/stock-')) {
         return next();
