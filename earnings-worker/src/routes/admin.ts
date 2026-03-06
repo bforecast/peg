@@ -533,8 +533,14 @@ app.on(['GET', 'POST'], '/api/admin/trigger-cron', async (c) => {
             `Cutoff: ${cutoffTime}`
         );
 
-        if (pendingSymbols.length === 0 && !forceRun) {
-            report.summary = { status: 'SKIPPED', message: 'All symbols up-to-date' };
+        const { count: stalePfs } = await c.env.DB.prepare(`
+            SELECT count(*) as count FROM groups g
+            LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
+            WHERE ps.updated_at IS NULL OR ps.updated_at < ?
+        `).bind(cutoffTime).first() as any;
+
+        if (pendingSymbols.length === 0 && stalePfs === 0 && !forceRun) {
+            report.summary = { status: 'SKIPPED', message: 'All symbols and portfolios up-to-date' };
             return c.json(report);
         }
 

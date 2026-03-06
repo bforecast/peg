@@ -69,11 +69,18 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     `[1/4] Init: ${symbols.length} total, ${freshSymbols.length} fresh, ${pendingSymbols.length} pending`,
                     `Duration: ${initDuration}ms | Cutoff: ${cutoffTime}`
                 );
-            } else if (now.getMinutes() === 0) {
-                // Once an hour log a heartbeat even if fresh
-                await logCronStatus(env, 'SKIP', 'System Fresh: All symbols up to date.', `Cutoff: ${cutoffTime}`);
-            }
+            } else if (pendingSymbols.length === 0) {
+                const { count: stalePfs } = await env.DB.prepare(`
+                    SELECT count(*) as count FROM groups g
+                    LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
+                    WHERE ps.updated_at IS NULL OR ps.updated_at < ?
+                `).bind(cutoffTime).first() as any;
 
+                if (stalePfs === 0 && (now.getHours() >= 18 || (now.getHours() < 10 && !isWeekend))) {
+                    await logCronStatus(env, 'SKIP', 'System Fresh: All symbols and portfolios up to date.', `Cutoff: ${cutoffTime}`);
+                    return;
+                }
+            }
             // ============================================================
             // PHASE 2: FETCH QUOTES & UPDATE PRICES
             // ============================================================
