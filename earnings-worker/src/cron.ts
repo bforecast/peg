@@ -10,6 +10,13 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
     console.log('Scheduled Update Triggered');
     const runStart = Date.now();
 
+    // Heartbeat: Always log that the cron fired, even if everything else crashes
+    try {
+        await logCronStatus(env, 'HEARTBEAT', 'Cron trigger fired', `Time: ${new Date().toISOString()}`);
+    } catch (e) {
+        console.error('[Cron] Heartbeat log failed:', e);
+    }
+
     // 1. Get all unique active symbols from portfolios
     const { results } = await env.DB.prepare("SELECT DISTINCT symbol FROM group_members").all();
     // Always include SPY for benchmark stats
