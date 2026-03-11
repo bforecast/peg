@@ -10,12 +10,8 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
     console.log('Scheduled Update Triggered');
     const runStart = Date.now();
 
-    // Heartbeat: Always log that the cron fired, even if everything else crashes
-    try {
-        await logCronStatus(env, 'HEARTBEAT', 'Cron trigger fired', `Time: ${new Date().toISOString()}`);
-    } catch (e) {
-        console.error('[Cron] Heartbeat log failed:', e);
-    }
+    // Heartbeat: Log to console so it shows in Cloudflare Logs, but don't spam the DB
+    console.log(`[Cron] Heartbeat check at ${new Date().toISOString()}`);
 
     // 1. Get all unique active symbols from portfolios
     const { results } = await env.DB.prepare("SELECT DISTINCT symbol FROM group_members").all();
@@ -84,7 +80,20 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                 `).bind(cutoffTime).first() as any;
 
                 if (stalePfs === 0 && (now.getHours() >= 18 || (now.getHours() < 10 && !isWeekend))) {
-                    await logCronStatus(env, 'SKIP', 'System Fresh: All symbols and portfolios up to date.', `Cutoff: ${cutoffTime}`);
+                    // Throttled SKIP log: Only log to database once per hour to avoid spam
+                    const lastSkip = await env.DB.prepare(
+                        "SELECT timestamp FROM cron_logs WHERE status IN ('SKIP', 'CHECKED') ORDER BY id DESC LIMIT 1"
+                    ).first() as any;
+
+                    let shouldLogSkip = true;
+                    if (lastSkip?.timestamp) {
+                        const lastTime = new Date(lastSkip.timestamp + ' EST').getTime();
+                        shouldLogSkip = (Date.now() - lastTime) > 60 * 60 * 1000; // 60 minutes
+                    }
+
+                    if (shouldLogSkip) {
+                        await logCronStatus(env, 'SKIP', 'System Fresh: All symbols and portfolios up to date.', `Cutoff: ${cutoffTime}`);
+                    }
                     return;
                 }
             }
