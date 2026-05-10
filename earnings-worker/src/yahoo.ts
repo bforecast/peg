@@ -98,7 +98,7 @@ async function fetchQuotesInternal(symbols: string[]): Promise<YahooQuote[]> {
     for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
         const batch = symbols.slice(i, i + BATCH_SIZE);
         const batchPromises = batch.map(async (symbol) => {
-            const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail,financialData,price,earningsTrend&crumb=${session.crumb}`;
+            const url = `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=summaryDetail,financialData,price,earningsTrend,defaultKeyStatistics&crumb=${session.crumb}`;
             try {
                 const res = await fetchWithTimeout(url, {
                     headers: { 'User-Agent': USER_AGENT, 'Cookie': session.cookie }
@@ -128,12 +128,40 @@ async function fetchQuotesInternal(symbols: string[]): Promise<YahooQuote[]> {
                 const high52 = summary.fiftyTwoWeekHigh?.raw || 0;
                 let deltaHigh = (high52) ? (currentPrice - high52) / high52 : 0;
 
+                // PS ratio: summaryDetail is correct for same-currency stocks,
+                // but wrong for ADRs (e.g. TSM: revenue in TWD, price in USD → PS=0.52 instead of ~16)
+                const financialCurrency = financial.financialCurrency || price.currency || '';
+                const priceCurrency = price.currency || '';
+                const marketCap = summary.marketCap?.raw || price.marketCap?.raw || 0;
+                const totalRevenue = financial.totalRevenue?.raw || 0;
+                let psRatio = summary.priceToSalesTrailing12Months?.raw || 0;
+
+                if (financialCurrency && priceCurrency && financialCurrency !== priceCurrency
+                    && marketCap > 0 && totalRevenue > 0) {
+                    // Currency mismatch (ADR) — fetch exchange rate and compute correctly
+                    try {
+                        const fxPair = `${financialCurrency}${priceCurrency}=X`;
+                        const fxRes = await fetchWithTimeout(
+                            `https://query2.finance.yahoo.com/v10/finance/quoteSummary/${fxPair}?modules=price&crumb=${session.crumb}`,
+                            { headers: { 'User-Agent': USER_AGENT, 'Cookie': session.cookie } }, 5000
+                        );
+                        if (fxRes.ok) {
+                            const fxData: any = await fxRes.json();
+                            const rate = fxData.quoteSummary?.result?.[0]?.price?.regularMarketPrice?.raw;
+                            if (rate && rate > 0) {
+                                const revenueInPriceCurrency = totalRevenue * rate;
+                                psRatio = marketCap / revenueInPriceCurrency;
+                            }
+                        }
+                    } catch (_) { /* keep summaryDetail fallback */ }
+                }
+
                 return {
                     symbol,
                     shortName: price.shortName || price.longName || symbol,
                     regularMarketPrice: currentPrice,
                     marketCap: summary.marketCap?.raw || price.marketCap?.raw || 0,
-                    priceToSalesTrailing12Months: summary.priceToSalesTrailing12Months?.raw || 0,
+                    priceToSalesTrailing12Months: psRatio,
                     trailingPE: summary.trailingPE?.raw || 0,
                     forwardPE: summary.forwardPE?.raw || 0,
                     fiftyTwoWeekHigh: high52,
