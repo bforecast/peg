@@ -64,7 +64,7 @@ export const HTML = `<!DOCTYPE html>
                                 <th onclick="window.sortPortfolios('sortino')" style="cursor:pointer;">Sortino <span id="sort-p-sortino"></span></th>
                                 <th onclick="window.sortPortfolios('dr')" style="cursor:pointer;" title="Diversification Ratio (Higher is Better)">DR <span id="sort-p-dr"></span></th>
                                 <th onclick="window.sortPortfolios('last_score')" style="cursor:pointer;" title="Weekly Portfolio Score">Score <span id="sort-p-last_score"></span></th>
-                                <th>Created</th>
+                                <th onclick="window.sortPortfolios('created_at')" style="cursor:pointer;">Created <span id="sort-p-created_at"></span></th>
                             </tr>
                         </thead>
                         <tbody id="portfoliosBody"></tbody>
@@ -77,7 +77,10 @@ export const HTML = `<!DOCTYPE html>
                     <!-- Portfolio Title Bar -->
                     <div id="portfolioTitleBar" style="display:flex; justify-content:space-between; align-items:flex-start; padding:15px 0; margin-bottom:10px; border-bottom:1px solid #eee; margin-left: auto; margin-right: auto; width: 100%; max-width: 1400px;">
                         <div style="display:flex; flex-direction:column; gap:4px; flex-grow: 1;">
-                            <h2 id="portfolioTitle" style="margin:0; color:#333; font-size:1.3rem;"></h2>
+                            <div style="display:flex; align-items:center; flex-wrap:wrap; gap:10px;">
+                                <h2 id="portfolioTitle" style="margin:0; color:#333; font-size:1.3rem; display:inline-flex; align-items:center;"></h2>
+                                <span id="portfolioCreatedDate" style="font-size:0.8rem; color:#888; background:#F5F5F5; padding:2px 8px; border-radius:4px; font-weight:500; display:inline-block; margin-top:2px;"></span>
+                            </div>
                             <div id="portfolioMemo" style="font-size:0.85rem; color:#666; text-align:left; margin-top: 4px;"></div>
                         </div>
                         <button id="btnEditPortfolio" onclick="toggleManager()" style="padding:4px 12px; border:1px solid #2196F3; background:white; color:#2196F3; border-radius:4px; cursor:pointer; font-size:0.8rem; margin-left:15px; flex-shrink: 0;">&#9998; Edit</button>

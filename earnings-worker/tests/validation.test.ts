@@ -3,13 +3,13 @@ import { describe, it, expect, vi } from 'vitest';
 import worker from '../src/main';
 
 // Mock the Yahoo Finance module
-vi.mock('../src/yahoo_finance', () => {
+vi.mock('../src/yahoo', () => {
     return {
         fetchQuotes: vi.fn(),
     };
 });
 
-import { fetchQuotes } from '../src/yahoo_finance';
+import { fetchQuotes } from '../src/yahoo';
 
 describe('Validation Endpoint', () => {
     it('validates a correct symbol', async () => {
@@ -18,7 +18,11 @@ describe('Validation Endpoint', () => {
             { symbol: 'MSFT', shortName: 'Microsoft Corp', price: 100 }
         ]);
 
-        const request = new Request('http://example.com/api/validate/MSFT');
+        const request = new Request('http://example.com/api/validate/MSFT', {
+            headers: {
+                Cookie: 'auth_session=valid_session_token'
+            }
+        });
         const ctx = createExecutionContext();
 
         // Minimal env mock
@@ -37,7 +41,11 @@ describe('Validation Endpoint', () => {
         // Setup Mock to return empty/null
         (fetchQuotes as any).mockResolvedValue([]);
 
-        const request = new Request('http://example.com/api/validate/INVALID');
+        const request = new Request('http://example.com/api/validate/INVALID', {
+            headers: {
+                Cookie: 'auth_session=valid_session_token'
+            }
+        });
         const ctx = createExecutionContext();
         const env = { ALPHA_VANTAGE_KEY: 'test', DB: {} };
 

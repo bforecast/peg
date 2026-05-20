@@ -135,7 +135,6 @@ export const SCRIPTS = `
             }
             
             // Populate new portfolio title bar elements inside dashboard view
-            // Populate new portfolio title bar elements inside dashboard view
             const portfolioTitleEl = document.getElementById('portfolioTitle');
             if(portfolioTitleEl) {
                  // Icon Logic
@@ -150,6 +149,17 @@ export const SCRIPTS = `
                  }
                  
                  portfolioTitleEl.innerHTML = currentGroup.name + iconHtml;
+            }
+
+            const createdDateEl = document.getElementById('portfolioCreatedDate');
+            if(createdDateEl) {
+                 if (currentGroup.created_at) {
+                      const dateObj = new Date(currentGroup.created_at);
+                      createdDateEl.textContent = 'Created: ' + dateObj.toLocaleDateString(undefined, { year: 'numeric', month: '2-digit', day: '2-digit' });
+                      createdDateEl.style.display = 'inline-block';
+                 } else {
+                      createdDateEl.style.display = 'none';
+                 }
             }
             
             const portfolioMemoEl = document.getElementById('portfolioMemo');
@@ -1386,6 +1396,13 @@ function sortPortfolios(key) {
                  if (sA < sB) return portfolioSort.dir === 'asc' ? -1 : 1;
                  if (sA > sB) return portfolioSort.dir === 'asc' ? 1 : -1;
                  return 0;
+            }
+
+            // Special handling for created_at (Date string)
+            if (key === 'created_at') {
+                 const tA = a[key] ? new Date(a[key]).getTime() : 0;
+                 const tB = b[key] ? new Date(b[key]).getTime() : 0;
+                 return portfolioSort.dir === 'asc' ? tA - tB : tB - tA;
             }
 
             const valA = parseFloat(a[key]);
