@@ -215,6 +215,23 @@ export async function updateTicker(env: Bindings, symbol: string) {
         const yahooDataArray = await fetchYahooEstimates(symbol);
         if (yahooDataArray && Array.isArray(yahooDataArray)) {
             const updatedAt = getESTTimestamp();
+
+            // Clean up stale or duplicate future estimates (reported_eps IS NULL)
+            // that do not match the currently active estimate date from the trend module.
+            const currentTrendEstimate = yahooDataArray.find(d => d.source === 'trend');
+            const activeEstimateDate = currentTrendEstimate ? currentTrendEstimate.fiscal_date_ending : null;
+            if (activeEstimateDate) {
+                await env.DB.prepare(`
+                    DELETE FROM earnings_estimates 
+                    WHERE symbol = ? AND reported_eps IS NULL AND fiscal_date_ending != ?
+                `).bind(symbol, activeEstimateDate).run();
+            } else {
+                await env.DB.prepare(`
+                    DELETE FROM earnings_estimates 
+                    WHERE symbol = ? AND reported_eps IS NULL
+                `).bind(symbol).run();
+            }
+
             for (const yahooData of yahooDataArray) {
                 let targetDate = yahooData.fiscal_date_ending;
                 // Basic sanitation/formatting if needed, but Yahoo fmt is usually YYYY-MM-DD
