@@ -495,6 +495,56 @@ export async function fetchStockMetricsForScoring(
         return [];
     }
 
+    const symbols = members.map((m: any) => m.symbol);
+    const placeholders = symbols.map(() => '?').join(',');
+
+    // 2. 批量一次性获取所有 symbols 最新的报价数据 (Forward PE, EPS)
+    const quotesQuery = `
+        SELECT q.symbol, q.forward_pe, q.eps_current_year, q.eps_next_year 
+        FROM stock_quotes q
+        INNER JOIN (
+            SELECT symbol, MAX(date) as max_date 
+            FROM stock_quotes 
+            WHERE symbol IN (${placeholders})
+            GROUP BY symbol
+        ) latest ON q.symbol = latest.symbol AND q.date = latest.max_date
+    `;
+    const { results: quoteRows } = await env.DB.prepare(quotesQuery).bind(...symbols).all();
+
+    // Map quotes by symbol for fast O(1) lookup
+    const quoteMap = new Map<string, { forward_pe?: number; eps_current_year?: number; eps_next_year?: number }>();
+    if (quoteRows) {
+        for (const row of quoteRows) {
+            const q = row as any;
+            quoteMap.set(q.symbol, q);
+        }
+    }
+
+    // 3. 批量一次性获取所有 symbols 的最新价格历史 (252天) using ROW_NUMBER() window function
+    const pricesQuery = `
+        SELECT symbol, close 
+        FROM (
+            SELECT symbol, close, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
+            FROM stock_prices
+            WHERE symbol IN (${placeholders})
+        ) WHERE rn <= 252
+    `;
+    const { results: priceRows } = await env.DB.prepare(pricesQuery).bind(...symbols).all();
+
+    // Map price lists by symbol (preserves descending order from query)
+    const priceMap = new Map<string, number[]>();
+    if (priceRows) {
+        for (const row of priceRows) {
+            const p = row as any;
+            if (!priceMap.has(p.symbol)) {
+                priceMap.set(p.symbol, []);
+            }
+            if (p.close && p.close > 0) {
+                priceMap.get(p.symbol)!.push(p.close);
+            }
+        }
+    }
+
     const stocks: StockMetricsInput[] = [];
 
     for (const m of members) {
@@ -502,11 +552,7 @@ export async function fetchStockMetricsForScoring(
         const symbol = member.symbol;
         const weight = (member.allocation || 0) / 100; // 转换为小数
 
-        // 2. 获取报价数据 (Forward PE, EPS)
-        const quote = await env.DB.prepare(
-            'SELECT forward_pe, eps_current_year, eps_next_year FROM stock_quotes WHERE symbol = ? ORDER BY date DESC LIMIT 1'
-        ).bind(symbol).first() as { forward_pe: number; eps_current_year: number; eps_next_year: number } | null;
-
+        const quote = quoteMap.get(symbol);
         const forwardPE = quote?.forward_pe || 20; // 默认值
 
         // 计算 PEG
@@ -518,15 +564,9 @@ export async function fetchStockMetricsForScoring(
             }
         }
 
-        // 3. 获取价格历史 (252天)
-        const { results: priceRows } = await env.DB.prepare(
-            'SELECT close FROM stock_prices WHERE symbol = ? ORDER BY date DESC LIMIT 252'
-        ).bind(symbol).all();
-
-        const prices = (priceRows || [])
-            .map((r: any) => r.close as number)
-            .filter((p: number) => p > 0)
-            .reverse(); // 转为升序
+        // The prices are stored in priceMap descending (newest first).
+        // Original code mapping: map to close, filter > 0, reverse to ascending (oldest first).
+        const prices = (priceMap.get(symbol) || []).slice().reverse();
 
         if (prices.length < 20) {
             console.warn(`[Scoring] Skipping ${symbol}: insufficient price data (${prices.length} days)`);

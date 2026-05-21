@@ -28,27 +28,8 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             const dayOfWeek = now.getDay();
             const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
-            let cutoffTime = "";
-            const pad = (n: number) => n.toString().padStart(2, '0');
-
-            if (isWeekend) {
-                const daysToSubtract = dayOfWeek === 0 ? 2 : 1;
-                const lastFriday = new Date(now);
-                lastFriday.setDate(now.getDate() - daysToSubtract);
-                const lastFridayStr = `${lastFriday.getFullYear()}-${pad(lastFriday.getMonth() + 1)}-${pad(lastFriday.getDate())}`;
-                cutoffTime = `${lastFridayStr} 16:00:00`;
-            } else {
-                const currentHour = now.getHours();
-                if (currentHour < 16) {
-                    const yesterday = new Date(now);
-                    yesterday.setDate(now.getDate() - 1);
-                    const yStr = `${yesterday.getFullYear()}-${pad(yesterday.getMonth() + 1)}-${pad(yesterday.getDate())}`;
-                    cutoffTime = `${yStr} 16:00:00`;
-                } else {
-                    const todayStr = getLastTradingDate();
-                    cutoffTime = `${todayStr} 16:00:00`;
-                }
-            }
+            const lastTradingDateStr = getLastTradingDate();
+            const cutoffTime = `${lastTradingDateStr} 16:00:00`;
 
             // Check stock_stats for freshness (final output)
             const { results: freshRows } = await env.DB.prepare(
@@ -118,7 +99,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     const dateStr = getLastTradingDate();
                     const updatedAt = getESTTimestamp();
 
-                    for (const q of quotes) {
+                    const tasks = quotes.map(async (q) => {
                         if (q.regularMarketPrice && q.regularMarketPrice > 0) {
                             try {
                                 // Insert today's price (using current quote price as close)
@@ -183,7 +164,9 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                                 console.error(`[Cron] Price/Stats insert error for ${q.symbol}: ${e.message}`);
                             }
                         }
-                    }
+                    });
+
+                    await Promise.all(tasks);
 
                     const failed = symbolsToProcess.filter(s => !quotes.find(q => q.symbol === s));
                     if (failed.length > 0) quoteErrors.push(...failed);

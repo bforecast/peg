@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { Bindings } from '../types';
-import { chatWithGemini } from '../ai/gemini';
-import { generatePerplexityResponse } from '../ai/perplexity';
+import { generateNvidiaResponse } from '../ai/nvidia';
 import { getLatestQuotes, regenerateStats } from '../db';
 
 const chatRoutes = new Hono<{ Bindings: Bindings }>();
@@ -29,13 +28,18 @@ chatRoutes.post('/api/chat', async (c) => {
     try {
         const body = await c.req.json();
         let { message, context, history, model } = body;
-        // model: 'gemini' (default) or 'perplexity'
+
+        // Map legacy models to the default NVIDIA Nemotron model
+        const selectedModel = (model === 'perplexity' || model === 'gemini' || !model)
+            ? 'nemotron-3-super-120b-a12b'
+            : model;
+
+        console.log(`[NVIDIA Chat] Selected model: ${selectedModel} (received: ${model})`);
 
         // Prepare message with context
         let fullMessage = message;
         if (context) {
-            console.log('[Perplexity] Incoming Context:', JSON.stringify(context, null, 2));
-            // Extract meaningful context string
+            console.log('[NVIDIA Chat] Incoming Context:', JSON.stringify(context, null, 2));
             let contextStr = '';
             if (typeof context === 'string') {
                 contextStr = context;
@@ -46,290 +50,202 @@ chatRoutes.post('/api/chat', async (c) => {
             }
             fullMessage = `[Context: ${contextStr}] ${message}`;
         } else {
-            console.log('[Perplexity] No Context provided');
+            console.log('[NVIDIA Chat] No Context provided');
         }
 
-        // Route to selected model
-        if (model === 'perplexity') {
-            // Parse @mentions to fetch local portfolio data
-            // Updated to support Quoted names ('Name') or Standard names (stopped by lowercase command)
-            const mentionRegex = /@(?:'([^']+)'|"([^"]+)"|([\p{L}\p{N}\s&'_\-]+?)(?=\s*(?:[@?:!.,]|$)|(?<=\s)[a-z]))/gu;
-            const mentions: string[] = [];
-            let match;
-            while ((match = mentionRegex.exec(message)) !== null) {
-                // match[1] = single quoted, match[2] = double quoted, match[3] = standard
-                const name = (match[1] || match[2] || match[3]).trim();
-                if (name.length > 0) {
-                    mentions.push(name);
-                }
+        // Parse @mentions to fetch local portfolio data
+        const mentionRegex = /@(?:'([^']+)'|"([^"]+)"|([\p{L}\p{N}\s&'_\-]+?)(?=\s*(?:[@?:!.,]|$)|(?<=\s)[a-z]))/gu;
+        const mentions: string[] = [];
+        let match;
+        while ((match = mentionRegex.exec(message)) !== null) {
+            const name = (match[1] || match[2] || match[3]).trim();
+            if (name.length > 0) {
+                mentions.push(name);
             }
+        }
 
-            // Also check context for portfolio name (from holdings page)
-            if (context && typeof context === 'object' && context.portfolioName) {
-                if (!mentions.includes(context.portfolioName)) {
-                    mentions.push(context.portfolioName);
-                }
+        // Also check context for portfolio name (from holdings page)
+        if (context && typeof context === 'object' && context.portfolioName) {
+            if (!mentions.includes(context.portfolioName)) {
+                mentions.push(context.portfolioName);
             }
+        }
 
-            // Detect "all portfolios" queries - explicitly include "analyze this"
-            const allPortfoliosRegex = /\b(all|every|compare\s+all)\s+(portfolios?|groups?)|analyze\s+this|valuation\s+check|technical\s+trend/i;
-            const wantsAllPortfolios = allPortfoliosRegex.test(message);
+        // Detect "all portfolios" queries - explicitly include "analyze this"
+        const allPortfoliosRegex = /\b(all|every|compare\s+all)\s+(portfolios?|groups?)|analyze\s+this|valuation\s+check|technical\s+trend/i;
+        const wantsAllPortfolios = allPortfoliosRegex.test(message);
 
-            // Check if user mentioned a specific stock symbol (e.g., @NVDA, @AAPL)
-            // This overrides the page context
-            const stockSymbolMatch = message.match(/@([A-Za-z]{1,5})\b/);
-            let targetSymbol: string | null = null;
-            if (stockSymbolMatch) {
-                targetSymbol = stockSymbolMatch[1].toUpperCase();
-                console.log('[Perplexity] User mentioned stock symbol:', targetSymbol);
-            }
+        // Check if user mentioned a specific stock symbol (e.g., @NVDA, @AAPL)
+        const stockSymbolMatch = message.match(/@([A-Za-z]{1,5})\b/);
+        let targetSymbol: string | null = null;
+        if (stockSymbolMatch) {
+            targetSymbol = stockSymbolMatch[1].toUpperCase();
+            console.log('[NVIDIA Chat] User mentioned stock symbol:', targetSymbol);
+        }
 
-            console.log('[Perplexity] Parsed mentions:', mentions, 'all:', wantsAllPortfolios, 'targetSymbol:', targetSymbol);
+        console.log('[NVIDIA Chat] Parsed mentions:', mentions, 'all:', wantsAllPortfolios, 'targetSymbol:', targetSymbol);
 
-            // Fetch portfolio data for mentioned portfolios
-            let localDataContext = '';
+        let localDataContext = '';
 
-            // This is a translation request - skip context injection & inject prior response
-            const isTranslationRequest = /translate.*previous|翻译|translation/i.test(message);
-            let enhancedMessage = message; // Initialize enhancedMessage
+        // Handle Translation requests
+        const isTranslationRequest = /translate.*previous|缈昏瘧|translation/i.test(message);
+        let enhancedMessage = message;
 
-            if (isTranslationRequest) {
-                console.log('[Perplexity] Translation request detected.');
-                localDataContext = ''; // Ensure no context is injected
-
-                if (history && Array.isArray(history)) {
-                    // Find actual last assistant message (skip user messages)
-                    const reversedHistory = [...history].reverse();
-                    const lastAssistantMsg = reversedHistory.find(h => h.role === 'model' || h.role === 'assistant');
-
-                    if (lastAssistantMsg && lastAssistantMsg.content) {
-                        console.log('[Perplexity] Injecting ' + lastAssistantMsg.content.length + ' chars for translation');
-                        // REWRITE the user message to be self-contained
-                        enhancedMessage = `Please translate the following text into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text:\n\n"""\n${lastAssistantMsg.content}\n"""`;
-                    } else {
-                        console.log('[Perplexity] WARNING: No assistant message found for translation. History Len:', history.length);
-                        // Fallback: Try to translate the LAST message if it's not the current one?
-                        // Or just let it fail but with context.
-                        // We will append a system note so the AI knows why.
-                        enhancedMessage = message + `\n\n[System Note: The user requested translation of the previous response, but the server implementation could not locate a previous 'model' or 'assistant' message in the provided history. History Length: ${history.length}. Roles: ${history.map(h => h.role).join(',')}.]`;
-                    }
-                }
-            } else {
-                enhancedMessage = message;
-            }
-            // Priority: 1. User's @mention, 2. Page context (isSingleStock)
-            // But skip for translation requests
-            const symbolToAnalyze = isTranslationRequest ? null : (targetSymbol || (context && context.symbol ? context.symbol.toUpperCase() : null));
-
-            // Handle Single Stock Context first
-            if (symbolToAnalyze) {
-                const symbol = symbolToAnalyze;
-                const stockContext = await fetchStockContext(c, c.env.DB, symbol);
-                if (stockContext) {
-                    localDataContext += stockContext;
-                    console.log('[Perplexity] Final Context for ' + symbol + ' (Length: ' + stockContext.length + ')');
-                }
-            } else if (wantsAllPortfolios) {
-                try {
-                    const db = c.env.DB;
-                    const allGroups = await db.prepare(
-                        `SELECT g.id, g.name,
-                                ps.cagr, ps.sharpe, ps.sortino, ps.max_drawdown
-                         FROM groups g
-                         LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
-                         ORDER BY ps.sharpe DESC`
-                    ).all();
-
-                    if (allGroups.results && allGroups.results.length > 0) {
-                        localDataContext += `\n\n### All Portfolios Comparison\n`;
-                        localDataContext += `| Portfolio | CAGR | Sharpe | Sortino | Max DD |\n`;
-                        localDataContext += `|-----------|------|--------|---------|--------|\n`;
-                        for (const g of allGroups.results as any[]) {
-                            localDataContext += `| ${g.name} | ${g.cagr?.toFixed(1) || 'N/A'}% | ${g.sharpe?.toFixed(2) || 'N/A'} | ${g.sortino?.toFixed(2) || 'N/A'} | ${g.max_drawdown?.toFixed(1) || 'N/A'}% |\n`;
-                        }
-                    }
-                } catch (dbError) {
-                    console.error('Error fetching all portfolios:', dbError);
-                }
-            } else if (mentions.length > 0 || (context && context.portfolioId)) {
-                try {
-                    const db = c.env.DB;
-                    const portfoliosToFetch: { type: 'id' | 'name', value: string | number }[] = [];
-
-                    // 1. Context Portfolio (ID is most reliable)
-                    if (context && context.portfolioId) {
-                        portfoliosToFetch.push({ type: 'id', value: context.portfolioId });
-                    }
-
-                    // 2. Mentioned Portfolios (by Name)
-                    for (const m of mentions) {
-                        // Avoid duplicate if context name is same
-                        if (context && context.portfolioName && m === context.portfolioName) continue;
-                        portfoliosToFetch.push({ type: 'name', value: m });
-                    }
-
-                    for (const target of portfoliosToFetch) {
-                        let group;
-                        if (target.type === 'id') {
-                            console.log('[Perplexity] Looking up portfolio by ID:', target.value);
-                            group = await db.prepare(
-                                `SELECT g.id, g.name, g.description,
-                                        ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy
-                                 FROM groups g
-                                 LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
-                                 WHERE g.id = ?`
-                            ).bind(target.value).first();
-                        } else {
-                            console.log('[Perplexity] Looking up portfolio by Name:', target.value);
-                            group = await db.prepare(
-                                `SELECT g.id, g.name, g.description,
-                                        ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy
-                                 FROM groups g
-                                 LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
-                                 WHERE LOWER(g.name) LIKE LOWER(?)`
-                            ).bind(`%${target.value}%`).first();
-                        }
-
-
-
-                        if (group) {
-                            console.log('[Perplexity] Found portfolio:', group.name);
-
-                            // 1. Get Symbols first to ensure data freshness
-                            const memberSymbols = await db.prepare(
-                                `SELECT symbol FROM group_members WHERE group_id = ?`
-                            ).bind(group.id).all();
-
-                            if (memberSymbols.results && memberSymbols.results.length > 0) {
-                                const symbols = memberSymbols.results.map((r: any) => r.symbol);
-                                // Lazy Fetch quotes & Regen Stats if needed
-                                await getLatestQuotes(c.env, symbols);
-                                for (const s of symbols) {
-                                    await regenerateStats(c.env, s);
-                                }
-                            }
-
-                            // 2. Get holdings with now-guaranteed valuation and technical data
-                            const formattedContext = await fetchPortfolioContext(c.env.DB, group.id, group.name);
-                            if (formattedContext) {
-                                localDataContext += formattedContext;
-                            } else {
-                                localDataContext += `\n(No holdings data available)\n`;
-                            }
-                        }
-                    }
-                } catch (dbError) {
-                    console.error('Error fetching portfolio data:', dbError);
-                }
-            }
-
-            // Enhance message with local data
-            if (!isTranslationRequest) {
-                enhancedMessage = fullMessage;
-            }
-            if (localDataContext) {
-                console.log('[Perplexity] Injecting Local Context:\n', localDataContext);
-                enhancedMessage = `${fullMessage}\n\n--- LOCAL PORTFOLIO DATA FROM DATABASE ---${localDataContext}\n--- END OF LOCAL DATA ---\n\nUse the above local data to answer the question. Combine with web search if needed.`;
-            }
-
-            // Use Perplexity API for real-time web search
-            const perplexityMessages: { role: 'system' | 'user' | 'assistant', content: string }[] = [
-                { role: 'system', content: SYSTEM_PROMPT }
-            ];
-
-            // Include recent chat history (for translation/follow-up questions)
-            // Sanitize to ensure: 1) First non-system is 'user', 2) Alternating roles
+        if (isTranslationRequest) {
+            console.log('[NVIDIA Chat] Translation request detected.');
+            localDataContext = ''; // No context for translation
             if (history && Array.isArray(history)) {
-                const recentHistory = history.slice(-6); // Last 6 messages
-                let lastRole = 'system';
-                let hasFirstUser = false;
-                for (const h of recentHistory) {
-                    if (h.role && h.content) {
-                        const currentRole = h.role === 'user' ? 'user' : 'assistant';
-                        // First message after system MUST be 'user'
-                        if (!hasFirstUser && currentRole === 'assistant') continue;
-                        if (currentRole === 'user') hasFirstUser = true;
-                        // Skip if same role as previous (avoid consecutive)
-                        if (currentRole === lastRole) continue;
-                        perplexityMessages.push({
-                            role: currentRole,
-                            content: h.content
-                        });
-                        lastRole = currentRole;
+                const reversedHistory = [...history].reverse();
+                // Match standard assistant roles (Gemini history used model, others assistant)
+                const lastAssistantMsg = reversedHistory.find(h => h.role === 'model' || h.role === 'assistant');
+                if (lastAssistantMsg && lastAssistantMsg.content) {
+                    console.log('[NVIDIA Chat] Injecting ' + lastAssistantMsg.content.length + ' chars for translation');
+                    enhancedMessage = `Please translate the following text into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text:\n\n"""\n${lastAssistantMsg.content}\n"""`;
+                } else {
+                    console.log('[NVIDIA Chat] WARNING: No assistant message found for translation.');
+                    enhancedMessage = message + `\n\n[System Note: The user requested translation of the previous response, but the server implementation could not locate a previous assistant message in the history.]`;
+                }
+            }
+        } else {
+            enhancedMessage = message;
+        }
+
+        // Fetch Local Context
+        const symbolToAnalyze = isTranslationRequest ? null : (targetSymbol || (context && context.symbol ? context.symbol.toUpperCase() : null));
+
+        if (symbolToAnalyze) {
+            const stockContext = await fetchStockContext(c, c.env.DB, symbolToAnalyze);
+            if (stockContext) {
+                localDataContext += stockContext;
+            }
+        } else if (wantsAllPortfolios) {
+            try {
+                const db = c.env.DB;
+                const allGroups = await db.prepare(
+                    `SELECT g.id, g.name,
+                            ps.cagr, ps.sharpe, ps.sortino, ps.max_drawdown
+                     FROM groups g
+                     LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
+                     ORDER BY ps.sharpe DESC`
+                ).all();
+
+                if (allGroups.results && allGroups.results.length > 0) {
+                    localDataContext += `\n\n### All Portfolios Comparison\n`;
+                    localDataContext += `| Portfolio | CAGR | Sharpe | Sortino | Max DD |\n`;
+                    localDataContext += `|-----------|------|--------|---------|--------|\n`;
+                    for (const g of allGroups.results as any[]) {
+                        localDataContext += `| ${g.name} | ${g.cagr?.toFixed(1) || 'N/A'}% | ${g.sharpe?.toFixed(2) || 'N/A'} | ${g.sortino?.toFixed(2) || 'N/A'} | ${g.max_drawdown?.toFixed(1) || 'N/A'}% |\n`;
                     }
                 }
-                // If last message in history is 'user', remove it (we'll add our own)
-                if (perplexityMessages.length > 1 && perplexityMessages[perplexityMessages.length - 1].role === 'user') {
-                    perplexityMessages.pop();
+            } catch (dbError) {
+                console.error('Error fetching all portfolios:', dbError);
+            }
+        } else if (mentions.length > 0 || (context && context.portfolioId)) {
+            try {
+                const db = c.env.DB;
+                const portfoliosToFetch: { type: 'id' | 'name', value: string | number }[] = [];
+
+                if (context && context.portfolioId) {
+                    portfoliosToFetch.push({ type: 'id', value: context.portfolioId });
+                }
+
+                for (const m of mentions) {
+                    if (context && context.portfolioName && m === context.portfolioName) continue;
+                    portfoliosToFetch.push({ type: 'name', value: m });
+                }
+
+                for (const target of portfoliosToFetch) {
+                    let group;
+                    if (target.type === 'id') {
+                        group = await db.prepare(
+                            `SELECT g.id, g.name, g.description,
+                                    ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy
+                             FROM groups g
+                             LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
+                             WHERE g.id = ?`
+                        ).bind(target.value).first();
+                    } else {
+                        group = await db.prepare(
+                            `SELECT g.id, g.name, g.description,
+                                    ps.cagr, ps.std_dev, ps.max_drawdown, ps.sharpe, ps.sortino, ps.correlation_spy
+                             FROM groups g
+                             LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
+                             WHERE LOWER(g.name) LIKE LOWER(?)`
+                        ).bind(`%${target.value}%`).first();
+                    }
+
+                    if (group) {
+                        const memberSymbols = await db.prepare(
+                            `SELECT symbol FROM group_members WHERE group_id = ?`
+                        ).bind(group.id).all();
+
+                        if (memberSymbols.results && memberSymbols.results.length > 0) {
+                            const symbols = memberSymbols.results.map((r: any) => r.symbol);
+                            await getLatestQuotes(c.env, symbols);
+                            for (const s of symbols) {
+                                await regenerateStats(c.env, s);
+                            }
+                        }
+
+                        const formattedContext = await fetchPortfolioContext(c.env.DB, group.id, group.name);
+                        if (formattedContext) {
+                            localDataContext += formattedContext;
+                        } else {
+                            localDataContext += `\n(No holdings data available)\n`;
+                        }
+                    }
+                }
+            } catch (dbError) {
+                console.error('Error fetching portfolio data:', dbError);
+            }
+        }
+
+        // Merge user query and system data context
+        if (!isTranslationRequest) {
+            enhancedMessage = fullMessage;
+        }
+        if (localDataContext) {
+            console.log('[NVIDIA Chat] Injecting Local Context (Length: ' + localDataContext.length + ')');
+            enhancedMessage = `${fullMessage}\n\n--- LOCAL PORTFOLIO DATA FROM DATABASE ---${localDataContext}\n--- END OF LOCAL DATA ---\n\nUse the above local data to answer the question.`;
+        }
+
+        // Construct standard message array
+        const nvidiaMessages: { role: 'system' | 'user' | 'assistant', content: string }[] = [
+            { role: 'system', content: SYSTEM_PROMPT }
+        ];
+
+        // Format history
+        if (history && Array.isArray(history)) {
+            const recentHistory = history.slice(-6); // Limit to last 6 turns to keep context clean
+            let lastRole = 'system';
+            let hasFirstUser = false;
+            for (const h of recentHistory) {
+                if (h.role && h.content) {
+                    const currentRole = h.role === 'user' ? 'user' : 'assistant';
+                    if (!hasFirstUser && currentRole === 'assistant') continue;
+                    if (currentRole === 'user') hasFirstUser = true;
+                    if (currentRole === lastRole) continue;
+                    nvidiaMessages.push({
+                        role: currentRole,
+                        content: h.content
+                    });
+                    lastRole = currentRole;
                 }
             }
-
-            // Add current message
-            perplexityMessages.push({ role: 'user', content: enhancedMessage });
-
-            const result = await generatePerplexityResponse(c.env.PERPLEXITY_API_KEY, perplexityMessages);
-            return c.json({ response: result, model: 'perplexity' });
-        }
-
-        // Default: Use Gemini
-        // Prepare initial messages for Gemini
-        const geminiMessages: any[] = [];
-
-        // Fetch portfolio data for Gemini (similar to Perplexity logic)
-        let geminiLocalContext = '';
-
-        // 1. Single Stock Context (Priority)
-        // Detect symbol from message or context
-        const geminiStockMatch = message.match(/@([A-Za-z]{1,5})\b/);
-        const geminiSymbol = geminiStockMatch ? geminiStockMatch[1].toUpperCase() : (context && context.symbol ? context.symbol.toUpperCase() : null);
-
-        if (geminiSymbol) {
-            const stockContext = await fetchStockContext(c, c.env.DB, geminiSymbol);
-            if (stockContext) {
-                geminiLocalContext = stockContext;
-            }
-        }
-        // 2. Portfolio Context (Fallback if no single stock)
-        else if (context && context.portfolioId) {
-            try {
-                const results = await fetchPortfolioContext(c.env.DB, context.portfolioId, context.portfolioName);
-                if (results) geminiLocalContext = results;
-            } catch (e) {
-                console.error('[Gemini] Error fetching portfolio data:', e);
+            if (nvidiaMessages.length > 1 && nvidiaMessages[nvidiaMessages.length - 1].role === 'user') {
+                nvidiaMessages.pop();
             }
         }
 
-        // Build enhanced message for Gemini
-        let geminiEnhancedMessage = fullMessage;
-        if (geminiLocalContext) {
-            console.log('[Gemini] Injecting Local Context');
-            geminiEnhancedMessage = `${fullMessage}\n\n--- LOCAL PORTFOLIO DATA ---${geminiLocalContext}\n--- END OF LOCAL DATA ---\n\nAnalyze the above portfolio data to answer the question.`;
+        // Add current message
+        nvidiaMessages.push({ role: 'user', content: enhancedMessage });
+
+        if (!c.env.NVIDIA_API_KEY) {
+            return c.json({ error: 'NVIDIA_API_KEY is not configured on the Cloudflare Workers backend. Please set it using `wrangler secret put NVIDIA_API_KEY`.' }, 500);
         }
 
-        // Add Chat History (limit to last 10 to save tokens)
-        if (history && Array.isArray(history)) {
-            history.slice(-10).forEach(h => {
-                geminiMessages.push({
-                    role: h.role === 'user' ? 'user' : 'model',
-                    parts: [{ text: h.content }]
-                });
-            });
-        }
-
-        // Add Current Message
-        geminiMessages.push({
-            role: 'user',
-            parts: [{ text: geminiEnhancedMessage }]
-        });
-
-        // Call Gemini
-        const result = await chatWithGemini(geminiMessages, c.env, SYSTEM_PROMPT);
-
-        if (result.error) {
-            return c.json({ error: result.error }, 500);
-        }
-
-        return c.json({ response: result.text, model: 'gemini' });
+        const result = await generateNvidiaResponse(c.env.NVIDIA_API_KEY, selectedModel, nvidiaMessages);
+        return c.json({ response: result, model: selectedModel });
 
     } catch (e: any) {
         console.error("Chat Error:", e);

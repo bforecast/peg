@@ -142,20 +142,45 @@ app.get('/api/portfolio-health', async (c) => {
 
         const priceDataMap: { [ticker: string]: PriceData[] } = {};
 
-        for (const ticker of tickers) {
-            const { results: prices } = await c.env.DB.prepare(
-                'SELECT date, open, high, low, close, volume FROM stock_prices WHERE symbol = ? AND date >= ? ORDER BY date ASC'
-            ).bind(ticker, startDate).all();
+        // Batch fetch price data for all tickers in a single query
+        const placeholders = tickers.map(() => '?').join(',');
+        const query = `
+            SELECT symbol, date, open, high, low, close, volume 
+            FROM stock_prices 
+            WHERE symbol IN (${placeholders}) AND date >= ? 
+            ORDER BY symbol ASC, date ASC
+        `;
 
-            if (prices && prices.length > 0) {
-                priceDataMap[ticker] = prices.map(p => ({
-                    date: String(p.date),
-                    open: Number(p.open || 0),
-                    high: Number(p.high || 0),
-                    low: Number(p.low || 0),
-                    close: Number(p.close || 0),
-                    volume: Number(p.volume || 0)
-                }));
+        const { results: allPrices } = await c.env.DB.prepare(query)
+            .bind(...tickers, startDate)
+            .all();
+
+        // Initialize arrays in map
+        for (const ticker of tickers) {
+            priceDataMap[ticker] = [];
+        }
+
+        if (allPrices && allPrices.length > 0) {
+            for (const p of allPrices) {
+                const row = p as any;
+                const ticker = row.symbol;
+                if (priceDataMap[ticker]) {
+                    priceDataMap[ticker].push({
+                        date: String(row.date),
+                        open: Number(row.open || 0),
+                        high: Number(row.high || 0),
+                        low: Number(row.low || 0),
+                        close: Number(row.close || 0),
+                        volume: Number(row.volume || 0)
+                    });
+                }
+            }
+        }
+
+        // Clean up tickers that have no price data
+        for (const ticker of Object.keys(priceDataMap)) {
+            if (priceDataMap[ticker].length === 0) {
+                delete priceDataMap[ticker];
             }
         }
 

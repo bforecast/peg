@@ -83,7 +83,7 @@ export async function updatePrices(env: Bindings, symbol: string) {
             }
         }
         const targetDate = lastTradingDate.toISOString().split('T')[0];
-        if (maxDate > targetDate) return { count: 0, message: `Prices up to date (${maxDate})` };
+        if (maxDate >= targetDate) return { count: 0, message: `Prices up to date (${maxDate})` };
     }
 
     const prices = await fetchYahooPrices(symbol);

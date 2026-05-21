@@ -3,10 +3,13 @@ export type Bindings = {
     ALPHA_VANTAGE_KEY: string;
     GEMINI_API_KEY: string;
     PERPLEXITY_API_KEY?: string;
+    NVIDIA_API_KEY?: string;
     AUTH_USERNAME?: string;
     AUTH_PASSWORD?: string;
     MCP_SHARED_SECRET?: string;
+    AI: any;
 };
+
 
 export interface StockPrice {
     symbol: string;

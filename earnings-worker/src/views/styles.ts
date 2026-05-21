@@ -313,6 +313,38 @@ export const STYLES = `
             gap: 16px;
         }
 
+        .chat-messages table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 12px 0;
+            font-size: 0.85rem;
+            display: block;
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            border-radius: 8px;
+            background: #ffffff;
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.02);
+        }
+
+        .chat-messages th, .chat-messages td {
+            border: 1px solid rgba(0, 0, 0, 0.08);
+            padding: 8px 12px;
+            text-align: left;
+            min-width: 80px;
+        }
+
+        .chat-messages th {
+            background: rgba(0, 0, 0, 0.03);
+            color: #374151;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+
+        .chat-messages tr:nth-child(even) {
+            background: rgba(0, 0, 0, 0.01);
+        }
+
         .message {
             max-width: 85%;
             padding: 12px 16px;

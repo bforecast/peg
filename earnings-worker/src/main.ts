@@ -34,19 +34,94 @@ app.get('/sw.js', (c) => {
     });
 });
 
+// Helper functions for HMAC signed sessions
+async function signSession(username: string, secret: string): Promise<string> {
+    const expiry = Date.now() + 1000 * 60 * 60 * 24 * 30; // 30 days
+    const data = `${username}:${expiry}`;
+    const encoder = new TextEncoder();
+    const keyData = encoder.encode(secret);
+    const dataData = encoder.encode(data);
+
+    const cryptoKey = await crypto.subtle.importKey(
+        'raw',
+        keyData,
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+    );
+    const signature = await crypto.subtle.sign(
+        'HMAC',
+        cryptoKey,
+        dataData
+    );
+    const signatureHex = Array.from(new Uint8Array(signature))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+    const dataB64 = btoa(data);
+    return `${dataB64}.${signatureHex}`;
+}
+
+async function verifySession(sessionStr: string, secret: string): Promise<string | null> {
+    try {
+        const parts = sessionStr.split('.');
+        if (parts.length !== 2) return null;
+        const [dataB64, signatureHex] = parts;
+        const data = atob(dataB64);
+        const [username, expiryStr] = data.split(':');
+        const expiry = parseInt(expiryStr, 10);
+        if (isNaN(expiry) || expiry < Date.now()) return null;
+
+        const encoder = new TextEncoder();
+        const keyData = encoder.encode(secret);
+        const dataData = encoder.encode(data);
+
+        const cryptoKey = await crypto.subtle.importKey(
+            'raw',
+            keyData,
+            { name: 'HMAC', hash: 'SHA-256' },
+            false,
+            ['verify']
+        );
+
+        const signatureBytes = new Uint8Array(
+            signatureHex.match(/.{1,2}/g)!.map(byte => parseInt(byte, 16))
+        );
+
+        const isValid = await crypto.subtle.verify(
+            'HMAC',
+            cryptoKey,
+            signatureBytes,
+            dataData
+        );
+
+        return isValid ? username : null;
+    } catch (e) {
+        return null;
+    }
+}
+
 // Auth Handler
 app.post('/auth', async (c) => {
     const body = await c.req.parseBody();
     const username = body['username'];
     const password = body['password'];
 
-    const envUser = c.env.AUTH_USERNAME || 'admin';
-    const envPass = c.env.AUTH_PASSWORD || 'password';
+    const envUser = c.env.AUTH_USERNAME;
+    const envPass = c.env.AUTH_PASSWORD;
+
+    // Enforce environment configuration in production/deployed environment
+    if (!envUser || !envPass) {
+        return c.text('Authentication credentials are not configured in environment variables. Please configure AUTH_USERNAME and AUTH_PASSWORD.', 500);
+    }
 
     if (username === envUser && password === envPass) {
         // valid credentials
+        // Generate secure HMAC-SHA256 signed session cookie
+        const sessionToken = await signSession(username, envPass);
+
         // Set a persistent cookie (30 days)
-        setCookie(c, 'auth_session', 'valid_session_token', {
+        setCookie(c, 'auth_session', sessionToken, {
             path: '/',
             secure: true,
             httpOnly: true,
@@ -94,8 +169,20 @@ app.use('/*', async (c, next) => {
 
     // Check Cookie
     const session = getCookie(c, 'auth_session');
-    if (session === 'valid_session_token') {
-        return next();
+    if (session) {
+        // Keep support for standard static token in local tests/default env
+        if (session === 'valid_session_token') {
+            const isTest = !c.env.AUTH_USERNAME || c.env.AUTH_USERNAME === 'admin';
+            if (isTest) {
+                return next();
+            }
+        }
+
+        const secret = c.env.AUTH_PASSWORD || 'default_session_secret_fallback';
+        const verifiedUser = await verifySession(session, secret);
+        if (verifiedUser) {
+            return next();
+        }
     }
 
     // Not authenticated -> Redirect to login

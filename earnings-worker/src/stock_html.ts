@@ -1,4 +1,4 @@
-﻿export const STOCK_HTML = `<!DOCTYPE html>
+export const STOCK_HTML = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -255,6 +255,10 @@
         .header-subtitle { font-size: 11px; color: #6B7280; font-weight: 500; display: flex; align-items: center; gap: 6px; }
         .status-dot { width: 8px; height: 8px; background: #10B981; border-radius: 50%; }
         .chat-messages { flex: 1; padding: 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; }
+        .chat-messages table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 0.85rem; display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; background: #ffffff; border: 1px solid rgba(0, 0, 0, 0.08); box-shadow: 0 1px 3px rgba(0,0,0,0.02); }
+        .chat-messages th, .chat-messages td { border: 1px solid rgba(0, 0, 0, 0.08); padding: 8px 12px; text-align: left; min-width: 80px; }
+        .chat-messages th { background: rgba(0, 0, 0, 0.03); color: #374151; font-weight: 600; white-space: nowrap; }
+        .chat-messages tr:nth-child(even) { background: rgba(0, 0, 0, 0.01); }
         .message { max-width: 85%; padding: 12px 16px; border-radius: 16px; font-size: 0.95rem; line-height: 1.5; position: relative; }
         .message.bot { background: #F3F4F6; color: #1F2937; border-bottom-left-radius: 4px; box-shadow: 0 1px 2px rgba(0,0,0,0.05); align-self: flex-start; }
         .message.user { background: #2563EB; color: white; border-bottom-right-radius: 4px; align-self: flex-end; box-shadow: 0 2px 4px rgba(37, 99, 235, 0.2); }
@@ -305,8 +309,9 @@
             </div>
             <div style="display:flex; align-items:center; gap:10px;">
                 <select id="modelSelector" style="padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:0.8rem; background:white;">
-                    <option value="perplexity" selected>Perplexity (Pro)</option>
-                    <option value="gemini">Gemini</option>
+                    <option value="nemotron-3-super-120b-a12b" selected>Nemotron-3 Super 120B</option>
+                    <option value="llama-3.3-nemotron-super-49b-v1">Llama 3.3 Nemotron 49B</option>
+                    <option value="nemotron-4-340b-instruct">Nemotron-4 340B</option>
                 </select>
                 <button onclick="toggleMaximize()" style="background:none; border:none; cursor:pointer;" title="Maximize">
                     <svg id="maxIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -410,10 +415,21 @@
     const chatContainer = document.getElementById('chatContainer');
     const fabBtn = document.getElementById('fabBtn');
     
+    function escapeHtml(text) {
+        if (!text) return '';
+        return text
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
     // Add simple markdown parser if marked is missing
     function parseMarkdown(text) {
-        if(window.marked) return window.marked.parse(text);
-        return text.replace(/\\n/g, '<br>').replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
+        const escaped = escapeHtml(text);
+        if(window.marked) return window.marked.parse(escaped);
+        return escaped.replace(/\\n/g, '<br>').replace(/\\*\\*(.*?)\\*\\*/g, '<b>$1</b>');
     }
 
     function toggleChat() {
@@ -455,7 +471,11 @@
     function addMessage(role, content) {
         const div = document.createElement('div');
         div.className = 'message ' + (role === 'user' ? 'user' : 'bot');
-        div.innerHTML = role === 'user' ? content : parseMarkdown(content);
+        if (role === 'user') {
+            div.textContent = content;
+        } else {
+            div.innerHTML = parseMarkdown(content);
+        }
         document.getElementById('chatMessages').appendChild(div);
         
         const msgs = document.getElementById('chatMessages');
@@ -496,7 +516,7 @@
         };
 
         const modelSelector = document.getElementById('modelSelector');
-        const selectedModel = modelSelector ? modelSelector.value : 'perplexity';
+        const selectedModel = modelSelector ? modelSelector.value : 'nemotron-3-super-120b-a12b';
         
         try {
             const res = await fetch('/api/chat', {

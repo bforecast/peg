@@ -1642,10 +1642,18 @@ if (document.readyState === 'loading') {
         function parseMarkdown(text) {
             if (!text) return '';
             
+            // HTML Escape to prevent XSS
+            var escapedText = text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+            
             // 1. Bold: **text**
             // Use a simple replace for bold, careful with escaping
             // Needs quadruple backslashes because it's inside a template string
-            let html = text.replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>');
+            let html = escapedText.replace(/\\*\\*(.*?)\\*\\*/g, '<strong>$1</strong>');
             
             const lines = html.split(/\\r?\\n/);
             let output = '';
@@ -1655,7 +1663,7 @@ if (document.readyState === 'loading') {
 
             function renderTableRows(rows) {
                 if (rows.length < 2) return '';
-                let tableHtml = '<table style="width: 100%; border-collapse: collapse; margin: 8px 0; font-size: 0.85rem;">';
+                let tableHtml = '<div style="width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; border-radius: 8px; border: 1px solid rgba(0, 0, 0, 0.08); margin: 12px 0; background: #ffffff; box-shadow: 0 1px 3px rgba(0,0,0,0.02);"><table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">';
                 
                 rows.forEach((row, idx) => {
                     // Simple check for separator line like |---|---|
@@ -1664,19 +1672,20 @@ if (document.readyState === 'loading') {
                     const cells = row.split('|').filter(function(c) { return c && c.trim() !== ''; });
                     if (cells.length === 0) return;
                     
-                    tableHtml += '<tr>';
+                    const bg = (idx === 0) ? 'rgba(0, 0, 0, 0.03)' : (idx % 2 === 0 ? '#ffffff' : 'rgba(0, 0, 0, 0.01)');
+                    tableHtml += '<tr style="background: ' + bg + ';">';
                     const isHeader = (idx === 0);
                     
                     cells.forEach(function(cell) {
                          const tag = isHeader ? 'th' : 'td';
                          const style = isHeader 
-                            ? 'padding: 6px 8px; border-bottom: 2px solid #ddd; text-align: left; font-weight: 600; background: #f5f5f5;'
-                            : 'padding: 5px 8px; border-bottom: 1px solid #eee; text-align: left;';
+                            ? 'padding: 8px 12px; border-bottom: 2px solid rgba(0, 0, 0, 0.08); text-align: left; font-weight: 600; color: #374151; white-space: nowrap; min-width: 80px;'
+                            : 'padding: 8px 12px; border-bottom: 1px solid rgba(0, 0, 0, 0.05); text-align: left; min-width: 80px;';
                          tableHtml += '<' + tag + ' style="' + style + '">' + cell.trim() + '</' + tag + '>';
                     });
                     tableHtml += '</tr>';
                 });
-                tableHtml += '</table>';
+                tableHtml += '</table></div>';
                 return tableHtml;
             }
 
@@ -1785,7 +1794,7 @@ if (document.readyState === 'loading') {
 
             // Get selected model
             const modelSelector = document.getElementById('modelSelector');
-            const selectedModel = modelSelector ? modelSelector.value : 'perplexity';
+            const selectedModel = modelSelector ? modelSelector.value : 'nemotron-3-super-120b-a12b';
             
             try {
                 const res = await fetch('/api/chat', {

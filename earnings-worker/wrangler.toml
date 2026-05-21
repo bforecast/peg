@@ -22,3 +22,5 @@ invocation_logs = true
 enabled = true
 head_sampling_rate = 1 # 100% sampling
 
+[ai]
+binding = "AI"

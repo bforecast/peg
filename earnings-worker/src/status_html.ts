@@ -226,6 +226,16 @@ export const SETTINGS_HTML = `<!DOCTYPE html>
 
         }
 
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#039;');
+        }
+
         function renderLogs(logs) {
             const tbody = document.getElementById('logsBody');
             tbody.innerHTML = '';
@@ -243,8 +253,8 @@ export const SETTINGS_HTML = `<!DOCTYPE html>
                 tr.innerHTML = \`
                     <td><span class="msg-text">\${log.timestamp} EST</span></td>
                     <td><span class="badge \${statusClass}">\${log.status}</span></td>
-                    <td class="msg-text">\${log.message}</td>
-                    <td class="detail-text">\${log.details || '-'}</td>
+                    <td class="msg-text">\${escapeHtml(log.message)}</td>
+                    <td class="detail-text">\${escapeHtml(log.details || '-')}</td>
                 \`;
                 tbody.appendChild(tr);
             });
