@@ -765,6 +765,12 @@ app.put('/api/groups/:id', async (c) => {
         statements.push(c.env.DB.prepare(query).bind(...params));
 
         if (Array.isArray(members)) {
+            // Get existing members of this group to bypass redundant external validation
+            const { results: existingMembers } = await c.env.DB.prepare(
+                'SELECT symbol FROM group_members WHERE group_id = ?'
+            ).bind(id).all();
+            const existingSet = new Set((existingMembers || []).map((m: any) => m.symbol.toUpperCase()));
+
             // Validation: Ensure all symbols exist and have price data
             if (members.length > 0) {
                 const symbolsToCheck = members.map((mem: any) =>
@@ -772,13 +778,18 @@ app.put('/api/groups/:id', async (c) => {
                 );
                 const uniqueSymbols = [...new Set(symbolsToCheck)] as string[];
 
-                // Verify with Yahoo Finance
-                const validQuotes = await fetchQuotes(uniqueSymbols);
-                const validSet = new Set(validQuotes.filter(q => q.regularMarketPrice && q.regularMarketPrice > 0).map(q => q.symbol));
+                // Only validate symbols that are new to this group
+                const newSymbols = uniqueSymbols.filter(s => !existingSet.has(s));
 
-                const invalid = uniqueSymbols.filter(s => !validSet.has(s));
-                if (invalid.length > 0) {
-                    return c.json({ error: `Validation Failed: Symbols [${invalid.join(', ')}] not found or have no price data.` }, 400);
+                if (newSymbols.length > 0) {
+                    // Verify new symbols with Yahoo Finance
+                    const validQuotes = await fetchQuotes(newSymbols);
+                    const validSet = new Set(validQuotes.filter(q => q.regularMarketPrice && q.regularMarketPrice > 0).map(q => q.symbol));
+
+                    const invalid = newSymbols.filter(s => !validSet.has(s));
+                    if (invalid.length > 0) {
+                        return c.json({ error: `Validation Failed: Symbols [${invalid.join(', ')}] not found or have no price data.` }, 400);
+                    }
                 }
             }
 
