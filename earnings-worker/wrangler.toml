@@ -9,10 +9,10 @@ database_name = "earnings-db"
 database_id = "ead78c5a-59ee-46e8-9ae7-d8e02dfbc4bf"
 
 [triggers]
-# Every 1 minute, 4-9 PM EST (21:00-01:59 UTC), Mon-Fri
-# Extended window for resilience. Smart resume logic prevents redundant work.
-# Processes 10 symbols per tick (approx 10-15s duration).
-crons = ["*/1 21-23,0-1 * * 1-5"]
+# Split cron schedule to capture Mon-Fri EST hours resiliently in UTC:
+# - Mon-Fri 4:00-7:59 PM EST -> UTC Mon-Fri 20:00-23:59 (Day 1-5)
+# - Mon-Fri 8:00-11:59 PM EST -> UTC Tue-Sat 00:00-03:59 (Day 2-6)
+crons = ["*/1 20-23 * * 1-5", "*/1 0-3 * * 2-6"]
 
 [observability.logs]
 enabled = true

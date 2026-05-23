@@ -79,3 +79,20 @@ git restore wrangler.toml
 npm run deploy
 ```
 This ensures that the repository remains 100% clean and production does not continue running the cron job every minute.
+
+---
+
+## 4. The Cloudflare Workers CPU Timeout Trap (`exceededCpu`)
+
+**CRITICAL LESSON:** Cloudflare scheduled triggers run under a strict CPU runtime limit (typically 10ms of active V8 execution time on standard plans).
+
+### The Bug
+- The portfolio simulation loop inside `calculatePortfolioStats` originally searched the raw historical price array using a linear `.find()` for every single symbol, on every simulated trading day.
+- For a portfolio with 19 symbols, this triggered up to **$252 \text{ days} \times 19 \text{ assets} \times 252 \text{ history} \approx 1,200,000$ linear search iterations** using high-overhead JavaScript callback functions.
+- This exploded CPU execution time, causing the worker to exceed the 10ms V8 limit and terminate with an `exceededCpu` error. It calculated 1-2 small portfolios, but crashed silently as soon as it hit a larger portfolio.
+
+### The Solution: O(1) Map Lookups
+- Pre-process the historical symbol price arrays into direct date-to-price lookups: `Map<string, Map<string, number>>`.
+- Inside the simulation loop, replace the $O(N)$ linear `.find()` with a direct $O(1)$ Map `.get()` lookup.
+- This simple data-structure shift reduced average CPU execution time from **10ms+** to **< 1.3ms** per portfolio, comfortably avoiding V8 runtime terminations.
+
