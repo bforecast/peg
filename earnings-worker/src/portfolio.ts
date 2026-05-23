@@ -135,6 +135,18 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
         }
     });
 
+    // Create Date-to-Price Maps for each symbol for O(1) lookups
+    const symbolPriceMaps = new Map<string, Map<string, number>>();
+    for (const [sym, history] of priceMap.entries()) {
+        const dateMap = new Map<string, number>();
+        history.forEach(h => {
+            if (h.close !== null && h.close !== undefined) {
+                dateMap.set(h.date, h.close);
+            }
+        });
+        symbolPriceMaps.set(sym, dateMap);
+    }
+
     // Daily Value Tracking
     const portfolioCurve: { date: string, value: number }[] = [];
     const benchmarkCurve: { date: string, value: number }[] = [];
@@ -147,11 +159,10 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
 
         // Sum holdings with Forward Fill
         for (const sym of symbols) {
-            const history = priceMap.get(sym);
-            const priceObj = history?.find(p => p.date === date);
+            const dateMap = symbolPriceMaps.get(sym);
+            const close = dateMap?.get(date);
 
-            if (priceObj && priceObj.close) {
-                const close = priceObj.close;
+            if (close !== undefined && close !== null) {
                 dailyValue += (shares.get(sym) || 0) * close;
                 // Update last known price
                 lastKnownPrices.set(sym, close);
