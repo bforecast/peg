@@ -81,7 +81,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             // ============================================================
             // PHASE 2: FETCH QUOTES & UPDATE PRICES
             // ============================================================
-            const MAX_UPDATES_PER_RUN = 10; // Restored to 10 as wall-clock duration (~12.6s for 5) can safely scale to 10.
+            const MAX_UPDATES_PER_RUN = 5; // Reduced to 5 to avoid exceededCpu limit on Cloudflare Free plan.
             const symbolsToProcess = pendingSymbols.slice(0, MAX_UPDATES_PER_RUN);
             const quoteStart = Date.now();
             let quotesCount = 0;
