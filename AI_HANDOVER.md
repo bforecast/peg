@@ -111,9 +111,13 @@ As your AI assistant, I have adhered to the following principles:
 -   **Issue**: Yahoo started blocking non-cookie requests, breaking our price fetcher.
 -   **Fix**: Implemented the `getYahooSession()` flow to grab real cookies/crumbs before making data requests.
 
-**⚠️ Pitfall 2: Cron Timeouts**
--   **Issue**: Trying to update all 300+ symbols in one Cron trigger killed the Worker (CPU limit).
--   **Fix**: Implemented the "Batch 10" logic. The Cron triggers every minute, chipping away at the `pendingSymbols` list until done.
+**⚠️ Pitfall 2: Cron Timeouts & CPU Execution Limits**
+-   **Issue**: Updating symbols in one trigger exceeded Worker CPU limits. Furthermore, fetching 10 symbols per run (Batch 10) was too aggressive for energy/utility stocks with complex history, causing `exceededCpu` runtime crashes.
+-   **Fix**: Changed the batch size `MAX_UPDATES_PER_RUN` to **`5`** symbols per run. The cron triggers every minute, safely updating symbols without exceeding the 10ms CPU limit on the Cloudflare Free plan.
+
+**⚠️ Pitfall 5: Quartz Day-of-Week Cron Indexing Trap**
+-   **Issue**: Friday cron updates were skipped because Cloudflare uses Quartz-style day indexing where `1` represents Sunday (not Monday). The numeric ranges `1-5` and `2-6` skipped Friday night EST (Saturday UTC / Day 7).
+-   **Fix**: Replaced numeric day ranges with explicit day names: `MON-FRI` and `TUE-SAT` in `wrangler.toml` (e.g. `crons = ["*/1 20-23 * * MON-FRI", "*/1 0-3 * * TUE-SAT"]`).
 
 **⚠️ Pitfall 3: Mobile Horizontal Scrolling**
 -   **Issue**: The "Valuation & Stats" grid was breaking on iPhone screens.
