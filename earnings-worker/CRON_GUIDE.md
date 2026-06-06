@@ -18,17 +18,24 @@ Let's look at the mapping:
 
 This resulted in a critical gap where **Friday's stock market close data (the most important data for the weekend) was completely missed**, leaving the system stale until Sunday night.
 
-### The Solution: Split Cron Schedules
-To perfectly capture US stock market hours (Mon-Fri 4 PM - 10 PM EST) without running on weekends, we split the schedule into two distinct UTC triggers:
+### The Solution: Split Cron Schedules using Day Names
+
+To perfectly capture US stock market hours (Mon-Fri 4 PM - 10 PM EST) without running on weekends, we split the schedule into two UTC triggers. 
+
+**CRITICAL WARNING:** Cloudflare Workers use Quartz-style day-of-week indexing where **`1` is Sunday** (unlike Unix cron where `1` is Monday). 
+- Using numeric `1-5` maps to Sunday-Thursday UTC.
+- Using numeric `2-6` maps to Monday-Friday UTC.
+This leaves Friday night EST (Saturday UTC / Day 7) and Friday afternoon EST (Friday UTC / Day 6) completely un-triggered.
+
+To avoid this ambiguity, always use **explicit day names** (`MON-FRI` and `TUE-SAT`) in `wrangler.toml`:
 
 ```toml
 [triggers]
 crons = [
-    "*/1 20-23 * * 1-5",  # Mon-Fri 4 PM - 7:59 PM EST (Mon-Fri 20:00-23:59 UTC)
-    "*/1 0-3 * * 2-6"     # Mon-Fri 8 PM - 11:59 PM EST (Tue-Sat 00:00-03:59 UTC)
+    "*/1 20-23 * * MON-FRI",  # Mon-Fri 4 PM - 7:59 PM EST (Mon-Fri 20:00-23:59 UTC)
+    "*/1 0-3 * * TUE-SAT"     # Mon-Fri 8 PM - 11:59 PM EST (Tue-Sat 00:00-03:59 UTC)
 ]
 ```
-* Note the `2-6` (Tuesday-Saturday UTC) in the second rule, which perfectly matches Monday-Friday night EST (including Friday night) while excluding Sunday night.
 
 ---
 

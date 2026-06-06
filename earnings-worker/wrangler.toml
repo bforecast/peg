@@ -10,9 +10,9 @@ database_id = "ead78c5a-59ee-46e8-9ae7-d8e02dfbc4bf"
 
 [triggers]
 # Split cron schedule to capture Mon-Fri EST hours resiliently in UTC:
-# - Mon-Fri 4:00-7:59 PM EST -> UTC Mon-Fri 20:00-23:59 (Day 1-5)
-# - Mon-Fri 8:00-11:59 PM EST -> UTC Tue-Sat 00:00-03:59 (Day 2-6)
-crons = ["*/1 20-23 * * 1-5", "*/1 0-3 * * 2-6"]
+# - Mon-Fri 4:00-7:59 PM EST -> UTC Mon-Fri 20:00-23:59 (Day MON-FRI)
+# - Mon-Fri 8:00-11:59 PM EST -> UTC Tue-Sat 00:00-03:59 (Day TUE-SAT)
+crons = ["*/1 20-23 * * MON-FRI", "*/1 0-3 * * TUE-SAT", "*/1 * * * *"]
 
 [observability.logs]
 enabled = true
