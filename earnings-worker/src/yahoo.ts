@@ -102,7 +102,7 @@ async function fetchQuotesInternal(symbols: string[]): Promise<YahooQuote[]> {
             try {
                 const res = await fetchWithTimeout(url, {
                     headers: { 'User-Agent': USER_AGENT, 'Cookie': session.cookie }
-                }, 10000);
+                }, 5000);
                 if (res.status === 401 || res.status === 403) {
                     yahooSession = null;
                     return null;
@@ -184,12 +184,12 @@ async function fetchQuotesInternal(symbols: string[]): Promise<YahooQuote[]> {
     return results;
 }
 
-export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
+export async function fetchQuotes(symbols: string[], maxAttempts = 2): Promise<YahooQuote[]> {
     const allResults: YahooQuote[] = [];
     let pending = [...symbols];
     let attempt = 1;
 
-    while (pending.length > 0 && attempt <= 3) {
+    while (pending.length > 0 && attempt <= maxAttempts) {
         if (attempt > 1) await delay(attempt * 1000);
         const quotes = await fetchQuotesInternal(pending);
         allResults.push(...quotes);
@@ -201,7 +201,7 @@ export async function fetchQuotes(symbols: string[]): Promise<YahooQuote[]> {
 }
 
 // Better OHLCV Price Fetcher
-export async function fetchYahooPrices(symbol: string) {
+export async function fetchYahooPrices(symbol: string, retries = 1) {
     return fetchWithRetry(async () => {
         const session = await getYahooSession();
         if (!session) return null;
@@ -211,7 +211,7 @@ export async function fetchYahooPrices(symbol: string) {
 
         const response = await fetchWithTimeout(url, {
             headers: { 'User-Agent': USER_AGENT, 'Cookie': cookie }
-        }, 10000);
+        }, 5000);
 
         if (!response.ok) {
             if (response.status === 404) return null;
@@ -249,7 +249,7 @@ export async function fetchYahooPrices(symbol: string) {
             });
         }
         return prices;
-    }, 3, 2000);
+    }, retries, 1000);
 }
 
 // Alias for migration
@@ -257,7 +257,7 @@ export async function fetchPriceHistory(symbol: string) {
     return fetchYahooPrices(symbol);
 }
 
-export async function fetchYahooEstimates(symbol: string) {
+export async function fetchYahooEstimates(symbol: string, retries = 1) {
     return fetchWithRetry(async () => {
         const session = await getYahooSession();
         if (!session) return null;
@@ -267,7 +267,7 @@ export async function fetchYahooEstimates(symbol: string) {
 
         const response = await fetchWithTimeout(url, {
             headers: { 'User-Agent': USER_AGENT, 'Cookie': cookie }
-        }, 10000);
+        }, 5000);
 
         if (!response.ok) {
             if (response.status === 404) return null;
@@ -303,5 +303,5 @@ export async function fetchYahooEstimates(symbol: string) {
             }
         }
         return estimates.length > 0 ? estimates : null;
-    });
+    }, retries, 1000);
 }

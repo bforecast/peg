@@ -63,6 +63,19 @@ export async function fetchProfitGrowth(symbol: string): Promise<number> {
     return 0.10; // Fallback
 }
 
+async function fetchWithTimeout(url: string, options: any = {}, timeout = 5000) {
+    const controller = new AbortController();
+    const id = setTimeout(() => controller.abort(), timeout);
+    try {
+        const response = await fetch(url, { ...options, signal: controller.signal });
+        clearTimeout(id);
+        return response;
+    } catch (e) {
+        clearTimeout(id);
+        throw e;
+    }
+}
+
 // FETCH REAL DATA from Yahoo Finance
 async function fetchYahooData(symbol: string): Promise<{ industry: string, growth: number, pe_percentile: number }> {
     let industry = "Technology (Fallback)";
@@ -75,11 +88,11 @@ async function fetchYahooData(symbol: string): Promise<{ industry: string, growt
 
     try {
         const url = `https://query1.finance.yahoo.com/v10/finance/quoteSummary/${symbol}?modules=assetProfile,financialData,defaultKeyStatistics`;
-        const res = await fetch(url, {
+        const res = await fetchWithTimeout(url, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
             }
-        });
+        }, 5000);
 
         if (res.ok) {
             const data: any = await res.json();

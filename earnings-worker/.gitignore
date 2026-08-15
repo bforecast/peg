@@ -7,3 +7,4 @@ _py_cache_/
 .DS_Store
 *.pyc
 db.sqlite
+scratch/

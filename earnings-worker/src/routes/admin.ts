@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { Bindings } from '../types';
-import { updatePrices, updateTicker } from '../db';
-import { getSuperinvestors, getPortfolio } from '../dataroma';
+import { updatePrices, updateTicker, saveQuotesToDB, backfillHistory } from '../db';
+import { getSuperinvestors, getPortfolio, searchSuperinvestors } from '../sec_edgar';
 import { fetchQuotes } from '../yahoo';
 import { calculatePortfolioStats } from '../portfolio';
 
@@ -200,7 +200,18 @@ app.get('/api/health', async (c) => {
 // --- SUPERINVESTOR MANAGEMENT ---
 app.get('/api/superinvestors', async (c) => {
     try {
-        const managers = await getSuperinvestors();
+        const q = c.req.query('q');
+        const managers = q ? await searchSuperinvestors(q) : await getSuperinvestors();
+        return c.json(managers);
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+app.get('/api/superinvestors/search', async (c) => {
+    try {
+        const q = c.req.query('q') || '';
+        const managers = await searchSuperinvestors(q);
         return c.json(managers);
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
@@ -222,10 +233,12 @@ app.post('/api/import-superinvestor', async (c) => {
             }
         }
 
-        const groupName = nameOverride || portfolio.manager;
+        const periodTag = portfolio.period ? `@${portfolio.period.replace(/\s+/g, '.')}` : '';
+        const baseName = nameOverride || portfolio.manager;
+        const groupName = baseName.includes('@') ? baseName : `${baseName}${periodTag}`;
         const description = `Date: ${portfolio.date}\nPeriod: ${portfolio.period}\nValue: ${portfolio.value}`;
 
-        const reference = `https://www.dataroma.com/m/holdings.php?m=${code}`;
+        const reference = portfolio.cik ? `https://www.sec.gov/edgar/browse/?CIK=${portfolio.cik}` : `https://www.sec.gov/edgar/browse/?CIK=${code}`;
         const { meta } = await c.env.DB.prepare(
             'INSERT INTO groups (name, description, type, reference) VALUES (?, ?, ?, ?)'
         ).bind(groupName, description, 'SuperInvestor', reference).run();
@@ -236,6 +249,31 @@ app.post('/api/import-superinvestor', async (c) => {
             const stmt = c.env.DB.prepare('INSERT INTO group_members (group_id, symbol, allocation) VALUES (?, ?, ?)');
             const batch = portfolio.holdings.map(h => stmt.bind(groupId, h.symbol, h.allocation));
             await c.env.DB.batch(batch);
+
+            // Auto-hydrate quotes and price history for newly imported portfolio
+            c.executionCtx.waitUntil((async () => {
+                try {
+                    const symbols = portfolio.holdings.map(h => h.symbol);
+                    // 1. Batch fetch live quotes
+                    const quotes = await fetchQuotes(symbols);
+                    if (quotes && quotes.length > 0) {
+                        await saveQuotesToDB(c.env, quotes);
+                    }
+                    // 2. Fetch history and stats for each symbol
+                    for (const sym of symbols) {
+                        try {
+                            await backfillHistory(c.env, sym);
+                            await updateTicker(c.env, sym);
+                        } catch (err) {
+                            console.error(`[Import-Hydrate] Failed for ${sym}:`, err);
+                        }
+                    }
+                    // 3. Recalculate portfolio stats once members are populated
+                    await calculatePortfolioStats(c.env, groupId);
+                } catch (err) {
+                    console.error(`[Import-Hydrate] Error hydrating portfolio ${groupId}:`, err);
+                }
+            })());
         }
 
         return c.json({
@@ -246,6 +284,40 @@ app.post('/api/import-superinvestor', async (c) => {
             holdings: portfolio.holdings
         });
 
+    } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// Single Symbol Refresh Endpoint (used by frontend data update pipeline)
+app.post('/api/refresh/:symbol', async (c) => {
+    const symbol = c.req.param('symbol')?.toUpperCase();
+    if (!symbol) return c.json({ error: 'Symbol required' }, 400);
+
+    try {
+        // 1. Fetch & save live quote
+        const quotes = await fetchQuotes([symbol]);
+        if (quotes && quotes.length > 0) {
+            await saveQuotesToDB(c.env, quotes);
+        }
+
+        // 2. Backfill history & generate stats
+        await backfillHistory(c.env, symbol);
+
+        // 3. Update earnings in background
+        c.executionCtx.waitUntil((async () => {
+            try {
+                await updateTicker(c.env, symbol);
+            } catch (e) {
+                console.error(`Failed to update ticker ${symbol}:`, e);
+            }
+        })());
+
+        return c.json({
+            status: 'ok',
+            symbol,
+            quote: quotes?.[0] || null
+        });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
     }

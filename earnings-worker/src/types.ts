@@ -70,6 +70,7 @@ export interface PortfolioHolding {
 
 export interface Portfolio {
     manager: string;
+    cik?: string;
     date: string;
     period: string;
     value: string;

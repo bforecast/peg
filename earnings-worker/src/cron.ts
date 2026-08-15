@@ -89,7 +89,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             let pricesUpdated = 0;
             let statsUpdated = 0;
             try {
-                const quotes = await fetchQuotes(symbolsToProcess);
+                const quotes = await fetchQuotes(symbolsToProcess, 1);
                 if (quotes && quotes.length > 0) {
                     // 1. Save to stock_quotes (existing logic)
                     await saveQuotesToDB(env, quotes);
@@ -151,11 +151,19 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                                     }
                                 }
 
-                                // 4. NEW: Update Earnings & Scoring Metrics
+                                // 4. NEW: Update Earnings & Scoring Metrics (only if not updated in the last 20 hours)
                                 try {
-                                    const { updateTicker } = await import('./db');
-                                    await updateTicker(env, q.symbol);
-                                    await updateScoringMetrics(env, q.symbol);
+                                    const yesterdayUTC = new Date(Date.now() - 20 * 60 * 60 * 1000)
+                                        .toISOString().replace('T', ' ').substring(0, 19);
+                                    const scoringFresh = await env.DB.prepare(
+                                        "SELECT 1 FROM scoring_metrics WHERE symbol = ? AND updated_at >= ?"
+                                    ).bind(q.symbol, yesterdayUTC).first();
+
+                                    if (!scoringFresh) {
+                                        const { updateTicker } = await import('./db');
+                                        await updateTicker(env, q.symbol);
+                                        await updateScoringMetrics(env, q.symbol);
+                                    }
                                 } catch (errSync: any) {
                                     console.error(`[Cron] Earnings/Scoring update error for ${q.symbol}: ${errSync.message}`);
                                 }

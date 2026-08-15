@@ -213,9 +213,20 @@ export const HTML = `<!DOCTYPE html>
             </div>
 
             <div id="modeImport" style="display:none;">
-                 <select id="investorSelect" class="input-field" style="width: 100%; margin-bottom: 15px; padding: 10px;">
-                     <option value="">Select Manager...</option>
-                 </select>
+                 <div style="margin-bottom: 12px;">
+                     <label style="display:block; font-weight:600; color:#444; margin-bottom:5px;">Search Manager (Local & SEC EDGAR)</label>
+                     <div style="display: flex; gap: 8px;">
+                         <input type="text" id="investorSearchInput" class="input-field" placeholder="Type manager name (e.g. Aschenbrenner, Situational, Druckenmiller)..." oninput="handleManagerSearch()" onkeydown="if(event.key==='Enter'){event.preventDefault();handleManagerSearch(true);}" style="flex: 1; margin: 0; padding: 9px 12px;">
+                         <button type="button" onclick="handleManagerSearch(true)" style="padding: 8px 14px; background: #2563eb; color: white; border: none; border-radius: 6px; cursor: pointer; font-size: 0.85rem; font-weight: 500; white-space: nowrap;">Search SEC</button>
+                     </div>
+                     <div id="searchStatus" style="font-size: 0.8rem; color: #64748b; margin-top: 4px; display: none;"></div>
+                 </div>
+                 <div style="margin-bottom: 15px;">
+                     <label style="display:block; font-weight:600; color:#444; margin-bottom:5px;">Select Manager</label>
+                     <select id="investorSelect" class="input-field" onfocus="if(!managersLoaded) loadManagers()" onclick="if(!managersLoaded) loadManagers()" style="width: 100%; margin-bottom: 0; padding: 10px;">
+                         <option value="">Select Manager...</option>
+                     </select>
+                 </div>
                  <div style="margin-bottom: 15px;">
                      <label style="display:block; font-weight:600; color:#444; margin-bottom:5px;">Max Stocks to Import</label>
                      <input type="number" id="importLimit" class="input-field" value="10" min="1" max="500" style="width: 100px;">

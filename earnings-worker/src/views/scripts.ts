@@ -507,23 +507,102 @@ export const SCRIPTS = `
             }
         }
 
+        let allManagersList = [];
+        let searchDebounceTimer = null;
+
         async function loadManagers() {
             const sel = document.getElementById('investorSelect');
-            sel.innerHTML = '<option>Loading...</option>';
+            if (!sel) return;
+            sel.innerHTML = '<option value="">Loading managers...</option>';
             try {
                 const res = await fetch('/api/superinvestors');
+                if (!res.ok) throw new Error('HTTP ' + res.status);
                 const list = await res.json();
-                sel.innerHTML = '<option value="">Select Manager...</option>';
-                list.forEach(m => {
-                    const opt = document.createElement('option');
-                    opt.value = m.code;
-                    opt.textContent = m.name;
-                    sel.appendChild(opt);
-                });
+                if (!Array.isArray(list) || list.length === 0) throw new Error('Invalid manager list');
+                
+                allManagersList = list;
+                populateInvestorDropdown(list);
                 managersLoaded = true;
             } catch (e) {
-                sel.innerHTML = '<option>Error loading managers</option>';
+                console.error('Failed to load managers:', e);
+                sel.innerHTML = '<option value="">Error loading managers (Click to retry)</option>';
+                managersLoaded = false;
             }
+        }
+
+        function populateInvestorDropdown(list, selectedCode) {
+            const sel = document.getElementById('investorSelect');
+            if (!sel) return;
+            sel.innerHTML = '<option value="">Select Manager (' + list.length + ' available)...</option>';
+            list.forEach(m => {
+                const opt = document.createElement('option');
+                opt.value = m.code;
+                opt.textContent = m.name;
+                if (selectedCode && (m.code === selectedCode || m.cik === selectedCode)) {
+                    opt.selected = true;
+                }
+                sel.appendChild(opt);
+            });
+            if (list.length === 1) {
+                sel.selectedIndex = 1;
+            }
+        }
+
+        async function handleManagerSearch(forceSec) {
+            const input = document.getElementById('investorSearchInput');
+            const status = document.getElementById('searchStatus');
+            const q = input ? input.value.trim() : '';
+
+            if (searchDebounceTimer) clearTimeout(searchDebounceTimer);
+
+            if (!q) {
+                if (status) status.style.display = 'none';
+                populateInvestorDropdown(allManagersList);
+                return;
+            }
+
+            // 1. Instant local filter
+            const lower = q.toLowerCase();
+            const localMatches = allManagersList.filter(m => 
+                (m.name && m.name.toLowerCase().includes(lower)) || 
+                (m.code && m.code.toLowerCase().includes(lower))
+            );
+
+            if (localMatches.length > 0) {
+                populateInvestorDropdown(localMatches);
+                if (status) {
+                    status.style.display = 'block';
+                    status.textContent = 'Found ' + localMatches.length + ' matching managers locally.';
+                }
+            } else {
+                if (status) {
+                    status.style.display = 'block';
+                    status.textContent = 'No local match. Searching SEC EDGAR...';
+                }
+            }
+
+            // 2. If forced or needed, trigger debounced SEC search
+            const delayMs = forceSec ? 0 : 500;
+            searchDebounceTimer = setTimeout(async () => {
+                if (!status) return;
+                status.style.display = 'block';
+                status.textContent = 'Searching SEC EDGAR for "' + q + '"...';
+
+                try {
+                    const res = await fetch('/api/superinvestors/search?q=' + encodeURIComponent(q));
+                    if (!res.ok) throw new Error('Search failed');
+                    const results = await res.json();
+
+                    if (Array.isArray(results) && results.length > 0) {
+                        populateInvestorDropdown(results);
+                        status.textContent = 'Found ' + results.length + ' managers (including SEC EDGAR 13F).';
+                    } else {
+                        status.textContent = 'No 13F filing institutions found on SEC for "' + q + '".';
+                    }
+                } catch (err) {
+                    status.textContent = 'SEC search error: ' + err.message;
+                }
+            }, delayMs);
         }
 
         async function handleCreate() {

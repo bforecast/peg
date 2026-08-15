@@ -182,9 +182,12 @@ export const HTML = `<!DOCTYPE html>
 
             <!-- Import Mode -->
             <div id="modeImport" style="display:none;">
-                <p style="font-size:0.9rem; color:#666; margin-bottom:10px;">Select a guru to copy top holdings from:</p>
-                <select id="investorSelect" class="input-field" style="width:100%; margin-bottom: 10px;">
-                    <option value="">Loading...</option>
+                <div style="margin-bottom: 10px;">
+                    <input type="text" id="investorSearchInput" class="input-field" placeholder="Search manager / SEC (e.g. Aschenbrenner)..." oninput="handleManagerSearch()" onkeydown="if(event.key==='Enter'){event.preventDefault();handleManagerSearch(true);}" style="width:100%; margin-bottom: 5px; padding: 8px;">
+                    <div id="searchStatus" style="font-size: 0.8rem; color: #64748b; margin-bottom: 6px; display: none;"></div>
+                </div>
+                <select id="investorSelect" class="input-field" onfocus="if(!managersLoaded) loadManagers()" onclick="if(!managersLoaded) loadManagers()" style="width:100%; margin-bottom: 10px;">
+                    <option value="">Select Manager...</option>
                 </select>
                 <div style="font-size:0.85rem; color: #888; margin-bottom: 15px;">
                      Limit: <input type="number" id="importLimit" value="10" min="5" max="50" style="width:50px;"> stocks
