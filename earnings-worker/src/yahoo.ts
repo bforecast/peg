@@ -156,23 +156,35 @@ async function fetchQuotesInternal(symbols: string[]): Promise<YahooQuote[]> {
                     } catch (_) { /* keep summaryDetail fallback */ }
                 }
 
+                const safeNum = (val: any, fallback: number = 0): number => {
+                    if (val === null || val === undefined) return fallback;
+                    const n = Number(val);
+                    return Number.isFinite(n) ? n : fallback;
+                };
+                const safeNumOrUndefined = (val: any): number | undefined => {
+                    if (val === null || val === undefined) return undefined;
+                    const n = Number(val);
+                    return Number.isFinite(n) ? n : undefined;
+                };
+
                 return {
                     symbol,
                     shortName: price.shortName || price.longName || symbol,
-                    regularMarketPrice: currentPrice,
-                    marketCap: summary.marketCap?.raw || price.marketCap?.raw || 0,
-                    priceToSalesTrailing12Months: psRatio,
-                    trailingPE: summary.trailingPE?.raw || 0,
-                    forwardPE: summary.forwardPE?.raw || 0,
-                    fiftyTwoWeekHigh: high52,
-                    fiftyTwoWeekHighChangePercent: deltaHigh,
-                    regularMarketChangePercent: price.regularMarketChangePercent?.raw || 0,
-                    epsCurrentYear, epsNextYear,
-                    dividendYield: summary.dividendYield?.raw || 0,
-                    regularMarketOpen: price.regularMarketOpen?.raw || summary.open?.raw,
-                    regularMarketDayHigh: price.regularMarketDayHigh?.raw || summary.dayHigh?.raw,
-                    regularMarketDayLow: price.regularMarketDayLow?.raw || summary.dayLow?.raw,
-                    regularMarketVolume: price.regularMarketVolume?.raw || summary.volume?.raw,
+                    regularMarketPrice: safeNum(currentPrice),
+                    marketCap: safeNum(summary.marketCap?.raw || price.marketCap?.raw),
+                    priceToSalesTrailing12Months: safeNum(psRatio),
+                    trailingPE: safeNumOrUndefined(summary.trailingPE?.raw) || 0,
+                    forwardPE: safeNumOrUndefined(summary.forwardPE?.raw) || 0,
+                    fiftyTwoWeekHigh: safeNum(high52),
+                    fiftyTwoWeekHighChangePercent: safeNum(deltaHigh),
+                    regularMarketChangePercent: safeNum(price.regularMarketChangePercent?.raw),
+                    epsCurrentYear: safeNumOrUndefined(epsCurrentYear),
+                    epsNextYear: safeNumOrUndefined(epsNextYear),
+                    dividendYield: safeNumOrUndefined(summary.dividendYield?.raw) || 0,
+                    regularMarketOpen: safeNumOrUndefined(price.regularMarketOpen?.raw || summary.open?.raw),
+                    regularMarketDayHigh: safeNumOrUndefined(price.regularMarketDayHigh?.raw || summary.dayHigh?.raw),
+                    regularMarketDayLow: safeNumOrUndefined(price.regularMarketDayLow?.raw || summary.dayLow?.raw),
+                    regularMarketVolume: safeNumOrUndefined(price.regularMarketVolume?.raw || summary.volume?.raw),
                 };
             } catch (e) { return null; }
         });

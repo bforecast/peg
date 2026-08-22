@@ -268,8 +268,14 @@ app.post('/api/import-superinvestor', async (c) => {
                             console.error(`[Import-Hydrate] Failed for ${sym}:`, err);
                         }
                     }
-                    // 3. Recalculate portfolio stats once members are populated
+                    // 3. Recalculate portfolio stats and score once members are populated
                     await calculatePortfolioStats(c.env, groupId);
+                    try {
+                        const { archivePortfolioScore } = await import('../scoring/archiver');
+                        await archivePortfolioScore(c.env, groupId, false);
+                    } catch (scoreErr) {
+                        console.error(`[Import-Hydrate] Score calculation failed for ${groupId}:`, scoreErr);
+                    }
                 } catch (err) {
                     console.error(`[Import-Hydrate] Error hydrating portfolio ${groupId}:`, err);
                 }

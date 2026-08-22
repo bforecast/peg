@@ -337,6 +337,12 @@ export const SCRIPTS = `
             if(el) el.textContent = arrow;
         }
 
+        function toNum(v) {
+            if (v == null || v === '') return null;
+            const n = Number(v);
+            return Number.isFinite(n) ? n : null;
+        }
+
         function renderTable(data) {
             const tbody = document.getElementById('tableBody');
             if(!tbody) return;
@@ -349,81 +355,88 @@ export const SCRIPTS = `
             const minPS=0, maxPS=20, minPE=0, maxPE=60, minYTD=0, maxYTD=100, min1Y=0, max1Y=100;
             
             data.forEach(stock => {
-                const alloc = parseFloat(stock.allocation) || 0; // Allocation percentage (0-100)
+                const alloc = toNum(stock.allocation) || 0; // Allocation percentage (0-100)
                 
-                // Calculate Growth from Quote if available (fallback)
-                // Note: The backend might provide 'growth' or we calculate it here.
-                // Existing logic calculates it from epsCurrentYear/epsNextYear.
-                // If backend provides it, we could use it, but let's keep this calculation for now if not provided safely.
-                const epsC = parseFloat(stock.quote?.epsCurrentYear) || 0;
-                const epsN = parseFloat(stock.quote?.epsNextYear) || 0;
-                let growth = 0;
-                if(epsC !== 0) growth = ((epsN - epsC) / Math.abs(epsC)) * 100;
+                const epsC = toNum(stock.quote?.epsCurrentYear) || 0;
+                const epsN = toNum(stock.quote?.epsNextYear) || 0;
+                let growth = toNum(stock.growth);
+                if(growth === null && epsC !== 0) {
+                    growth = ((epsN - epsC) / Math.abs(epsC)) * 100;
+                    if (!Number.isFinite(growth)) growth = null;
+                }
                 stock.growth = growth;
 
-                if(stock.pe && alloc > 0) { wTotalPE += stock.pe * alloc; totalAllocPE += alloc; }
-                if(Math.abs(growth) < 1000 && alloc > 0) { wTotalGrowth += growth * alloc; totalAllocGrowth += alloc; }
-                if(stock.ps && alloc > 0) { wTotalPS += stock.ps * alloc; totalAllocPS += alloc; }
-                if(stock.peg && alloc > 0) { wTotalPEG += stock.peg * alloc; totalAllocPEG += alloc; }
-                if(stock.changeYTD != null && alloc > 0) { wTotalYTD += stock.changeYTD * alloc; totalAllocYTD += alloc; }
-                if(stock.change1Y != null && alloc > 0) { wTotal1Y += stock.change1Y * alloc; totalAlloc1Y += alloc; }
-                if(stock.dividendYield != null && alloc > 0) { wTotalYield += stock.dividendYield * alloc; totalAllocYield += alloc; }
+                const pe = toNum(stock.pe);
+                const ps = toNum(stock.ps);
+                const peg = toNum(stock.peg);
+                const ytd = toNum(stock.changeYTD);
+                const oneY = toNum(stock.change1Y);
+                const dy = toNum(stock.dividendYield);
+                const price = toNum(stock.price) || 0;
+                const deltaHigh = toNum(stock.delta52wHigh) || 0;
+
+                if(pe !== null && alloc > 0) { wTotalPE += pe * alloc; totalAllocPE += alloc; }
+                if(growth !== null && Math.abs(growth) < 1000 && alloc > 0) { wTotalGrowth += growth * alloc; totalAllocGrowth += alloc; }
+                if(ps !== null && alloc > 0) { wTotalPS += ps * alloc; totalAllocPS += alloc; }
+                if(peg !== null && alloc > 0) { wTotalPEG += peg * alloc; totalAllocPEG += alloc; }
+                if(ytd !== null && alloc > 0) { wTotalYTD += ytd * alloc; totalAllocYTD += alloc; }
+                if(oneY !== null && alloc > 0) { wTotal1Y += oneY * alloc; totalAlloc1Y += alloc; }
+                if(dy !== null && alloc > 0) { wTotalYield += dy * alloc; totalAllocYield += alloc; }
                 
-                const psStyle = getGradientColor(stock.ps, minPS, maxPS, 255, 200, 100);
+                const psStyle = getGradientColor(ps, minPS, maxPS, 255, 200, 100);
                 
                 let growthStyle = ''; 
-                if (stock.growth > 0) growthStyle = 'background-color: #C8E6C9; color: black;'; // Light Green
-                if (stock.growth < 0) growthStyle = 'background-color: #FFCDD2; color: black;'; // Light Red
+                if (growth !== null && growth > 0) growthStyle = 'background-color: #C8E6C9; color: black;'; // Light Green
+                if (growth !== null && growth < 0) growthStyle = 'background-color: #FFCDD2; color: black;'; // Light Red
 
-                let peStyle = getGradientColor(stock.pe, minPE, maxPE, 255, 200, 100);
-                if (!stock.pe && stock.pe !== 0) peStyle = 'background-color: rgb(255, 180, 100); color: black;';
-                const pegStyle = getGradientColor(stock.peg, 0, 3, 255, 100, 100);
+                let peStyle = getGradientColor(pe, minPE, maxPE, 255, 200, 100);
+                if (pe === null) peStyle = 'background-color: rgb(255, 180, 100); color: black;';
+                const pegStyle = getGradientColor(peg, 0, 3, 255, 100, 100);
                 let ytdStyle = '';
-                if (stock.changeYTD != null) {
-                     if (stock.changeYTD < 0) ytdStyle = 'background-color: #FFCDD2; color: black;';
-                     else ytdStyle = getGradientColor(stock.changeYTD, minYTD, maxYTD, 76, 175, 80);
+                if (ytd !== null) {
+                     if (ytd < 0) ytdStyle = 'background-color: #FFCDD2; color: black;';
+                     else ytdStyle = getGradientColor(ytd, minYTD, maxYTD, 76, 175, 80);
                 }
                 
                 let oneYStyle = '';
-                if (stock.change1Y != null) {
-                    if (stock.change1Y < 0) oneYStyle = 'background-color: #FFCDD2; color: black;';
-                    else oneYStyle = getGradientColor(stock.change1Y, min1Y, max1Y, 76, 175, 80);
+                if (oneY !== null) {
+                    if (oneY < 0) oneYStyle = 'background-color: #FFCDD2; color: black;';
+                    else oneYStyle = getGradientColor(oneY, min1Y, max1Y, 76, 175, 80);
                 }
                 
-                const yieldPct = stock.dividendYield ? stock.dividendYield * 100 : 0;
+                const yieldPct = dy !== null ? dy * 100 : 0;
                 const yieldStyle = getGradientColor(yieldPct, 0, 5, 76, 175, 80);
-                
-                const deltaHigh = stock.delta52wHigh || 0;
 
-            rows += [
-                "<tr style='transition:background 0.2s; border-bottom:1px solid #eee; cursor:pointer;'>",
-                '<td class="ticker-cell" style="padding: 8px;">',
-                    '<a href="/stock/' + stock.symbol + '" style="color:#2196F3; text-decoration:none; font-weight:600;">' + stock.symbol + '</a>',
-                '</td>',
-                '<td style="text-align: center; padding: 8px;" title="' + stock.name + '">' + parseFloat(stock.allocation || 0).toFixed(2) + '%</td>',
-                '<td style="padding: 8px;">$' + (stock.price || 0).toFixed(2) + '</td>',
-                '<td style="' + yieldStyle + '; padding: 8px;">' + (stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : '-') + '</td>',
-                '<td style="' + psStyle + '; padding: 8px;">' + (stock.ps ? stock.ps.toFixed(2) : '-') + '</td>',
-                '<td style="' + peStyle + '; padding: 8px;">' + (stock.pe ? stock.pe.toFixed(2) : '-') + '</td>',
-                '<td style="' + growthStyle + '; padding: 8px;">' + (stock.growth ? stock.growth.toFixed(1) + '%' : '-') + '</td>',
-                '<td style="' + pegStyle + '; padding: 8px;">' + (stock.peg ? stock.peg.toFixed(2) : '-') + '</td>',
-                '<td style="' + ytdStyle + '; padding: 8px;">' + (stock.changeYTD || 0).toFixed(0) + '%</td>',
-                // Chart 1Y (SVG from server)
-                '<td style="padding: 8px;">' + (stock.chart1Y || '') + '</td>',
-                '<td style="' + oneYStyle + '; padding: 8px;">' + (stock.change1Y || 0).toFixed(0) + '%</td>',
-                '<td style="padding: 8px;">',
-                    '<div class="delta-bar-container">',
-                        '<div>' + (deltaHigh >= 0 ? '&#9650;' : '&#9660;') + Math.abs(deltaHigh).toFixed(1) + '%</div>',
-                    '</div>',
-                '</td>',
-                // RS Rank 1M (SVG from server)
-                '<td style="padding: 8px;">' + (stock.rsRank1M || '') + '</td>',
-                // SMAs (Booleans from server)
-                '<td class="narrow-col" style="padding: 8px;">' + (stock.sma20 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
-                '<td class="narrow-col" style="padding: 8px;">' + (stock.sma50 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
-                '<td class="narrow-col" style="padding: 8px;">' + (stock.sma200 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
-                '</tr>'
-            ].join('');            });
+                rows += [
+                    "<tr style='transition:background 0.2s; border-bottom:1px solid #eee; cursor:pointer;'>",
+                    '<td class="ticker-cell" style="padding: 8px;">',
+                        '<a href="/stock/' + stock.symbol + '" style="color:#2196F3; text-decoration:none; font-weight:600;">' + stock.symbol + '</a>',
+                    '</td>',
+                    '<td style="text-align: center; padding: 8px;" title="' + (stock.name || stock.symbol) + '">' + alloc.toFixed(2) + '%</td>',
+                    '<td style="padding: 8px;">$' + price.toFixed(2) + '</td>',
+                    '<td style="' + yieldStyle + '; padding: 8px;">' + (dy !== null && dy > 0 ? (dy * 100).toFixed(2) + '%' : '-') + '</td>',
+                    '<td style="' + psStyle + '; padding: 8px;">' + (ps !== null ? ps.toFixed(2) : '-') + '</td>',
+                    '<td style="' + peStyle + '; padding: 8px;">' + (pe !== null ? pe.toFixed(2) : '-') + '</td>',
+                    '<td style="' + growthStyle + '; padding: 8px;">' + (growth !== null ? growth.toFixed(1) + '%' : '-') + '</td>',
+                    '<td style="' + pegStyle + '; padding: 8px;">' + (peg !== null ? peg.toFixed(2) : '-') + '</td>',
+                    '<td style="' + ytdStyle + '; padding: 8px;">' + (ytd !== null ? ytd.toFixed(0) + '%' : '-') + '</td>',
+                    // Chart 1Y (SVG from server)
+                    '<td style="padding: 8px;">' + (stock.chart1Y || '') + '</td>',
+                    '<td style="' + oneYStyle + '; padding: 8px;">' + (oneY !== null ? oneY.toFixed(0) + '%' : '-') + '</td>',
+                    '<td style="padding: 8px;">',
+                        '<div class="delta-bar-container">',
+                            '<div>' + (deltaHigh >= 0 ? '&#9650;' : '&#9660;') + Math.abs(deltaHigh).toFixed(1) + '%</div>',
+                        '</div>',
+                    '</td>',
+                    // RS Rank 1M (SVG from server)
+                    '<td style="padding: 8px;">' + (stock.rsRank1M || '') + '</td>',
+                    // SMAs (Booleans from server)
+                    '<td class="narrow-col" style="padding: 8px;">' + (stock.sma20 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
+                    '<td class="narrow-col" style="padding: 8px;">' + (stock.sma50 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
+                    '<td class="narrow-col" style="padding: 8px;">' + (stock.sma200 ? '<span style="color:#4CAF50">\u25B2</span>' : '<span style="color:#F44336">\u25BC</span>') + '</td>',
+                    '</tr>'
+                ].join('');
+            });
             tbody.innerHTML = rows;
             document.getElementById('tableFoot').style.display = 'table-header-group';
             

@@ -21,7 +21,15 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
             "SELECT symbol, allocation FROM group_members WHERE group_id = ?"
         ).bind(groupId).all();
 
-        if (!members || members.length === 0) throw new Error(`Batch Calc: No members found for group ${groupId}`);
+        if (!members || members.length === 0) {
+            console.warn(`[Portfolio Stats] No members found for group ${groupId}`);
+            const updatedAt = getESTTimestamp();
+            await env.DB.prepare(`
+                INSERT OR REPLACE INTO portfolio_stats (group_id, cagr, std_dev, max_drawdown, sharpe, sortino, updated_at)
+                VALUES (?, 0, 0, 0, 0, 0, ?)
+            `).bind(groupId, updatedAt).run();
+            return null;
+        }
         
         console.log(`[Portfolio Stats] Found ${members.length} members for group ${groupId}`);
 
@@ -81,8 +89,8 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
 
     for (const sym of symbols) {
         const history = priceMap.get(sym);
-        if (!history || history.length === 0) {
-            console.warn(`[Portfolio Stats] Missing history for ${sym}, excluding from Group ${groupId} stats.`);
+        if (!history || history.length < 30) {
+            console.warn(`[Portfolio Stats] Missing or insufficient history for ${sym} (${history?.length || 0} days), excluding from Group ${groupId} stats.`);
             continue;
         }
 
@@ -98,7 +106,13 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     }
 
     if (validSymbols.length === 0) {
-        throw new Error(`Batch Calc: No valid symbols data for group ${groupId}`);
+        console.warn(`[Portfolio Stats] No valid symbols data for group ${groupId}`);
+        const updatedAt = getESTTimestamp();
+        await env.DB.prepare(`
+            INSERT OR REPLACE INTO portfolio_stats (group_id, cagr, std_dev, max_drawdown, sharpe, sortino, updated_at)
+            VALUES (?, 0, 0, 0, 0, 0, ?)
+        `).bind(groupId, updatedAt).run();
+        return null;
     }
 
     // Re-normalize allocations if some symbols were dropped
@@ -190,7 +204,13 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
 
 
     if (portfolioCurve.length < 30) {
-        throw new Error(`Batch Calc: Curve too short (${portfolioCurve.length} days). CommonStart: ${commonStartDate}, ValidSpy: ${validSpy.length}`);
+        console.warn(`[Portfolio Stats] Curve too short (${portfolioCurve.length} days) for group ${groupId}. CommonStart: ${commonStartDate}, ValidSpy: ${validSpy.length}`);
+        const updatedAt = getESTTimestamp();
+        await env.DB.prepare(`
+            INSERT OR REPLACE INTO portfolio_stats (group_id, cagr, std_dev, max_drawdown, sharpe, sortino, updated_at)
+            VALUES (?, 0, 0, 0, 0, 0, ?)
+        `).bind(groupId, updatedAt).run();
+        return null;
     }
 
     // 5. Calculate Metrics

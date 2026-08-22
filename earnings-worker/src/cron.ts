@@ -148,7 +148,17 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                                             stats.chart1Y, stats.rsRank1M, updatedAt
                                         ).run();
                                         statsUpdated++;
+                                    } else {
+                                        await env.DB.prepare(`
+                                            INSERT INTO stock_stats (symbol, updated_at) VALUES (?, ?)
+                                            ON CONFLICT(symbol) DO UPDATE SET updated_at = excluded.updated_at
+                                        `).bind(q.symbol, updatedAt).run();
                                     }
+                                } else {
+                                    await env.DB.prepare(`
+                                        INSERT INTO stock_stats (symbol, updated_at) VALUES (?, ?)
+                                        ON CONFLICT(symbol) DO UPDATE SET updated_at = excluded.updated_at
+                                    `).bind(q.symbol, updatedAt).run();
                                 }
 
                                 // 4. NEW: Update Earnings & Scoring Metrics (only if not updated in the last 20 hours)
@@ -170,13 +180,22 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
                             } catch (e: any) {
                                 console.error(`[Cron] Price/Stats insert error for ${q.symbol}: ${e.message}`);
+                                try {
+                                    await env.DB.prepare(`
+                                        INSERT INTO stock_stats (symbol, updated_at) VALUES (?, ?)
+                                        ON CONFLICT(symbol) DO UPDATE SET updated_at = excluded.updated_at
+                                    `).bind(q.symbol, updatedAt).run();
+                                } catch (_) {}
                             }
                         }
                     });
 
                     await Promise.all(tasks);
 
-                    const failed = symbolsToProcess.filter(s => !quotes.find(q => q.symbol === s));
+                    const failed = symbolsToProcess.filter(s => {
+                        const q = quotes.find(quote => quote.symbol === s);
+                        return !q || !q.regularMarketPrice || q.regularMarketPrice <= 0;
+                    });
                     if (failed.length > 0) quoteErrors.push(...failed);
                 } else {
                     quoteErrors.push(...symbolsToProcess);
@@ -189,12 +208,15 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             }
 
             if (quoteErrors.length > 0) {
-                // Update updated_at for failed symbols to move them out of "pending" for the current window
+                // Update or insert updated_at for failed symbols to move them out of "pending" for the current window
                 // but don't recalculate their stats. This prevents 1 symbol from blocking the system.
                 const updatedAt = getESTTimestamp();
                 for (const s of quoteErrors) {
                     try {
-                        await env.DB.prepare(`UPDATE stock_stats SET updated_at = ? WHERE symbol = ?`).bind(updatedAt, s).run();
+                        await env.DB.prepare(`
+                            INSERT INTO stock_stats (symbol, updated_at) VALUES (?, ?)
+                            ON CONFLICT(symbol) DO UPDATE SET updated_at = excluded.updated_at
+                        `).bind(s, updatedAt).run();
                     } catch (dbErr: any) {
                         console.error(`[Cron] Failed to update error timestamp for ${s}: ${dbErr.message}`);
                     }
@@ -267,6 +289,12 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
                         // 1. Recalculate Stats
                         await calculatePortfolioStats(env, g.id);
+                        try {
+                            const { archivePortfolioScore } = await import('./scoring/archiver');
+                            await archivePortfolioScore(env, g.id, false);
+                        } catch (scoreErr) {
+                            console.error(`[Cron] Score calculation error for ${g.id}:`, scoreErr);
+                        }
                         portfolioCount++;
                     } catch (e: any) {
                         const safeName = g.name ? String(g.name).substring(0, 50) : `ID:${g.id}`;

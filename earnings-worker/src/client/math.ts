@@ -34,27 +34,27 @@ export function calculateWeightedAverages(stocks: StockData[]): WeightedAverages
     let totalAllocPE = 0, totalAllocGrowth = 0, totalAllocPS = 0, totalAllocPEG = 0, totalAllocYTD = 0, totalAlloc1Y = 0;
 
     stocks.forEach(stock => {
-        const alloc = stock.allocation || 0;
+        const alloc = Number.isFinite(Number(stock.allocation)) ? Number(stock.allocation) : 0;
 
-        // Calculate Growth (Mutation: adding growth property if missing, but we should probably avoid mutation in pure function)
-        // For this function, we assume input might need calculation or comes pre-calculated.
-        // Let's replicate the logic from renderTable
-        const epsC = stock.quote?.epsCurrentYear || 0;
-        const epsN = stock.quote?.epsNextYear || 0;
-        let growth = stock.growth || 0;
+        const epsC = Number.isFinite(Number(stock.quote?.epsCurrentYear)) ? Number(stock.quote?.epsCurrentYear) : 0;
+        const epsN = Number.isFinite(Number(stock.quote?.epsNextYear)) ? Number(stock.quote?.epsNextYear) : 0;
+        let growth = Number.isFinite(Number(stock.growth)) ? Number(stock.growth) : 0;
 
-        // If growth wasn't pre-calculated, calculate it here
         if (stock.growth === undefined && epsC !== 0) {
             growth = ((epsN - epsC) / Math.abs(epsC)) * 100;
         }
 
-        if (stock.pe && alloc > 0) { wTotalPE += stock.pe * alloc; totalAllocPE += alloc; }
-        // Filter out extreme growth outliers for the average
-        if (Math.abs(growth) < 1000 && alloc > 0) { wTotalGrowth += growth * alloc; totalAllocGrowth += alloc; }
-        if (stock.ps && alloc > 0) { wTotalPS += stock.ps * alloc; totalAllocPS += alloc; }
-        if (stock.peg && alloc > 0) { wTotalPEG += stock.peg * alloc; totalAllocPEG += alloc; }
-        if (stock.changeYTD != null && alloc > 0) { wTotalYTD += stock.changeYTD * alloc; totalAllocYTD += alloc; }
-        if (stock.change1Y != null && alloc > 0) { wTotal1Y += stock.change1Y * alloc; totalAlloc1Y += alloc; }
+        const pe = Number(stock.pe);
+        if (Number.isFinite(pe) && pe > 0 && alloc > 0) { wTotalPE += pe * alloc; totalAllocPE += alloc; }
+        if (Number.isFinite(growth) && Math.abs(growth) < 1000 && alloc > 0) { wTotalGrowth += growth * alloc; totalAllocGrowth += alloc; }
+        const ps = Number(stock.ps);
+        if (Number.isFinite(ps) && ps > 0 && alloc > 0) { wTotalPS += ps * alloc; totalAllocPS += alloc; }
+        const peg = Number(stock.peg);
+        if (Number.isFinite(peg) && peg > 0 && alloc > 0) { wTotalPEG += peg * alloc; totalAllocPEG += alloc; }
+        const ytd = Number(stock.changeYTD);
+        if (Number.isFinite(ytd) && alloc > 0) { wTotalYTD += ytd * alloc; totalAllocYTD += alloc; }
+        const oneY = Number(stock.change1Y);
+        if (Number.isFinite(oneY) && alloc > 0) { wTotal1Y += oneY * alloc; totalAlloc1Y += alloc; }
     });
 
     return {

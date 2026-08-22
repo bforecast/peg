@@ -62,11 +62,11 @@ export async function logCronStatus(env: Bindings, status: string, message: stri
 }
 
 export async function updatePrices(env: Bindings, symbol: string) {
-    const { maxDate } = await env.DB.prepare(
-        `SELECT max(date) as maxDate FROM stock_prices WHERE symbol = ?`
-    ).bind(symbol).first() as { maxDate: string };
+    const { maxDate, count } = await env.DB.prepare(
+        `SELECT max(date) as maxDate, count(*) as count FROM stock_prices WHERE symbol = ?`
+    ).bind(symbol).first() as { maxDate: string, count: number };
 
-    if (maxDate) {
+    if (maxDate && count >= 250) {
         const now = new Date();
         const nyStr = now.toLocaleString("en-US", { timeZone: "America/New_York" });
         const nyTime = new Date(nyStr);
@@ -268,6 +268,18 @@ export async function updateTicker(env: Bindings, symbol: string) {
     return { count: avCount, message: avMsg };
 }
 
+export function toFiniteNum(val: any, fallback: number = 0): number {
+    if (val === null || val === undefined || val === '') return fallback;
+    const n = Number(val);
+    return Number.isFinite(n) ? n : fallback;
+}
+
+export function toFiniteNumOrNull(val: any): number | null {
+    if (val === null || val === undefined || val === '') return null;
+    const n = Number(val);
+    return Number.isFinite(n) ? n : null;
+}
+
 export async function saveQuotesToDB(env: Bindings, quotes: YahooQuote[]) {
     const dateStr = getLastTradingDate();
     const updatedAt = getESTTimestamp();
@@ -283,17 +295,17 @@ export async function saveQuotesToDB(env: Bindings, quotes: YahooQuote[]) {
     const batch = quotes.map(q => stmt.bind(
         q.symbol,
         dateStr,
-        q.regularMarketPrice,
-        q.marketCap,
-        q.trailingPE,
-        q.forwardPE,
-        q.priceToSalesTrailing12Months,
-        q.fiftyTwoWeekHigh,
-        q.fiftyTwoWeekHighChangePercent,
-        q.regularMarketChangePercent,
-        q.epsCurrentYear || null,
-        q.epsNextYear || null,
-        q.dividendYield || null,
+        toFiniteNum(q.regularMarketPrice),
+        toFiniteNum(q.marketCap),
+        toFiniteNumOrNull(q.trailingPE),
+        toFiniteNumOrNull(q.forwardPE),
+        toFiniteNumOrNull(q.priceToSalesTrailing12Months),
+        toFiniteNumOrNull(q.fiftyTwoWeekHigh),
+        toFiniteNumOrNull(q.fiftyTwoWeekHighChangePercent),
+        toFiniteNumOrNull(q.regularMarketChangePercent),
+        toFiniteNumOrNull(q.epsCurrentYear),
+        toFiniteNumOrNull(q.epsNextYear),
+        toFiniteNumOrNull(q.dividendYield),
         updatedAt
     ));
 
@@ -366,17 +378,17 @@ export function mapToYahooQuote(row: StockQuote): YahooQuote {
     return {
         symbol: row.symbol,
         shortName: row.symbol,
-        regularMarketPrice: row.price,
-        marketCap: row.market_cap,
-        priceToSalesTrailing12Months: row.ps_ratio || undefined,
-        trailingPE: row.pe_ratio || undefined,
-        forwardPE: row.forward_pe || undefined,
-        fiftyTwoWeekHigh: row.fifty_two_week_high || undefined,
-        fiftyTwoWeekHighChangePercent: row.fifty_two_week_high_change_percent || undefined,
-        regularMarketChangePercent: row.change_percent || undefined,
-        epsCurrentYear: row.eps_current_year || undefined,
-        epsNextYear: row.eps_next_year || undefined,
-        dividendYield: row.dividend_yield || undefined
+        regularMarketPrice: toFiniteNum(row.price),
+        marketCap: toFiniteNum(row.market_cap),
+        priceToSalesTrailing12Months: toFiniteNumOrNull(row.ps_ratio) ?? undefined,
+        trailingPE: toFiniteNumOrNull(row.pe_ratio) ?? undefined,
+        forwardPE: toFiniteNumOrNull(row.forward_pe) ?? undefined,
+        fiftyTwoWeekHigh: toFiniteNumOrNull(row.fifty_two_week_high) ?? undefined,
+        fiftyTwoWeekHighChangePercent: toFiniteNumOrNull(row.fifty_two_week_high_change_percent) ?? undefined,
+        regularMarketChangePercent: toFiniteNumOrNull(row.change_percent) ?? undefined,
+        epsCurrentYear: toFiniteNumOrNull(row.eps_current_year) ?? undefined,
+        epsNextYear: toFiniteNumOrNull(row.eps_next_year) ?? undefined,
+        dividendYield: toFiniteNumOrNull(row.dividend_yield) ?? undefined
     };
 }
 
@@ -517,49 +529,47 @@ export async function getDashboardData(env: Bindings, groupId?: string) {
         // Use live quote price, or fallback to something?
         // Stats are calculated at 'updated_at', which might be last close.
         // Quote is usually newer (intraday).
-        const currentPrice = quote?.regularMarketPrice || 0;
+        const currentPrice = toFiniteNum(quote?.regularMarketPrice);
 
         return {
             symbol,
             quote,
-            allocation: allocationMap.get(symbol) || 0,
+            allocation: toFiniteNum(allocationMap.get(symbol)),
             name: quote?.shortName || symbol,
             price: currentPrice,
-            marketCap: quote?.marketCap || 0,
-            dividendYield: quote?.dividendYield || 0,
-            ps: quote?.priceToSalesTrailing12Months || null,
-            pe: quote?.trailingPE || null,
+            marketCap: toFiniteNum(quote?.marketCap),
+            dividendYield: toFiniteNumOrNull(quote?.dividendYield) ?? 0,
+            ps: toFiniteNumOrNull(quote?.priceToSalesTrailing12Months),
+            pe: toFiniteNumOrNull(quote?.trailingPE),
             peg: (() => {
-                const epsC = quote?.epsCurrentYear;
-                const epsN = quote?.epsNextYear;
+                const epsC = toFiniteNumOrNull(quote?.epsCurrentYear);
+                const epsN = toFiniteNumOrNull(quote?.epsNextYear);
+                const fpe = toFiniteNumOrNull(quote?.forwardPE);
                 // Fix: Use Forward PE like the Stock Page, and Math.abs for growth denominator
-                if (epsC && epsN && epsC !== 0 && quote?.forwardPE) {
+                if (epsC !== null && epsN !== null && epsC !== 0 && fpe !== null) {
                     const growth = ((epsN - epsC) / Math.abs(epsC)) * 100;
-                    if (growth > 0 && quote.forwardPE > 0) return quote.forwardPE / growth;
+                    if (growth > 0 && fpe > 0) {
+                        const calculatedPeg = fpe / growth;
+                        return Number.isFinite(calculatedPeg) ? calculatedPeg : null;
+                    }
                 }
                 return null;
             })(),
 
             // USE PRE-CALCULATED STATS
-            changeYTD: stats?.changeYTD ?? 0,
-            change1Y: stats?.change1Y ?? 0,
-            history: [], // We don't send full history array anymore! Big bandwidth saving.
-            // But wait, the frontend might rely on `history` for something else?
-            // The prompt says "access faster... storing...". 
-            // If I remove `history`, existing UI might break if it tries to draw its own charts.
-            // The user asked to *generate* charts server side. 
-            // So I should replace client-side chart generation with these SVGs.
-            // For now, I'll send an empty array to save bandwidth, assuming I update the UI to use the SVGs.
+            changeYTD: toFiniteNumOrNull(stats?.changeYTD) ?? 0,
+            change1Y: toFiniteNumOrNull(stats?.change1Y) ?? 0,
+            history: [],
 
-            delta52wHigh: stats?.delta52wHigh ?? 0,
-            sma20: stats?.sma20 ? currentPrice > stats.sma20 : false, // Boolean logic kept
-            sma50: stats?.sma50 ? currentPrice > stats.sma50 : false,
-            sma200: stats?.sma200 ? currentPrice > stats.sma200 : false,
+            delta52wHigh: toFiniteNumOrNull(stats?.delta52wHigh) ?? 0,
+            sma20: stats?.sma20 && currentPrice > 0 ? currentPrice > stats.sma20 : false,
+            sma50: stats?.sma50 && currentPrice > 0 ? currentPrice > stats.sma50 : false,
+            sma200: stats?.sma200 && currentPrice > 0 ? currentPrice > stats.sma200 : false,
 
             // New Fields
             chart1Y: stats?.chart1Y || '',
             rsRank1M: stats?.rsRank1M || '',
-            sharpeRatio1Y: stats?.sharpeRatio1Y || 0
+            sharpeRatio1Y: toFiniteNumOrNull(stats?.sharpeRatio1Y) ?? 0
         };
     });
 }
