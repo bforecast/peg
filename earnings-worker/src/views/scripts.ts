@@ -10,6 +10,9 @@ export const SCRIPTS = `
         let localMembers = [];
         let originalState = {};
         let portfolioSort = { key: 'cagr', dir: 'desc' }; // Portfolios Board sort state
+        let currentPerfPeriod = '2025';
+        let currentPerfData = null;
+        let perfChartHoverIdx = -1;
 
         // Removed conflicting window.load listener
 
@@ -192,7 +195,10 @@ export const SCRIPTS = `
 
             setView('dashboard');
             renderSidebar();
-            await loadDashboardData();
+            await Promise.all([
+                loadDashboardData(),
+                loadPortfolioPerformance(currentGroup.id)
+            ]);
         }
 
         function setView(view) {
@@ -1578,6 +1584,472 @@ async function recalcPortfolios() {
     }
 }
 
+// --- PORTFOLIO PERFORMANCE & TREND VISUALIZATION ---
+async function changePerfPeriod(period) {
+    currentPerfPeriod = period;
+    ['2025', '1y', 'all'].forEach(p => {
+        const btn = document.getElementById('btnPeriod' + (p === '2025' ? '2025' : (p === '1y' ? '1Y' : 'All')));
+        if (btn) {
+            if (p === period) btn.classList.add('active');
+            else btn.classList.remove('active');
+        }
+    });
+
+    if (currentGroup && currentGroup.id) {
+        await loadPortfolioPerformance(currentGroup.id, period);
+    }
+}
+
+async function loadPortfolioPerformance(groupId, period = currentPerfPeriod) {
+    const loadingEl = document.getElementById('perfChartLoading');
+    if (loadingEl) loadingEl.style.display = 'flex';
+
+    try {
+        const res = await fetch('/api/portfolio-performance/' + groupId + '?period=' + period + '&benchmark=QQQ&t=' + Date.now());
+        if (!res.ok) {
+            console.warn('[Performance] Failed to load performance data for group', groupId);
+            if (loadingEl) loadingEl.style.display = 'none';
+            return;
+        }
+
+        const data = await res.json();
+        currentPerfData = data;
+        updatePerformanceMetrics(data);
+        renderPerformanceChart(data);
+    } catch (err) {
+        console.error('[Performance] Error loading performance:', err);
+    } finally {
+        if (loadingEl) loadingEl.style.display = 'none';
+    }
+}
+
+function updatePerformanceMetrics(data) {
+    if (!data || !data.stats) return;
+    const stats = data.stats;
+
+    const setVal = (id, val, suffix = '', isPct = false, invertColor = false) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+        if (val === null || val === undefined) {
+            el.textContent = '-';
+            el.className = 'perf-card-val';
+            return;
+        }
+        const num = parseFloat(val);
+        el.textContent = (isPct && num > 0 ? '+' : '') + num.toFixed(2) + suffix;
+        el.className = 'perf-card-val';
+        if (invertColor) {
+            if (num < 0) el.classList.add('val-neg');
+            else if (num > 0) el.classList.add('val-pos');
+        } else {
+            if (num > 0) el.classList.add('val-pos');
+            else if (num < 0) el.classList.add('val-neg');
+        }
+    };
+
+    setVal('statTotalReturn', stats.totalReturn, '%', true);
+    
+    const benchEl = document.getElementById('statBenchReturn');
+    if (benchEl) {
+        if (stats.benchmarkReturn !== null && stats.benchmarkReturn !== undefined) {
+            const bNum = parseFloat(stats.benchmarkReturn);
+            benchEl.textContent = 'QQQ: ' + (bNum > 0 ? '+' : '') + bNum.toFixed(2) + '%';
+        } else {
+            benchEl.textContent = 'QQQ: -';
+        }
+    }
+
+    setVal('statAnnualizedReturn', stats.annualizedReturn, '%', true);
+    setVal('statVolatility', stats.annualizedVolatility, '%');
+    
+    // Max DD is always negative or 0
+    const maxDDEl = document.getElementById('statMaxDD');
+    if (maxDDEl) {
+        if (stats.maxDrawdown !== null && stats.maxDrawdown !== undefined) {
+            maxDDEl.textContent = stats.maxDrawdown.toFixed(2) + '%';
+            maxDDEl.className = 'perf-card-val val-neg';
+        } else {
+            maxDDEl.textContent = '-';
+            maxDDEl.className = 'perf-card-val';
+        }
+    }
+
+    const maxDDPeriodEl = document.getElementById('statMaxDDPeriod');
+    if (maxDDPeriodEl && data.maxDrawdownInfo) {
+        maxDDPeriodEl.textContent = data.maxDrawdownInfo.troughDate ? ('Trough: ' + data.maxDrawdownInfo.troughDate) : 'Peak to Trough';
+    }
+
+    setVal('statSharpe', stats.sharpeRatio);
+    setVal('statCalmar', stats.calmarRatio);
+    setVal('statSortino', stats.sortinoRatio);
+
+    const winRateEl = document.getElementById('statWinRate');
+    if (winRateEl) {
+        winRateEl.textContent = stats.winRate !== null && stats.winRate !== undefined ? (stats.winRate.toFixed(1) + '%') : '-';
+        winRateEl.className = 'perf-card-val';
+    }
+
+    const betaEl = document.getElementById('statBeta');
+    if (betaEl) {
+        betaEl.textContent = stats.beta !== null && stats.beta !== undefined ? ('Beta: ' + stats.beta.toFixed(2)) : 'Beta: -';
+    }
+}
+
+function renderPerformanceChart(data) {
+    const canvas = document.getElementById('perfCanvas');
+    if (!canvas || !data || !data.history || data.history.length === 0) return;
+
+    const ctx = canvas.getContext('2d');
+    const container = canvas.parentElement;
+    const width = container.clientWidth || 900;
+    const height = 360;
+
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = width + 'px';
+    canvas.style.height = height + 'px';
+
+    ctx.resetTransform ? ctx.resetTransform() : ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.scale(dpr, dpr);
+    ctx.clearRect(0, 0, width, height);
+
+    const N = data.history.length;
+    const paddingLeft = 55;
+    const paddingRight = 20;
+    const paddingTop = 20;
+    const plotWidth = width - paddingLeft - paddingRight;
+
+    // Subplots allocation
+    const hTop = 200;       // Top chart: Returns
+    const hGap = 40;        // Gap between charts
+    const yBottom = paddingTop + hTop + hGap;
+    const hBottom = 65;     // Bottom chart: Drawdowns
+
+    const portReturns = data.history.map(h => h.portfolio);
+    const benchReturns = data.history.map(h => h.benchmark);
+    const drawdowns = data.history.map(h => h.drawdown);
+
+    // Top Scale
+    let maxRet = Math.max(5, ...portReturns, ...benchReturns);
+    let minRet = Math.min(-5, ...portReturns, ...benchReturns);
+    const retRange = maxRet - minRet || 10;
+    maxRet += retRange * 0.08;
+    minRet -= retRange * 0.08;
+
+    const getX = (i) => paddingLeft + (i / Math.max(1, N - 1)) * plotWidth;
+    const getYTop = (val) => paddingTop + hTop - ((val - minRet) / (maxRet - minRet)) * hTop;
+
+    // Bottom Scale (Drawdowns 0% at top to minDD% at bottom)
+    const minDD = Math.min(-5, ...drawdowns) * 1.15;
+    const getYBottom = (dd) => yBottom + (dd / minDD) * hBottom;
+
+    // --- 1. Draw Gridlines & Y-Axis for Top Subplot (Returns) ---
+    ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'right';
+    ctx.textBaseline = 'middle';
+
+    const numTicksTop = 5;
+    for (let i = 0; i <= numTicksTop; i++) {
+        const val = minRet + (i / numTicksTop) * (maxRet - minRet);
+        const y = getYTop(val);
+
+        ctx.strokeStyle = '#F1F5F9';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([]);
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, y);
+        ctx.lineTo(width - paddingRight, y);
+        ctx.stroke();
+
+        ctx.fillStyle = '#94A3B8';
+        ctx.fillText((val >= 0 ? '+' : '') + val.toFixed(0) + '%', paddingLeft - 8, y);
+    }
+
+    // Zero line for returns
+    if (minRet < 0 && maxRet > 0) {
+        const y0 = getYTop(0);
+        ctx.strokeStyle = '#CBD5E1';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, y0);
+        ctx.lineTo(width - paddingRight, y0);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    }
+
+    // --- 2. Draw Top Subplot Area & Curves ---
+
+    // Portfolio Area Fill (Gradient)
+    const portGrad = ctx.createLinearGradient(0, paddingTop, 0, paddingTop + hTop);
+    portGrad.addColorStop(0, 'rgba(139, 92, 246, 0.25)');
+    portGrad.addColorStop(1, 'rgba(139, 92, 246, 0.01)');
+
+    ctx.fillStyle = portGrad;
+    ctx.beginPath();
+    ctx.moveTo(getX(0), getYTop(minRet));
+    for (let i = 0; i < N; i++) {
+        ctx.lineTo(getX(i), getYTop(portReturns[i]));
+    }
+    ctx.lineTo(getX(N - 1), getYTop(minRet));
+    ctx.closePath();
+    ctx.fill();
+
+    // Benchmark QQQ Curve (Slate dashed)
+    ctx.strokeStyle = '#64748B';
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+        const x = getX(i);
+        const y = getYTop(benchReturns[i]);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Portfolio Curve (Purple solid)
+    ctx.strokeStyle = '#8B5CF6';
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+        const x = getX(i);
+        const y = getYTop(portReturns[i]);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // Draw Peaks and Valleys on Top Curve
+    if (data.peaks && Array.isArray(data.peaks)) {
+        data.peaks.forEach(pk => {
+            const idx = data.history.findIndex(h => h.date === pk.date);
+            if (idx >= 0) {
+                const x = getX(idx);
+                const y = getYTop(pk.returnPct);
+                drawDiamond(ctx, x, y, 5, '#3B82F6');
+            }
+        });
+    }
+
+    if (data.valleys && Array.isArray(data.valleys)) {
+        data.valleys.forEach(vl => {
+            const idx = data.history.findIndex(h => h.date === vl.date);
+            if (idx >= 0) {
+                const x = getX(idx);
+                const y = getYTop(vl.returnPct);
+                drawDiamond(ctx, x, y, 5, '#EF4444');
+            }
+        });
+    }
+
+    // --- 3. Draw Bottom Subplot (Drawdowns) ---
+    // Title
+    ctx.font = '600 10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.fillStyle = '#64748B';
+    ctx.textAlign = 'left';
+    ctx.fillText('DRAWDOWNS', paddingLeft, yBottom - 8);
+
+    // Drawdown gridlines (0%, -10%, etc.)
+    const ddTicks = [0, minDD * 0.5, minDD];
+    ctx.font = '10px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+    ctx.textAlign = 'right';
+
+    ddTicks.forEach(tickVal => {
+        const y = getYBottom(tickVal);
+        ctx.strokeStyle = '#F1F5F9';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(paddingLeft, y);
+        ctx.lineTo(width - paddingRight, y);
+        ctx.stroke();
+
+        ctx.fillStyle = '#94A3B8';
+        ctx.fillText(tickVal.toFixed(0) + '%', paddingLeft - 8, y);
+    });
+
+    // Zero line on Drawdown
+    const yDD0 = getYBottom(0);
+    ctx.strokeStyle = '#CBD5E1';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(paddingLeft, yDD0);
+    ctx.lineTo(width - paddingRight, yDD0);
+    ctx.stroke();
+
+    // Drawdown Area Fill
+    ctx.fillStyle = 'rgba(239, 68, 68, 0.15)';
+    ctx.beginPath();
+    ctx.moveTo(getX(0), yDD0);
+    for (let i = 0; i < N; i++) {
+        ctx.lineTo(getX(i), getYBottom(drawdowns[i]));
+    }
+    ctx.lineTo(getX(N - 1), yDD0);
+    ctx.closePath();
+    ctx.fill();
+
+    // Drawdown Line
+    ctx.strokeStyle = '#EF4444';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    for (let i = 0; i < N; i++) {
+        const x = getX(i);
+        const y = getYBottom(drawdowns[i]);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+
+    // --- 4. X-Axis Date Labels ---
+    ctx.fillStyle = '#64748B';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+
+    const numDateLabels = Math.min(6, N);
+    const step = Math.floor((N - 1) / Math.max(1, numDateLabels - 1));
+    for (let i = 0; i < N; i += step) {
+        const x = getX(i);
+        const dateStr = data.history[i].date;
+        // Format YYYY-MM-DD to 'MMM YY' (e.g., 'Jan 25')
+        let label = dateStr;
+        try {
+            const parts = dateStr.split('-');
+            const d = new Date(parseInt(parts[0]), parseInt(parts[1]) - 1, parseInt(parts[2]));
+            label = d.toLocaleDateString('en-US', { month: 'short', year: '2-digit' });
+        } catch (e) {}
+
+        ctx.fillText(label, x, yBottom + hBottom + 6);
+    }
+
+    // --- 5. Interactive Cursor / Tooltip Highlight ---
+    if (perfChartHoverIdx >= 0 && perfChartHoverIdx < N) {
+        const idx = perfChartHoverIdx;
+        const x = getX(idx);
+        const portY = getYTop(portReturns[idx]);
+        const benchY = getYTop(benchReturns[idx]);
+        const ddY = getYBottom(drawdowns[idx]);
+
+        // Vertical Crosshair Line
+        ctx.strokeStyle = '#64748B';
+        ctx.lineWidth = 1;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(x, paddingTop);
+        ctx.lineTo(x, yBottom + hBottom);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        // Highlight Dots
+        drawDot(ctx, x, portY, 5, '#8B5CF6', '#FFFFFF');
+        drawDot(ctx, x, benchY, 4, '#64748B', '#FFFFFF');
+        drawDot(ctx, x, ddY, 4, '#EF4444', '#FFFFFF');
+    }
+}
+
+function drawDiamond(ctx, x, y, size, fill) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = fill;
+    ctx.fillRect(-size / 2, -size / 2, size, size);
+    ctx.restore();
+}
+
+function drawDot(ctx, x, y, radius, fill, stroke) {
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    if (stroke) {
+        ctx.strokeStyle = stroke;
+        ctx.lineWidth = 2;
+        ctx.stroke();
+    }
+}
+
+// Chart Hover Interaction Handler
+function setupPerfCanvasInteraction() {
+    const canvas = document.getElementById('perfCanvas');
+    const tooltip = document.getElementById('perfChartTooltip');
+    if (!canvas || !tooltip) return;
+
+    function handleHover(e) {
+        if (!currentPerfData || !currentPerfData.history || currentPerfData.history.length === 0) return;
+        const rect = canvas.getBoundingClientRect();
+        const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+
+        const mouseX = clientX - rect.left;
+        const mouseY = clientY - rect.top;
+
+        const paddingLeft = 55;
+        const paddingRight = 20;
+        const plotWidth = rect.width - paddingLeft - paddingRight;
+
+        if (mouseX < paddingLeft || mouseX > rect.width - paddingRight) {
+            handleLeave();
+            return;
+        }
+
+        const N = currentPerfData.history.length;
+        const ratio = (mouseX - paddingLeft) / plotWidth;
+        const idx = Math.max(0, Math.min(N - 1, Math.round(ratio * (N - 1))));
+
+        perfChartHoverIdx = idx;
+        renderPerformanceChart(currentPerfData);
+
+        const point = currentPerfData.history[idx];
+        const portVal = point.portfolio;
+        const benchVal = point.benchmark;
+        const ddVal = point.drawdown;
+        const portDollar = Math.round(point.portfolioValue).toLocaleString();
+
+        tooltip.innerHTML = \`
+            <div class="tt-date">\${point.date}</div>
+            <div class="tt-row">
+                <span style="color:#A78BFA;">Portfolio:</span>
+                <span class="tt-val" style="color:\${portVal >= 0 ? '#10B981' : '#EF4444'};">\${portVal >= 0 ? '+' : ''}\${portVal.toFixed(2)}%</span>
+            </div>
+            <div class="tt-row">
+                <span style="color:#94A3B8;">QQQ:</span>
+                <span class="tt-val" style="color:\${benchVal >= 0 ? '#10B981' : '#EF4444'};">\${benchVal >= 0 ? '+' : ''}\${benchVal.toFixed(2)}%</span>
+            </div>
+            <div class="tt-row">
+                <span style="color:#F87171;">Drawdown:</span>
+                <span class="tt-val" style="color:#EF4444;">\${ddVal.toFixed(2)}%</span>
+            </div>
+            <div class="tt-row" style="margin-top:4px; padding-top:2px; border-top:1px solid rgba(255,255,255,0.1); color:#E2E8F0;">
+                <span>Value:</span>
+                <span class="tt-val">$\${portDollar}</span>
+            </div>
+        \`;
+
+        tooltip.style.display = 'block';
+        tooltip.style.left = mouseX + 'px';
+        tooltip.style.top = Math.max(20, mouseY) + 'px';
+    }
+
+    function handleLeave() {
+        perfChartHoverIdx = -1;
+        if (tooltip) tooltip.style.display = 'none';
+        if (currentPerfData) renderPerformanceChart(currentPerfData);
+    }
+
+    canvas.addEventListener('mousemove', handleHover);
+    canvas.addEventListener('mouseleave', handleLeave);
+    canvas.addEventListener('touchmove', handleHover, { passive: true });
+    canvas.addEventListener('touchend', handleLeave);
+
+    window.addEventListener('resize', () => {
+        if (currentPerfData && currentView === 'dashboard') {
+            renderPerformanceChart(currentPerfData);
+        }
+    });
+}
+
+
 // --- INIT ---
 window.initDashboard = async function () {
     const loading = document.getElementById('loading');
@@ -1621,6 +2093,7 @@ window.initDashboard = async function () {
                 await loadPortfolios();
             }
         });
+        setupPerfCanvasInteraction();
     } catch (e) {
         console.error("Init failed:", e);
         // Show error in UI
@@ -1643,6 +2116,9 @@ window.deleteGroup = deleteGroup;
 window.handleMainAction = handleMainAction;
 window.addMember = addMember;
 window.removeMember = removeMember;
+window.changePerfPeriod = changePerfPeriod;
+window.loadPortfolioPerformance = loadPortfolioPerformance;
+window.renderPerformanceChart = renderPerformanceChart;
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', window.initDashboard);
@@ -1938,8 +2414,8 @@ if (document.readyState === 'loading') {
             const val = e.target.value;
             const menu = document.getElementById('slashMenu');
             
-            // Trigger 1: /p
-            if (val.endsWith('/p')) {
+            // Trigger 1: /p or /portfolio
+            if (val.endsWith('/p') || val.endsWith('/portfolio')) {
                 slashMode = 'p';
                 slashActive = true;
                 menu.style.display = 'block';
@@ -2002,11 +2478,18 @@ if (document.readyState === 'loading') {
             // Set context
             setChatContext("@'" + group.name + "'");
             const input = document.getElementById('chatInput');
-            // Replace /p with @'GroupName'
-            input.value = input.value.slice(0, -2) + "@'" + group.name + "' ";
+            // Replace /portfolio or /p with @'GroupName'
+            if (input.value.endsWith('/portfolio')) {
+                input.value = input.value.slice(0, -10) + "@'" + group.name + "' ";
+            } else if (input.value.endsWith('/p')) {
+                input.value = input.value.slice(0, -2) + "@'" + group.name + "' ";
+            } else {
+                input.value += "@'" + group.name + "' ";
+            }
             document.getElementById('slashMenu').style.display = 'none';
             slashActive = false;
             input.focus();
+        }
             
             // Do NOT navigate to the group page
             // selectGroup(group);

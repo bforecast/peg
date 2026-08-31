@@ -499,4 +499,155 @@ export const STYLES = `
         @media (max-width: 480px) {
             .chat-container { width: 100%; height: 100%; max-height: 100%; bottom: 0; right: 0; border-radius: 0; }
         }
+
+        /* Portfolio Performance & Trend Section */
+        .perf-stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .perf-card {
+            background: white;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            padding: 10px 12px;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+            transition: all 0.2s ease;
+        }
+        .perf-card:hover {
+            box-shadow: 0 3px 8px rgba(0,0,0,0.07);
+            border-color: #CBD5E1;
+        }
+        .perf-card-title {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #64748B;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
+        }
+        .perf-card-val {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: #0F172A;
+            line-height: 1.2;
+        }
+        .perf-card-sub {
+            font-size: 0.72rem;
+            color: #94A3B8;
+            margin-top: 3px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .val-pos { color: #10B981 !important; }
+        .val-neg { color: #EF4444 !important; }
+
+        .perf-chart-card {
+            background: white;
+            border: 1px solid #E2E8F0;
+            border-radius: 8px;
+            padding: 14px 16px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            margin-bottom: 15px;
+        }
+        .perf-chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid #F1F5F9;
+        }
+        .perf-legend {
+            display: inline-flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 0.8rem;
+            color: #475569;
+        }
+        .legend-item {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+        }
+        .legend-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .legend-diamond {
+            width: 8px;
+            height: 8px;
+            transform: rotate(45deg);
+            display: inline-block;
+        }
+        .perf-period-buttons {
+            display: inline-flex;
+            gap: 4px;
+            background: #F1F5F9;
+            padding: 2px;
+            border-radius: 6px;
+        }
+        .perf-period-btn {
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 10px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: #64748B;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+        .perf-period-btn:hover {
+            color: #0F172A;
+        }
+        .perf-period-btn.active {
+            background: white;
+            color: #2563EB;
+            font-weight: 600;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+        }
+
+        .perf-tooltip {
+            position: absolute;
+            background: rgba(15, 23, 42, 0.92);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.78rem;
+            pointer-events: none;
+            z-index: 100;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+            backdrop-filter: blur(4px);
+            line-height: 1.4;
+            min-width: 150px;
+            transform: translate(-50%, -110%);
+        }
+        .perf-tooltip .tt-date { font-weight: 700; color: #94A3B8; margin-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,0.15); padding-bottom: 2px; }
+        .perf-tooltip .tt-row { display: flex; justify-content: space-between; gap: 12px; margin: 2px 0; }
+        .perf-tooltip .tt-val { font-weight: 600; }
+
+        .perf-chart-loading {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255,255,255,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            border-radius: 6px;
+        }
 `;

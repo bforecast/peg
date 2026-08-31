@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { Bindings } from '../types';
 import { generateNvidiaResponse } from '../ai/nvidia';
+import { generateCloudflareAIResponse } from '../ai/cloudflare';
 import { getLatestQuotes, regenerateStats } from '../db';
 
 const chatRoutes = new Hono<{ Bindings: Bindings }>();
@@ -29,10 +30,12 @@ chatRoutes.post('/api/chat', async (c) => {
         const body = await c.req.json();
         let { message, context, history, model } = body;
 
-        // Default to NVIDIA Nemotron-3 Super 120B
-        const selectedModel = 'nemotron-3-super-120b-a12b';
+        // Default to NVIDIA Nemotron-3 Super 120B if not specified
+        const selectedModel = (model === 'gemma-4-26b-a4b-it' || model === '@cf/google/gemma-4-26b-a4b-it')
+            ? '@cf/google/gemma-4-26b-a4b-it'
+            : 'nemotron-3-super-120b-a12b';
 
-        console.log(`[NVIDIA Chat] Selected model: ${selectedModel} (received: ${model})`);
+        console.log(`[Chat] Selected model: ${selectedModel} (received: ${model})`);
 
         // Prepare message with context
         let fullMessage = message;
@@ -238,11 +241,16 @@ chatRoutes.post('/api/chat', async (c) => {
         // Add current message
         nvidiaMessages.push({ role: 'user', content: enhancedMessage });
 
-        if (!c.env.NVIDIA_API_KEY) {
-            return c.json({ error: 'NVIDIA_API_KEY is not configured on the Cloudflare Workers backend. Please set it using `wrangler secret put NVIDIA_API_KEY`.' }, 500);
+        let result = '';
+        if (selectedModel.startsWith('@cf/')) {
+            result = await generateCloudflareAIResponse(c.env.AI, selectedModel, nvidiaMessages);
+        } else {
+            if (!c.env.NVIDIA_API_KEY) {
+                return c.json({ error: 'NVIDIA_API_KEY is not configured on the Cloudflare Workers backend. Please set it using `wrangler secret put NVIDIA_API_KEY`.' }, 500);
+            }
+            result = await generateNvidiaResponse(c.env.NVIDIA_API_KEY, selectedModel, nvidiaMessages);
         }
 
-        const result = await generateNvidiaResponse(c.env.NVIDIA_API_KEY, selectedModel, nvidiaMessages);
         return c.json({ response: result, model: selectedModel });
 
     } catch (e: any) {
@@ -292,6 +300,25 @@ async function fetchPortfolioContext(db: any, portfolioId: string | number, port
         if (holdings.results && holdings.results.length > 0) {
             let contextStr = `\n\n### Portfolio: ${portfolioName || 'Selected Portfolio'}\n`;
             contextStr += `Total Holdings: ${holdings.results.length}\n\n`;
+
+            // Performance & Risk Stats (from portfolio_stats)
+            const statsRow: any = await db.prepare(
+                `SELECT cagr, std_dev, max_drawdown, sharpe, sortino, correlation_spy, dr, change_1d FROM portfolio_stats WHERE group_id = ?`
+            ).bind(portfolioId).first();
+
+            if (statsRow) {
+                contextStr += `**Performance & Risk Metrics (QQQ Benchmark):**\n`;
+                contextStr += `- Annualized Return (CAGR): ${statsRow.cagr?.toFixed(2) || 'N/A'}%\n`;
+                contextStr += `- Annualized Volatility: ${statsRow.std_dev?.toFixed(2) || 'N/A'}%\n`;
+                contextStr += `- Max Drawdown: ${statsRow.max_drawdown?.toFixed(2) || 'N/A'}%\n`;
+                contextStr += `- Sharpe Ratio: ${statsRow.sharpe?.toFixed(2) || 'N/A'}\n`;
+                contextStr += `- Sortino Ratio: ${statsRow.sortino?.toFixed(2) || 'N/A'}\n`;
+                if (statsRow.cagr && statsRow.max_drawdown && Math.abs(statsRow.max_drawdown) > 0.01) {
+                    const calmar = statsRow.cagr / Math.abs(statsRow.max_drawdown);
+                    contextStr += `- Calmar Ratio: ${calmar.toFixed(2)}\n`;
+                }
+                contextStr += `\n`;
+            }
 
             for (const h of holdings.results as any[]) {
                 const priceVsSma = h.price && h.sma_20 && h.sma_50 && h.sma_200

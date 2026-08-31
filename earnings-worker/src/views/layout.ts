@@ -85,6 +85,83 @@ export const HTML = `<!DOCTYPE html>
                         </div>
                         <button id="btnEditPortfolio" onclick="toggleManager()" style="padding:4px 12px; border:1px solid #2196F3; background:white; color:#2196F3; border-radius:4px; cursor:pointer; font-size:0.8rem; margin-left:15px; flex-shrink: 0;">&#9998; Edit</button>
                     </div>
+
+                    <!-- Portfolio Performance & Trend Chart Section -->
+                    <div id="portfolioPerformanceSection" style="margin-left: auto; margin-right: auto; width: 100%; max-width: 1400px; margin-bottom: 15px;">
+                        <!-- Stats Cards Grid -->
+                        <div class="perf-stats-grid" id="perfStatsGrid">
+                            <div class="perf-card">
+                                <div class="perf-card-title">Total Return</div>
+                                <div class="perf-card-val" id="statTotalReturn">-</div>
+                                <div class="perf-card-sub" id="statBenchReturn">QQQ: -</div>
+                            </div>
+                            <div class="perf-card">
+                                <div class="perf-card-title">Annualized Return</div>
+                                <div class="perf-card-val" id="statAnnualizedReturn">-</div>
+                                <div class="perf-card-sub">CAGR</div>
+                            </div>
+                            <div class="perf-card">
+                                <div class="perf-card-title">Annualized Volatility</div>
+                                <div class="perf-card-val" id="statVolatility">-</div>
+                                <div class="perf-card-sub">Std Dev (Ann.)</div>
+                            </div>
+                            <div class="perf-card">
+                                <div class="perf-card-title">Max Drawdown</div>
+                                <div class="perf-card-val" id="statMaxDD" style="color:#ef4444;">-</div>
+                                <div class="perf-card-sub" id="statMaxDDPeriod">Peak to Trough</div>
+                            </div>
+                            <div class="perf-card">
+                                <div class="perf-card-title">Sharpe Ratio</div>
+                                <div class="perf-card-val" id="statSharpe">-</div>
+                                <div class="perf-card-sub">Rf = 4.0%</div>
+                            </div>
+                            <div class="perf-card">
+                                <div class="perf-card-title">Calmar Ratio</div>
+                                <div class="perf-card-val" id="statCalmar">-</div>
+                                <div class="perf-card-sub">CAGR / |MaxDD|</div>
+                            </div>
+                            <div class="perf-card">
+                                <div class="perf-card-title">Sortino Ratio</div>
+                                <div class="perf-card-val" id="statSortino">-</div>
+                                <div class="perf-card-sub">Downside Risk</div>
+                            </div>
+                            <div class="perf-card">
+                                <div class="perf-card-title">Win Rate / Beta</div>
+                                <div class="perf-card-val" id="statWinRate">-</div>
+                                <div class="perf-card-sub" id="statBeta">Beta: -</div>
+                            </div>
+                        </div>
+
+                        <!-- Performance Chart Card -->
+                        <div class="perf-chart-card">
+                            <div class="perf-chart-header">
+                                <div style="display:flex; align-items:center; gap: 10px; flex-wrap: wrap;">
+                                    <span style="font-weight: 700; font-size: 0.95rem; color: #1e293b;">Cumulative Returns & Drawdowns (vs QQQ)</span>
+                                    <div class="perf-legend">
+                                        <span class="legend-item"><span class="legend-dot" style="background:#8b5cf6;"></span> Portfolio</span>
+                                        <span class="legend-item"><span class="legend-dot" style="background:#64748b;"></span> Benchmark (QQQ)</span>
+                                        <span class="legend-item"><span class="legend-diamond" style="background:#3b82f6;"></span> Peak</span>
+                                        <span class="legend-item"><span class="legend-diamond" style="background:#ef4444;"></span> Valley</span>
+                                    </div>
+                                </div>
+                                <div class="perf-period-buttons">
+                                    <button class="perf-period-btn active" id="btnPeriod2025" onclick="changePerfPeriod('2025')">2025~Present</button>
+                                    <button class="perf-period-btn" id="btnPeriod1Y" onclick="changePerfPeriod('1y')">1Y</button>
+                                    <button class="perf-period-btn" id="btnPeriodAll" onclick="changePerfPeriod('all')">All</button>
+                                </div>
+                            </div>
+
+                            <div id="perfChartWrapper" style="position:relative; width:100%; min-height:360px;">
+                                <canvas id="perfCanvas" style="width:100%; height:360px; display:block; cursor:crosshair;"></canvas>
+                                <div id="perfChartTooltip" class="perf-tooltip" style="display:none;"></div>
+                                <div id="perfChartLoading" class="perf-chart-loading" style="display:none;">
+                                    <div class="spinner" style="width:28px; height:28px;"></div>
+                                    <div style="font-size:0.85rem; color:#64748b; margin-top:8px;">Calculating performance...</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                 <div class="dashboard-container">
                     <table>
                         <thead>
@@ -312,6 +389,7 @@ export const HTML = `<!DOCTYPE html>
             <div style="display:flex; align-items:center; gap:10px;">
                 <select id="modelSelector" style="padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:0.8rem; background:white;">
                     <option value="nemotron-3-super-120b-a12b" selected>Nemotron-3 Super 120B</option>
+                    <option value="gemma-4-26b-a4b-it">Gemma-4-26B (Cloudflare)</option>
                 </select>
                 <button onclick="toggleMaximize()" style="background:none; border:none; cursor:pointer;" title="Maximize">
                     <svg id="maxIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

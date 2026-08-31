@@ -1,6 +1,6 @@
 import { Bindings, StockPrice } from './types';
 import { calculateStats } from './stats';
-import { getESTTimestamp } from './db';
+import { getESTTimestamp, updatePrices } from './db';
 
 function getDateDaysAgo(days: number): string {
     const d = new Date();
@@ -371,3 +371,460 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
         throw e;
     }
 }
+
+export interface PerformanceMetricStats {
+    totalReturn: number | null;
+    benchmarkReturn: number | null;
+    annualizedReturn: number | null;
+    annualizedVolatility: number | null;
+    maxDrawdown: number | null;
+    sharpeRatio: number | null;
+    calmarRatio: number | null;
+    sortinoRatio: number | null;
+    alpha?: number | null;
+    beta?: number | null;
+    winRate?: number | null;
+    change1d?: number | null;
+}
+
+export interface PortfolioPerformanceData {
+    groupId: number;
+    groupName: string;
+    benchmarkSymbol: string;
+    startDate: string;
+    endDate: string;
+    totalTradingDays: number;
+    stats: PerformanceMetricStats;
+    history: {
+        date: string;
+        portfolio: number;       // Cumulative return %
+        benchmark: number;       // Benchmark cumulative return %
+        drawdown: number;        // Drawdown %
+        portfolioValue: number;  // Absolute value ($)
+        benchmarkValue: number;  // Absolute value ($)
+    }[];
+    peaks: { date: string; value: number; returnPct: number }[];
+    valleys: { date: string; value: number; returnPct: number; drawdown: number }[];
+    maxDrawdownInfo: {
+        peakDate: string;
+        peakValue: number;
+        troughDate: string;
+        troughValue: number;
+        recoveryDate: string | null;
+        maxDrawdownPct: number;
+    } | null;
+}
+
+export async function calculatePortfolioPerformance(
+    env: Bindings,
+    groupId: number,
+    options?: { startDate?: string; benchmark?: string; period?: string }
+): Promise<PortfolioPerformanceData | null> {
+    const benchmarkSymbol = (options?.benchmark || 'QQQ').toUpperCase();
+    
+    // Default startDate is 2025-01-01 (2025 to present)
+    let targetStartDate = options?.startDate || '2025-01-01';
+    if (options?.period === '1y') {
+        targetStartDate = getDateDaysAgo(365);
+    } else if (options?.period === 'all') {
+        targetStartDate = '2020-01-01';
+    } else if (options?.period === '2025' || options?.period === 'ytd') {
+        targetStartDate = '2025-01-01';
+    }
+
+    // Fetch extra days before start date to find the earliest close price on/before start
+    const d = new Date(targetStartDate);
+    d.setDate(d.getDate() - 15);
+    const fetchStartDate = d.toISOString().split('T')[0];
+
+    // 1. Fetch Group details and Members
+    const groupRow: any = await env.DB.prepare("SELECT id, name, type, description, created_at FROM groups WHERE id = ?").bind(groupId).first();
+    const groupName = groupRow?.name || `Portfolio ${groupId}`;
+
+    const { results: members } = await env.DB.prepare(
+        "SELECT symbol, allocation FROM group_members WHERE group_id = ?"
+    ).bind(groupId).all();
+
+    if (!members || members.length === 0) {
+        return {
+            groupId,
+            groupName,
+            benchmarkSymbol,
+            startDate: targetStartDate,
+            endDate: new Date().toISOString().split('T')[0],
+            totalTradingDays: 0,
+            stats: {
+                totalReturn: null,
+                benchmarkReturn: null,
+                annualizedReturn: null,
+                annualizedVolatility: null,
+                maxDrawdown: null,
+                sharpeRatio: null,
+                calmarRatio: null,
+                sortinoRatio: null,
+                winRate: null,
+                change1d: null
+            },
+            history: [],
+            peaks: [],
+            valleys: [],
+            maxDrawdownInfo: null
+        };
+    }
+
+    const symbols = members.map((m: any) => m.symbol.toUpperCase());
+    const targetAllocations = new Map<string, number>();
+    members.forEach((m: any) => targetAllocations.set(m.symbol.toUpperCase(), Number(m.allocation) || 0));
+
+    // 2. Fetch prices for all symbols + Benchmark
+    const allSymbols = [...new Set([...symbols, benchmarkSymbol])];
+    const priceMap = new Map<string, StockPrice[]>();
+    const BATCH_SIZE = 50;
+
+    for (let i = 0; i < allSymbols.length; i += BATCH_SIZE) {
+        const batch = allSymbols.slice(i, i + BATCH_SIZE);
+        const placeholders = batch.map(() => '?').join(',');
+        try {
+            const query = `SELECT symbol, date, close FROM stock_prices WHERE symbol IN (${placeholders}) AND date >= ? ORDER BY date ASC`;
+            const { results } = await env.DB.prepare(query).bind(...batch, fetchStartDate).all();
+            if (results) {
+                results.forEach((row: any) => {
+                    const sym = row.symbol.toUpperCase();
+                    if (!priceMap.has(sym)) {
+                        priceMap.set(sym, []);
+                    }
+                    priceMap.get(sym)!.push({ date: row.date, close: row.close });
+                });
+            }
+        } catch (err) {
+            console.error("[Portfolio Performance] Error fetching prices:", err);
+        }
+    }
+
+    // Check if benchmark data exists; if not, try to fetch it
+    let benchPrices = priceMap.get(benchmarkSymbol);
+    if (!benchPrices || benchPrices.length < 10) {
+        try {
+            console.log(`[Portfolio Performance] Fetching missing benchmark prices for ${benchmarkSymbol}`);
+            await updatePrices(env, benchmarkSymbol);
+            const { results } = await env.DB.prepare(
+                `SELECT symbol, date, close FROM stock_prices WHERE symbol = ? AND date >= ? ORDER BY date ASC`
+            ).bind(benchmarkSymbol, fetchStartDate).all();
+            if (results && results.length > 0) {
+                priceMap.set(benchmarkSymbol, results as any[]);
+                benchPrices = priceMap.get(benchmarkSymbol);
+            }
+        } catch (e) {
+            console.error(`[Portfolio Performance] Failed to update benchmark ${benchmarkSymbol}:`, e);
+        }
+    }
+
+    // Fallback to SPY if QQQ not available
+    if ((!benchPrices || benchPrices.length < 10) && benchmarkSymbol !== 'SPY') {
+        benchPrices = priceMap.get('SPY');
+    }
+
+    if (!benchPrices || benchPrices.length < 5) {
+        console.warn(`[Portfolio Performance] Insufficient benchmark data for ${benchmarkSymbol}`);
+        return null;
+    }
+
+    // 3. Align date range
+    // Filter benchmark prices to dates >= targetStartDate
+    const validBenchPrices = benchPrices.filter(p => p.date >= targetStartDate);
+    if (validBenchPrices.length === 0) {
+        console.warn(`[Portfolio Performance] No benchmark data on or after ${targetStartDate}`);
+        return null;
+    }
+
+    const commonStartDate = validBenchPrices[0].date;
+
+    // Filter valid member symbols
+    const validSymbols: string[] = [];
+    let validAllocationSum = 0;
+
+    for (const sym of symbols) {
+        const history = priceMap.get(sym);
+        if (!history || history.length < 5) {
+            continue;
+        }
+        validSymbols.push(sym);
+        validAllocationSum += targetAllocations.get(sym) || 0;
+    }
+
+    if (validSymbols.length === 0) {
+        console.warn(`[Portfolio Performance] No constituent price history available for group ${groupId}`);
+        return null;
+    }
+
+    // Re-scale allocations if some members are missing
+    if (validAllocationSum > 0 && Math.abs(validAllocationSum - 100) > 0.01) {
+        const scale = 100 / validAllocationSum;
+        validSymbols.forEach(s => {
+            const old = targetAllocations.get(s) || 0;
+            targetAllocations.set(s, old * scale);
+        });
+    }
+
+    // Fast O(1) date lookups
+    const symbolPriceMaps = new Map<string, Map<string, number>>();
+    for (const [sym, history] of priceMap.entries()) {
+        const dateMap = new Map<string, number>();
+        history.forEach(h => {
+            if (h.close !== null && h.close !== undefined) {
+                dateMap.set(h.date, h.close);
+            }
+        });
+        symbolPriceMaps.set(sym, dateMap);
+    }
+
+    // Initial Capital = $100,000
+    const INITIAL_CAPITAL = 100000;
+    const shares = new Map<string, number>();
+
+    validSymbols.forEach(sym => {
+        const history = priceMap.get(sym)!;
+        // Find price at or immediately before/after start date
+        const matchingPrice = history.find(p => p.date >= commonStartDate)?.close || history[history.length - 1]?.close || 0;
+        const alloc = targetAllocations.get(sym) || 0;
+        const dollarAmount = (alloc / 100) * INITIAL_CAPITAL;
+        if (matchingPrice > 0) {
+            shares.set(sym, dollarAmount / matchingPrice);
+        } else {
+            shares.set(sym, 0);
+        }
+    });
+
+    const benchStartPrice = validBenchPrices[0].close || 1;
+    const lastKnownPrices = new Map<string, number>();
+
+    // Initial price seed
+    validSymbols.forEach(sym => {
+        const history = priceMap.get(sym)!;
+        const firstP = history.find(p => p.date <= commonStartDate)?.close || history[0]?.close;
+        if (firstP) lastKnownPrices.set(sym, firstP);
+    });
+
+    // 4. Daily Tracking Simulation
+    interface DailyPoint {
+        date: string;
+        portfolio: number;
+        benchmark: number;
+        drawdown: number;
+        portfolioValue: number;
+        benchmarkValue: number;
+    }
+
+    const historyPoints: DailyPoint[] = [];
+    let portfolioPeak = INITIAL_CAPITAL;
+    let maxDrawdown = 0;
+
+    for (const day of validBenchPrices) {
+        const date = day.date;
+        let dailyValue = 0;
+
+        for (const sym of validSymbols) {
+            const dateMap = symbolPriceMaps.get(sym);
+            const close = dateMap?.get(date);
+            if (close !== undefined && close !== null) {
+                dailyValue += (shares.get(sym) || 0) * close;
+                lastKnownPrices.set(sym, close);
+            } else {
+                const lastPrice = lastKnownPrices.get(sym) || 0;
+                dailyValue += (shares.get(sym) || 0) * lastPrice;
+            }
+        }
+
+        if (dailyValue <= 0) continue;
+
+        if (dailyValue > portfolioPeak) {
+            portfolioPeak = dailyValue;
+        }
+
+        const currentDD = ((dailyValue - portfolioPeak) / portfolioPeak) * 100;
+        if (currentDD < maxDrawdown) {
+            maxDrawdown = currentDD;
+        }
+
+        const portReturnPct = ((dailyValue - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100;
+        const benchVal = (day.close / benchStartPrice) * INITIAL_CAPITAL;
+        const benchReturnPct = ((benchVal - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100;
+
+        historyPoints.push({
+            date,
+            portfolio: Number(portReturnPct.toFixed(2)),
+            benchmark: Number(benchReturnPct.toFixed(2)),
+            drawdown: Number(currentDD.toFixed(2)),
+            portfolioValue: Number(dailyValue.toFixed(2)),
+            benchmarkValue: Number(benchVal.toFixed(2))
+        });
+    }
+
+    if (historyPoints.length < 2) {
+        return null;
+    }
+
+    // 5. Calculate Metrics
+    const N = historyPoints.length;
+    const startVal = historyPoints[0].portfolioValue;
+    const endVal = historyPoints[N - 1].portfolioValue;
+    const totalReturn = ((endVal - startVal) / startVal) * 100;
+
+    const benchStartVal = historyPoints[0].benchmarkValue;
+    const benchEndVal = historyPoints[N - 1].benchmarkValue;
+    const benchmarkReturn = ((benchEndVal - benchStartVal) / benchStartVal) * 100;
+
+    const years = Math.max(N / TRADING_DAYS_PER_YEAR, 10 / TRADING_DAYS_PER_YEAR);
+    const annualizedReturn = (Math.pow(Math.max(0.001, endVal / startVal), 1 / years) - 1) * 100;
+    const benchAnnualizedReturn = (Math.pow(Math.max(0.001, benchEndVal / benchStartVal), 1 / years) - 1) * 100;
+
+    // Daily returns
+    const dailyRets: number[] = [];
+    const benchDailyRets: number[] = [];
+    let positiveDays = 0;
+
+    for (let i = 1; i < N; i++) {
+        const prev = historyPoints[i - 1].portfolioValue;
+        const curr = historyPoints[i].portfolioValue;
+        const r = (curr - prev) / prev;
+        dailyRets.push(r);
+        if (r > 0) positiveDays++;
+
+        const bPrev = historyPoints[i - 1].benchmarkValue;
+        const bCurr = historyPoints[i].benchmarkValue;
+        benchDailyRets.push((bCurr - bPrev) / bPrev);
+    }
+
+    const meanDaily = dailyRets.reduce((a, b) => a + b, 0) / dailyRets.length;
+    const varDaily = dailyRets.reduce((a, b) => a + Math.pow(b - meanDaily, 2), 0) / Math.max(1, dailyRets.length - 1);
+    const annualizedVolatility = Math.sqrt(varDaily) * Math.sqrt(TRADING_DAYS_PER_YEAR) * 100;
+
+    // Sharpe Ratio (Rf = 4%)
+    const sharpeRatio = annualizedVolatility > 0 ? ((annualizedReturn / 100) - RISK_FREE_RATE) / (annualizedVolatility / 100) : null;
+
+    // Calmar Ratio = Annualized Return / |Max Drawdown|
+    const calmarRatio = Math.abs(maxDrawdown) > 0.001 ? (annualizedReturn / Math.abs(maxDrawdown)) : null;
+
+    // Sortino Ratio
+    const downsideVar = dailyRets.reduce((a, b) => a + Math.pow(Math.min(0, b), 2), 0) / Math.max(1, dailyRets.length - 1);
+    const downsideDev = Math.sqrt(downsideVar) * Math.sqrt(TRADING_DAYS_PER_YEAR);
+    const sortinoRatio = downsideDev > 0 ? ((annualizedReturn / 100) - RISK_FREE_RATE) / downsideDev : null;
+
+    // Beta & Alpha vs Benchmark
+    const meanBench = benchDailyRets.reduce((a, b) => a + b, 0) / benchDailyRets.length;
+    let cov = 0;
+    let varBench = 0;
+    for (let i = 0; i < dailyRets.length; i++) {
+        cov += (dailyRets[i] - meanDaily) * (benchDailyRets[i] - meanBench);
+        varBench += Math.pow(benchDailyRets[i] - meanBench, 2);
+    }
+    const beta = varBench > 0 ? cov / varBench : null;
+    const alpha = (beta !== null && isFinite(beta))
+        ? ((annualizedReturn / 100) - (RISK_FREE_RATE + beta * ((benchAnnualizedReturn / 100) - RISK_FREE_RATE))) * 100
+        : null;
+
+    const winRate = dailyRets.length > 0 ? (positiveDays / dailyRets.length) * 100 : null;
+
+    // 1-Day Change
+    let change1d = 0;
+    if (N >= 2) {
+        const last = historyPoints[N - 1].portfolioValue;
+        const prev = historyPoints[N - 2].portfolioValue;
+        if (prev > 0) {
+            change1d = ((last - prev) / prev) * 100;
+        }
+    }
+
+    // 6. Identify Peaks, Valleys and Max Drawdown Period
+    const peaks: { date: string; value: number; returnPct: number }[] = [];
+    const valleys: { date: string; value: number; returnPct: number; drawdown: number }[] = [];
+
+    let currentPeak = historyPoints[0].portfolioValue;
+    let currentPeakDate = historyPoints[0].date;
+    let minTroughDD = 0;
+    let maxDDPeakDate = currentPeakDate;
+    let maxDDPeakVal = currentPeak;
+    let maxDDTroughDate = currentPeakDate;
+    let maxDDTroughVal = currentPeak;
+    let maxDDRecoveryDate: string | null = null;
+
+    for (let i = 0; i < N; i++) {
+        const pt = historyPoints[i];
+        if (pt.portfolioValue >= currentPeak) {
+            if (i > 0 && historyPoints[i - 1].portfolioValue < currentPeak) {
+                // Recovered to new peak
+                if (pt.portfolioValue > currentPeak * 1.01) {
+                    peaks.push({ date: pt.date, value: pt.portfolioValue, returnPct: pt.portfolio });
+                }
+            }
+            currentPeak = pt.portfolioValue;
+            currentPeakDate = pt.date;
+        }
+
+        if (pt.drawdown < minTroughDD) {
+            minTroughDD = pt.drawdown;
+            maxDDPeakDate = currentPeakDate;
+            maxDDPeakVal = currentPeak;
+            maxDDTroughDate = pt.date;
+            maxDDTroughVal = pt.portfolioValue;
+            maxDDRecoveryDate = null; // reset until recovered
+        }
+
+        if (minTroughDD < -3 && pt.portfolioValue >= maxDDPeakVal && maxDDRecoveryDate === null) {
+            maxDDRecoveryDate = pt.date;
+        }
+
+        // Detect prominent valleys (local troughs deeper than -5%)
+        if (i > 0 && i < N - 1) {
+            const prevDD = historyPoints[i - 1].drawdown;
+            const nextDD = historyPoints[i + 1].drawdown;
+            if (pt.drawdown < -4 && pt.drawdown <= prevDD && pt.drawdown <= nextDD) {
+                valleys.push({
+                    date: pt.date,
+                    value: pt.portfolioValue,
+                    returnPct: pt.portfolio,
+                    drawdown: pt.drawdown
+                });
+            }
+        }
+    }
+
+    const safeNum = (n: number | null | undefined) => (n === null || n === undefined || isNaN(n) || !isFinite(n)) ? null : Number(n.toFixed(2));
+
+    const maxDrawdownInfo = maxDrawdown < -0.5 ? {
+        peakDate: maxDDPeakDate,
+        peakValue: Number(maxDDPeakVal.toFixed(2)),
+        troughDate: maxDDTroughDate,
+        troughValue: Number(maxDDTroughVal.toFixed(2)),
+        recoveryDate: maxDDRecoveryDate,
+        maxDrawdownPct: Number(maxDrawdown.toFixed(2))
+    } : null;
+
+    return {
+        groupId,
+        groupName,
+        benchmarkSymbol,
+        startDate: commonStartDate,
+        endDate: historyPoints[N - 1].date,
+        totalTradingDays: N,
+        stats: {
+            totalReturn: safeNum(totalReturn),
+            benchmarkReturn: safeNum(benchmarkReturn),
+            annualizedReturn: safeNum(annualizedReturn),
+            annualizedVolatility: safeNum(annualizedVolatility),
+            maxDrawdown: safeNum(maxDrawdown),
+            sharpeRatio: safeNum(sharpeRatio),
+            calmarRatio: safeNum(calmarRatio),
+            sortinoRatio: safeNum(sortinoRatio),
+            alpha: safeNum(alpha),
+            beta: safeNum(beta),
+            winRate: safeNum(winRate),
+            change1d: safeNum(change1d)
+        },
+        history: historyPoints,
+        peaks,
+        valleys,
+        maxDrawdownInfo
+    };
+}
+

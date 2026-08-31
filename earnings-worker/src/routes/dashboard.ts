@@ -6,6 +6,7 @@ import { UI_HTML } from '../ui_html';
 import { FAVICON_BASE64 } from '../favicon';
 import { AccuratePortfolioHealthMonitor } from '../market_entropy';
 import { PriceData } from '../types';
+import { calculatePortfolioPerformance } from '../portfolio';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -69,6 +70,37 @@ app.get('/api/dashboard-data', async (c) => {
         c.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=600');
         return c.json({ lastUpdated, data });
     } catch (e: any) {
+        return c.json({ error: e.message }, 500);
+    }
+});
+
+// Portfolio Performance & Trend API (2025~Present with QQQ Benchmark)
+app.get('/api/portfolio-performance/:id', async (c) => {
+    try {
+        const idParam = c.req.param('id');
+        const groupId = parseInt(idParam, 10);
+        if (isNaN(groupId)) {
+            return c.json({ error: 'Invalid group ID' }, 400);
+        }
+
+        const benchmark = c.req.query('benchmark') || 'QQQ';
+        const startDate = c.req.query('startDate') || '2025-01-01';
+        const period = c.req.query('period') || '2025';
+
+        const performanceData = await calculatePortfolioPerformance(c.env, groupId, {
+            benchmark,
+            startDate,
+            period
+        });
+
+        if (!performanceData) {
+            return c.json({ error: 'Failed to calculate portfolio performance or insufficient data' }, 404);
+        }
+
+        c.header('Cache-Control', 'public, max-age=60, stale-while-revalidate=300');
+        return c.json(performanceData);
+    } catch (e: any) {
+        console.error('[API /api/portfolio-performance] Error:', e);
         return c.json({ error: e.message }, 500);
     }
 });
