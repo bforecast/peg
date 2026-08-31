@@ -312,8 +312,10 @@ export const STOCK_HTML = `<!DOCTYPE html>
                     <option value="gemma-4-26b-a4b-it" selected>Gemma-4-26B (Cloudflare)</option>
                     <option value="nemotron-3-super-120b-a12b">Nemotron-3 Super 120B</option>
                 </select>
-                <button class="translate-toggle-btn" onclick="requestTranslationToggle()" title="中/英切换翻译上一条回复" style="padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:0.78rem; font-weight:600; background:white; color:#374151; cursor:pointer; display:flex; align-items:center; gap:2px; height:28px;">
-                    <span>中 / EN</span>
+                <button id="langToggleBtn" class="translate-toggle-btn" onclick="toggleChatLanguage()" title="当前语言：中文 (点击切换为 English)" style="padding:3px 8px; border-radius:4px; border:1px solid #CBD5E1; font-size:0.75rem; background:white; cursor:pointer; display:inline-flex; align-items:center; gap:3px; height:28px; transition:all 0.2s;">
+                    <span id="langLabelZh" style="color:#2563EB; font-weight:700;">中</span>
+                    <span style="color:#CBD5E1; font-size:0.7rem;">/</span>
+                    <span id="langLabelEn" style="color:#94A3B8; font-weight:500;">EN</span>
                 </button>
                 <button onclick="toggleMaximize()" style="background:none; border:none; cursor:pointer;" title="Maximize">
                     <svg id="maxIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -514,6 +516,29 @@ export const STOCK_HTML = `<!DOCTYPE html>
             isSingleStock: true
         };
 
+        let chatLang = 'zh'; // 'zh' | 'en'
+
+        function updateLangButtonUI() {
+            const labelZh = document.getElementById('langLabelZh');
+            const labelEn = document.getElementById('langLabelEn');
+            const btn = document.getElementById('langToggleBtn');
+            if (!labelZh || !labelEn) return;
+
+            if (chatLang === 'zh') {
+                labelZh.style.color = '#2563EB';
+                labelZh.style.fontWeight = '700';
+                labelEn.style.color = '#94A3B8';
+                labelEn.style.fontWeight = '500';
+                if (btn) btn.title = '当前语言：中文 (点击切换为 English)';
+            } else {
+                labelZh.style.color = '#94A3B8';
+                labelZh.style.fontWeight = '500';
+                labelEn.style.color = '#2563EB';
+                labelEn.style.fontWeight = '700';
+                if (btn) btn.title = 'Current Language: English (Click to switch to 中文)';
+            }
+        }
+
         const modelSelector = document.getElementById('modelSelector');
         const selectedModel = modelSelector ? modelSelector.value : 'gemma-4-26b-a4b-it';
         
@@ -521,7 +546,7 @@ export const STOCK_HTML = `<!DOCTYPE html>
             const res = await fetch('/api/chat', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ message: text, context, history: chatHistory, model: selectedModel })
+                body: JSON.stringify({ message: text, context, history: chatHistory, model: selectedModel, lang: chatLang })
             });
             
             const data = await res.json();
@@ -542,24 +567,26 @@ export const STOCK_HTML = `<!DOCTYPE html>
         if (e.key === 'Enter') sendChat();
     }
 
-    function requestTranslationToggle() {
-        const input = document.getElementById('chatInput');
-        let hasChinese = true;
+    function toggleChatLanguage() {
+        chatLang = (chatLang === 'zh') ? 'en' : 'zh';
+        updateLangButtonUI();
+
         if (chatHistory && chatHistory.length > 0) {
             const reversed = [...chatHistory].reverse();
             const lastBot = reversed.find(m => m.role === 'assistant' || m.role === 'bot' || m.role === 'model');
             if (lastBot && lastBot.content) {
-                hasChinese = /[\u4e00-\u9fa5]/.test(lastBot.content);
+                const input = document.getElementById('chatInput');
+                if (chatLang === 'en') {
+                    input.value = "Please translate your PREVIOUS response into English. Do NOT search the web or provide new analysis -- strictly translate the text.";
+                } else {
+                    input.value = "Please translate your PREVIOUS response into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text.";
+                }
+                sendChat();
             }
         }
-        if (hasChinese) {
-            input.value = "Please translate your PREVIOUS response into English. Do NOT search the web or provide new analysis -- strictly translate the text.";
-        } else {
-            input.value = "Please translate your PREVIOUS response into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text.";
-        }
-        sendChat();
     }
-    const requestTranslation = requestTranslationToggle;
+    const requestTranslationToggle = toggleChatLanguage;
+    const requestTranslation = toggleChatLanguage;
     
     function setContextQuestion(q) {
         if(!chatOpen) toggleChat();

@@ -2267,24 +2267,49 @@ if (document.readyState === 'loading') {
             }
         };
 
-        window.requestTranslationToggle = function() {
-            const chatInput = document.getElementById('chatInput');
-            let hasChinese = true;
+        let chatLang = 'zh'; // 'zh' | 'en'
+
+        function updateLangButtonUI() {
+            const labelZh = document.getElementById('langLabelZh');
+            const labelEn = document.getElementById('langLabelEn');
+            const btn = document.getElementById('langToggleBtn');
+            if (!labelZh || !labelEn) return;
+
+            if (chatLang === 'zh') {
+                labelZh.style.color = '#2563EB';
+                labelZh.style.fontWeight = '700';
+                labelEn.style.color = '#94A3B8';
+                labelEn.style.fontWeight = '500';
+                if (btn) btn.title = '当前语言：中文 (点击切换为 English)';
+            } else {
+                labelZh.style.color = '#94A3B8';
+                labelZh.style.fontWeight = '500';
+                labelEn.style.color = '#2563EB';
+                labelEn.style.fontWeight = '700';
+                if (btn) btn.title = 'Current Language: English (Click to switch to 中文)';
+            }
+        }
+
+        window.toggleChatLanguage = function() {
+            chatLang = (chatLang === 'zh') ? 'en' : 'zh';
+            updateLangButtonUI();
+
             if (chatHistory && chatHistory.length > 0) {
                 const reversed = [...chatHistory].reverse();
                 const lastBot = reversed.find(m => m.role === 'assistant' || m.role === 'bot' || m.role === 'model');
                 if (lastBot && lastBot.content) {
-                    hasChinese = /[\u4e00-\u9fa5]/.test(lastBot.content);
+                    const chatInput = document.getElementById('chatInput');
+                    if (chatLang === 'en') {
+                        chatInput.value = "Please translate your PREVIOUS response into English. Do NOT search the web or provide new analysis -- strictly translate the text.";
+                    } else {
+                        chatInput.value = "Please translate your PREVIOUS response into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text.";
+                    }
+                    sendChat();
                 }
             }
-            if (hasChinese) {
-                chatInput.value = "Please translate your PREVIOUS response into English. Do NOT search the web or provide new analysis -- strictly translate the text.";
-            } else {
-                chatInput.value = "Please translate your PREVIOUS response into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text.";
-            }
-            sendChat();
         };
-        window.requestTranslation = window.requestTranslationToggle;
+        window.requestTranslationToggle = window.toggleChatLanguage;
+        window.requestTranslation = window.toggleChatLanguage;
 
         function setChatContext(ctx) {
             document.getElementById('chatContext').textContent = ctx;
@@ -2451,7 +2476,7 @@ if (document.readyState === 'loading') {
                 const res = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: text, context, history: chatHistory, model: selectedModel })
+                    body: JSON.stringify({ message: text, context, history: chatHistory, model: selectedModel, lang: chatLang })
                 });
                 
                 const data = await res.json();

@@ -30,14 +30,14 @@ Language & Tone:
 chatRoutes.post('/api/chat', async (c) => {
     try {
         const body = await c.req.json();
-        let { message, context, history, model } = body;
+        let { message, context, history, model, lang } = body;
 
         // Default to Cloudflare Workers AI Gemma-4-26B if not specified
         const selectedModel = (model === 'nemotron-3-super-120b-a12b' || model === 'nemotron')
             ? 'nemotron-3-super-120b-a12b'
             : '@cf/google/gemma-4-26b-a4b-it';
 
-        console.log(`[Chat] Selected model: ${selectedModel} (received: ${model})`);
+        console.log(`[Chat] Selected model: ${selectedModel} (received: ${model}, lang: ${lang})`);
 
         // Prepare message with context
         let fullMessage = message;
@@ -215,9 +215,20 @@ chatRoutes.post('/api/chat', async (c) => {
             enhancedMessage = `${fullMessage}\n\n--- LOCAL PORTFOLIO DATA FROM DATABASE ---${localDataContext}\n--- END OF LOCAL DATA ---\n\nUse the above local data to answer the question.`;
         }
 
+        // Determine active response language
+        let activeLang = lang || 'zh';
+        if (isTranslationToEnglish) activeLang = 'en';
+        if (isTranslationToChinese) activeLang = 'zh';
+
+        const langRule = (activeLang === 'en')
+            ? 'Language Rule: You MUST respond in English with professional financial terminology. Do not use Chinese.'
+            : 'Language Rule: You MUST respond in Simplified Chinese (简体中文) with professional financial terminology.';
+
+        const dynamicSystemPrompt = `${SYSTEM_PROMPT}\n\n[Active Language Requirement]\n${langRule}`;
+
         // Construct standard message array
         const nvidiaMessages: { role: 'system' | 'user' | 'assistant', content: string }[] = [
-            { role: 'system', content: SYSTEM_PROMPT }
+            { role: 'system', content: dynamicSystemPrompt }
         ];
 
         // Format history

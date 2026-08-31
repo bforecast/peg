@@ -394,8 +394,10 @@ export const HTML = `<!DOCTYPE html>
                     <option value="gemma-4-26b-a4b-it" selected>Gemma-4-26B (Cloudflare)</option>
                     <option value="nemotron-3-super-120b-a12b">Nemotron-3 Super 120B</option>
                 </select>
-                <button class="translate-toggle-btn" onclick="requestTranslationToggle()" title="中/英切换翻译上一条回复" style="padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:0.78rem; font-weight:600; background:white; color:#374151; cursor:pointer; display:flex; align-items:center; gap:2px; height:28px;">
-                    <span>中 / EN</span>
+                <button id="langToggleBtn" class="translate-toggle-btn" onclick="toggleChatLanguage()" title="当前语言：中文 (点击切换为 English)" style="padding:3px 8px; border-radius:4px; border:1px solid #CBD5E1; font-size:0.75rem; background:white; cursor:pointer; display:inline-flex; align-items:center; gap:3px; height:28px; transition:all 0.2s;">
+                    <span id="langLabelZh" style="color:#2563EB; font-weight:700;">中</span>
+                    <span style="color:#CBD5E1; font-size:0.7rem;">/</span>
+                    <span id="langLabelEn" style="color:#94A3B8; font-weight:500;">EN</span>
                 </button>
                 <button onclick="toggleMaximize()" style="background:none; border:none; cursor:pointer;" title="Maximize">
                     <svg id="maxIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
