@@ -310,8 +310,6 @@ export const STOCK_HTML = `<!DOCTYPE html>
             <div style="display:flex; align-items:center; gap:10px;">
                 <select id="modelSelector" style="padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:0.8rem; background:white;">
                     <option value="nemotron-3-super-120b-a12b" selected>Nemotron-3 Super 120B</option>
-                    <option value="llama-3.3-nemotron-super-49b-v1">Llama 3.3 Nemotron 49B</option>
-                    <option value="nemotron-4-340b-instruct">Nemotron-4 340B</option>
                 </select>
                 <button onclick="toggleMaximize()" style="background:none; border:none; cursor:pointer;" title="Maximize">
                     <svg id="maxIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">

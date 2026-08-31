@@ -29,10 +29,8 @@ chatRoutes.post('/api/chat', async (c) => {
         const body = await c.req.json();
         let { message, context, history, model } = body;
 
-        // Map legacy models to the default NVIDIA Nemotron model
-        const selectedModel = (model === 'perplexity' || model === 'gemini' || !model)
-            ? 'nemotron-3-super-120b-a12b'
-            : model;
+        // Default to NVIDIA Nemotron-3 Super 120B
+        const selectedModel = 'nemotron-3-super-120b-a12b';
 
         console.log(`[NVIDIA Chat] Selected model: ${selectedModel} (received: ${model})`);
 
