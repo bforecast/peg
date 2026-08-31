@@ -104,6 +104,7 @@ describe('Portfolio Performance & Statistics (2025~Present with QQQ Benchmark)',
         expect(result.groupId).toBe(1);
         expect(result.groupName).toBe('Tech Growth');
         expect(result.benchmarkSymbol).toBe('QQQ');
+        expect(result.createdAt).toBe('2025-01-01');
         expect(result.totalTradingDays).toBe(dates.length);
 
         // Portfolio Return: 50% NVDA (+30%) + 50% MSFT (+10%) = +20%
@@ -129,6 +130,14 @@ describe('Portfolio Performance & Statistics (2025~Present with QQQ Benchmark)',
         expect(result.history[0].portfolio).toBe(0);
         expect(result.history[0].benchmark).toBe(0);
         expect(result.history[result.history.length - 1].portfolio).toBeCloseTo(20.0, 0);
+
+        // Test with period = 'created'
+        const resultCreated = await calculatePortfolioPerformance(mockEnv as any, 1, {
+            period: 'created',
+            benchmark: 'QQQ'
+        });
+        expect(resultCreated).not.toBeNull();
+        expect(resultCreated?.createdAt).toBe('2025-01-01');
     });
 
     it('handles /api/portfolio-performance/:id endpoint', async () => {

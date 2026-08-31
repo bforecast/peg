@@ -10,9 +10,10 @@ export const SCRIPTS = `
         let localMembers = [];
         let originalState = {};
         let portfolioSort = { key: 'cagr', dir: 'desc' }; // Portfolios Board sort state
-        let currentPerfPeriod = '2025';
+        let currentPerfPeriod = 'created';
         let currentPerfData = null;
         let perfChartHoverIdx = -1;
+        let perfChartExpanded = false;
 
         // Removed conflicting window.load listener
 
@@ -1585,10 +1586,36 @@ async function recalcPortfolios() {
 }
 
 // --- PORTFOLIO PERFORMANCE & TREND VISUALIZATION ---
+function togglePerfChart() {
+    perfChartExpanded = !perfChartExpanded;
+    const container = document.getElementById('perfChartContainer');
+    const btn = document.getElementById('btnTogglePerfChart');
+    if (!container || !btn) return;
+
+    if (perfChartExpanded) {
+        container.style.display = 'block';
+        btn.classList.add('active');
+        btn.innerHTML = '📉 Hide Chart ▲';
+        if (currentPerfData) {
+            setTimeout(() => renderPerformanceChart(currentPerfData), 50);
+        }
+    } else {
+        container.style.display = 'none';
+        btn.classList.remove('active');
+        btn.innerHTML = '📈 View Chart ▼';
+    }
+}
+
 async function changePerfPeriod(period) {
     currentPerfPeriod = period;
-    ['2025', '1y', 'all'].forEach(p => {
-        const btn = document.getElementById('btnPeriod' + (p === '2025' ? '2025' : (p === '1y' ? '1Y' : 'All')));
+    const periodMap = {
+        'created': 'btnPeriodCreated',
+        '2025': 'btnPeriod2025',
+        '1y': 'btnPeriod1Y',
+        'all': 'btnPeriodAll'
+    };
+    Object.keys(periodMap).forEach(p => {
+        const btn = document.getElementById(periodMap[p]);
         if (btn) {
             if (p === period) btn.classList.add('active');
             else btn.classList.remove('active');
@@ -1615,7 +1642,9 @@ async function loadPortfolioPerformance(groupId, period = currentPerfPeriod) {
         const data = await res.json();
         currentPerfData = data;
         updatePerformanceMetrics(data);
-        renderPerformanceChart(data);
+        if (perfChartExpanded) {
+            renderPerformanceChart(data);
+        }
     } catch (err) {
         console.error('[Performance] Error loading performance:', err);
     } finally {
@@ -1632,12 +1661,12 @@ function updatePerformanceMetrics(data) {
         if (!el) return;
         if (val === null || val === undefined) {
             el.textContent = '-';
-            el.className = 'perf-card-val';
+            el.className = 'perf-stat-val';
             return;
         }
         const num = parseFloat(val);
         el.textContent = (isPct && num > 0 ? '+' : '') + num.toFixed(2) + suffix;
-        el.className = 'perf-card-val';
+        el.className = 'perf-stat-val';
         if (invertColor) {
             if (num < 0) el.classList.add('val-neg');
             else if (num > 0) el.classList.add('val-pos');
@@ -1653,9 +1682,9 @@ function updatePerformanceMetrics(data) {
     if (benchEl) {
         if (stats.benchmarkReturn !== null && stats.benchmarkReturn !== undefined) {
             const bNum = parseFloat(stats.benchmarkReturn);
-            benchEl.textContent = 'QQQ: ' + (bNum > 0 ? '+' : '') + bNum.toFixed(2) + '%';
+            benchEl.textContent = '(QQQ: ' + (bNum > 0 ? '+' : '') + bNum.toFixed(2) + '%)';
         } else {
-            benchEl.textContent = 'QQQ: -';
+            benchEl.textContent = '(QQQ: -)';
         }
     }
 
@@ -1667,16 +1696,20 @@ function updatePerformanceMetrics(data) {
     if (maxDDEl) {
         if (stats.maxDrawdown !== null && stats.maxDrawdown !== undefined) {
             maxDDEl.textContent = stats.maxDrawdown.toFixed(2) + '%';
-            maxDDEl.className = 'perf-card-val val-neg';
+            maxDDEl.className = 'perf-stat-val val-neg';
         } else {
             maxDDEl.textContent = '-';
-            maxDDEl.className = 'perf-card-val';
+            maxDDEl.className = 'perf-stat-val';
         }
     }
 
     const maxDDPeriodEl = document.getElementById('statMaxDDPeriod');
-    if (maxDDPeriodEl && data.maxDrawdownInfo) {
-        maxDDPeriodEl.textContent = data.maxDrawdownInfo.troughDate ? ('Trough: ' + data.maxDrawdownInfo.troughDate) : 'Peak to Trough';
+    if (maxDDPeriodEl) {
+        if (data.maxDrawdownInfo && data.maxDrawdownInfo.troughDate) {
+            maxDDPeriodEl.textContent = '(Tr: ' + data.maxDrawdownInfo.troughDate + ')';
+        } else {
+            maxDDPeriodEl.textContent = '';
+        }
     }
 
     setVal('statSharpe', stats.sharpeRatio);
@@ -1686,12 +1719,12 @@ function updatePerformanceMetrics(data) {
     const winRateEl = document.getElementById('statWinRate');
     if (winRateEl) {
         winRateEl.textContent = stats.winRate !== null && stats.winRate !== undefined ? (stats.winRate.toFixed(1) + '%') : '-';
-        winRateEl.className = 'perf-card-val';
+        winRateEl.className = 'perf-stat-val';
     }
 
     const betaEl = document.getElementById('statBeta');
     if (betaEl) {
-        betaEl.textContent = stats.beta !== null && stats.beta !== undefined ? ('Beta: ' + stats.beta.toFixed(2)) : 'Beta: -';
+        betaEl.textContent = stats.beta !== null && stats.beta !== undefined ? ('(β: ' + stats.beta.toFixed(2) + ')') : '';
     }
 }
 
@@ -1902,7 +1935,52 @@ function renderPerformanceChart(data) {
     }
     ctx.stroke();
 
-    // --- 4. X-Axis Date Labels ---
+    // --- 4. Portfolio Creation Date Marker (Vertical Dashed Line) ---
+    if (data.createdAt) {
+        let cIdx = data.history.findIndex(h => h.date >= data.createdAt);
+        if (cIdx < 0 && data.createdAt <= data.history[N - 1].date) {
+            cIdx = 0;
+        }
+        if (cIdx >= 0 && cIdx < N) {
+            const xCreated = getX(cIdx);
+            ctx.save();
+            ctx.strokeStyle = '#0284C7';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([4, 4]);
+            ctx.beginPath();
+            ctx.moveTo(xCreated, paddingTop);
+            ctx.lineTo(xCreated, yBottom + hBottom);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Draw Tag / Label at the top of the line
+            ctx.font = '600 9px -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
+            const badgeText = 'Created: ' + data.createdAt;
+            const textWidth = ctx.measureText(badgeText).width;
+            const badgeX = Math.max(paddingLeft + textWidth / 2 + 4, Math.min(width - paddingRight - textWidth / 2 - 4, xCreated));
+            const badgeY = paddingTop - 6;
+
+            ctx.fillStyle = 'rgba(240, 249, 255, 0.95)';
+            ctx.strokeStyle = '#0284C7';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            if (ctx.roundRect) {
+                ctx.roundRect(badgeX - textWidth / 2 - 4, badgeY - 11, textWidth + 8, 14, 3);
+            } else {
+                ctx.rect(badgeX - textWidth / 2 - 4, badgeY - 11, textWidth + 8, 14);
+            }
+            ctx.fill();
+            ctx.stroke();
+
+            ctx.fillStyle = '#0369A1';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(badgeText, badgeX, badgeY - 4);
+            ctx.restore();
+        }
+    }
+
+    // --- 5. X-Axis Date Labels ---
     ctx.fillStyle = '#64748B';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'top';
@@ -1923,7 +2001,7 @@ function renderPerformanceChart(data) {
         ctx.fillText(label, x, yBottom + hBottom + 6);
     }
 
-    // --- 5. Interactive Cursor / Tooltip Highlight ---
+    // --- 6. Interactive Cursor / Tooltip Highlight ---
     if (perfChartHoverIdx >= 0 && perfChartHoverIdx < N) {
         const idx = perfChartHoverIdx;
         const x = getX(idx);
@@ -2119,6 +2197,7 @@ window.removeMember = removeMember;
 window.changePerfPeriod = changePerfPeriod;
 window.loadPortfolioPerformance = loadPortfolioPerformance;
 window.renderPerformanceChart = renderPerformanceChart;
+window.togglePerfChart = togglePerfChart;
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', window.initDashboard);
@@ -2188,20 +2267,24 @@ if (document.readyState === 'loading') {
             }
         };
 
-        window.requestTranslation = function() {
+        window.requestTranslationToggle = function() {
             const chatInput = document.getElementById('chatInput');
-            // Store current input if any
-            const currentInput = chatInput.value;
-            
-            // Send translation request
-            // Send translation request
-            chatInput.value = "Please translate your PREVIOUS response into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text.";
+            let hasChinese = true;
+            if (chatHistory && chatHistory.length > 0) {
+                const reversed = [...chatHistory].reverse();
+                const lastBot = reversed.find(m => m.role === 'assistant' || m.role === 'bot' || m.role === 'model');
+                if (lastBot && lastBot.content) {
+                    hasChinese = /[\u4e00-\u9fa5]/.test(lastBot.content);
+                }
+            }
+            if (hasChinese) {
+                chatInput.value = "Please translate your PREVIOUS response into English. Do NOT search the web or provide new analysis -- strictly translate the text.";
+            } else {
+                chatInput.value = "Please translate your PREVIOUS response into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text.";
+            }
             sendChat();
-            
-            // Restore previous input (optional, but good UX if they were typing)
-            // Actually sendChat clears input, so we can't easily restore it to the input field
-            // But usually user translates *after* reading, so input is likely empty.
         };
+        window.requestTranslation = window.requestTranslationToggle;
 
         function setChatContext(ctx) {
             document.getElementById('chatContext').textContent = ctx;
@@ -2362,7 +2445,7 @@ if (document.readyState === 'loading') {
 
             // Get selected model
             const modelSelector = document.getElementById('modelSelector');
-            const selectedModel = modelSelector ? modelSelector.value : 'nemotron-3-super-120b-a12b';
+            const selectedModel = modelSelector ? modelSelector.value : 'gemma-4-26b-a4b-it';
             
             try {
                 const res = await fetch('/api/chat', {
@@ -2489,10 +2572,6 @@ if (document.readyState === 'loading') {
             document.getElementById('slashMenu').style.display = 'none';
             slashActive = false;
             input.focus();
-        }
-            
-            // Do NOT navigate to the group page
-            // selectGroup(group);
         }
         
         function insertStockSlash(symbol) {

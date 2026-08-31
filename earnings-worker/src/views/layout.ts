@@ -86,68 +86,71 @@ export const HTML = `<!DOCTYPE html>
                         <button id="btnEditPortfolio" onclick="toggleManager()" style="padding:4px 12px; border:1px solid #2196F3; background:white; color:#2196F3; border-radius:4px; cursor:pointer; font-size:0.8rem; margin-left:15px; flex-shrink: 0;">&#9998; Edit</button>
                     </div>
 
-                    <!-- Portfolio Performance & Trend Chart Section -->
-                    <div id="portfolioPerformanceSection" style="margin-left: auto; margin-right: auto; width: 100%; max-width: 1400px; margin-bottom: 15px;">
-                        <!-- Stats Cards Grid -->
-                        <div class="perf-stats-grid" id="perfStatsGrid">
-                            <div class="perf-card">
-                                <div class="perf-card-title">Total Return</div>
-                                <div class="perf-card-val" id="statTotalReturn">-</div>
-                                <div class="perf-card-sub" id="statBenchReturn">QQQ: -</div>
+                    <!-- Portfolio Performance & Trend Chart Section (Compact Mobile Optimized) -->
+                    <div id="portfolioPerformanceSection" style="margin-left: auto; margin-right: auto; width: 100%; max-width: 1400px; margin-bottom: 12px;">
+                        
+                        <!-- Top Toolbar: Period Buttons (Always Outside & Visible) & Expand Chart Toggle -->
+                        <div class="perf-control-bar">
+                            <div class="perf-period-buttons">
+                                <button class="perf-period-btn active" id="btnPeriodCreated" onclick="changePerfPeriod('created')">Created Date</button>
+                                <button class="perf-period-btn" id="btnPeriod2025" onclick="changePerfPeriod('2025')">2025~Present</button>
+                                <button class="perf-period-btn" id="btnPeriod1Y" onclick="changePerfPeriod('1y')">1Y</button>
+                                <button class="perf-period-btn" id="btnPeriodAll" onclick="changePerfPeriod('all')">All</button>
                             </div>
-                            <div class="perf-card">
-                                <div class="perf-card-title">Annualized Return</div>
-                                <div class="perf-card-val" id="statAnnualizedReturn">-</div>
-                                <div class="perf-card-sub">CAGR</div>
+                            <button id="btnTogglePerfChart" class="btn-toggle-chart" onclick="togglePerfChart()">📈 View Chart ▼</button>
+                        </div>
+
+                        <!-- Compact Return & Risk Statistics (Plain Text, Highly Space-Efficient) -->
+                        <div class="perf-stats-text-bar" id="perfStatsTextBar">
+                            <div class="perf-stat-item">
+                                <span class="perf-stat-label">Total:</span>
+                                <span class="perf-stat-val" id="statTotalReturn">-</span>
+                                <span class="perf-stat-sub" id="statBenchReturn">(QQQ: -)</span>
                             </div>
-                            <div class="perf-card">
-                                <div class="perf-card-title">Annualized Volatility</div>
-                                <div class="perf-card-val" id="statVolatility">-</div>
-                                <div class="perf-card-sub">Std Dev (Ann.)</div>
+                            <div class="perf-stat-item">
+                                <span class="perf-stat-label">CAGR:</span>
+                                <span class="perf-stat-val" id="statAnnualizedReturn">-</span>
                             </div>
-                            <div class="perf-card">
-                                <div class="perf-card-title">Max Drawdown</div>
-                                <div class="perf-card-val" id="statMaxDD" style="color:#ef4444;">-</div>
-                                <div class="perf-card-sub" id="statMaxDDPeriod">Peak to Trough</div>
+                            <div class="perf-stat-item">
+                                <span class="perf-stat-label">Vol:</span>
+                                <span class="perf-stat-val" id="statVolatility">-</span>
                             </div>
-                            <div class="perf-card">
-                                <div class="perf-card-title">Sharpe Ratio</div>
-                                <div class="perf-card-val" id="statSharpe">-</div>
-                                <div class="perf-card-sub">Rf = 4.0%</div>
+                            <div class="perf-stat-item">
+                                <span class="perf-stat-label">MaxDD:</span>
+                                <span class="perf-stat-val val-neg" id="statMaxDD">-</span>
+                                <span class="perf-stat-sub" id="statMaxDDPeriod"></span>
                             </div>
-                            <div class="perf-card">
-                                <div class="perf-card-title">Calmar Ratio</div>
-                                <div class="perf-card-val" id="statCalmar">-</div>
-                                <div class="perf-card-sub">CAGR / |MaxDD|</div>
+                            <div class="perf-stat-item">
+                                <span class="perf-stat-label">Sharpe:</span>
+                                <span class="perf-stat-val" id="statSharpe">-</span>
                             </div>
-                            <div class="perf-card">
-                                <div class="perf-card-title">Sortino Ratio</div>
-                                <div class="perf-card-val" id="statSortino">-</div>
-                                <div class="perf-card-sub">Downside Risk</div>
+                            <div class="perf-stat-item">
+                                <span class="perf-stat-label">Calmar:</span>
+                                <span class="perf-stat-val" id="statCalmar">-</span>
                             </div>
-                            <div class="perf-card">
-                                <div class="perf-card-title">Win Rate / Beta</div>
-                                <div class="perf-card-val" id="statWinRate">-</div>
-                                <div class="perf-card-sub" id="statBeta">Beta: -</div>
+                            <div class="perf-stat-item">
+                                <span class="perf-stat-label">Sortino:</span>
+                                <span class="perf-stat-val" id="statSortino">-</span>
+                            </div>
+                            <div class="perf-stat-item">
+                                <span class="perf-stat-label">Win/Beta:</span>
+                                <span class="perf-stat-val" id="statWinRate">-</span>
+                                <span class="perf-stat-sub" id="statBeta"></span>
                             </div>
                         </div>
 
-                        <!-- Performance Chart Card -->
-                        <div class="perf-chart-card">
+                        <!-- Collapsible Performance Chart Container (Toggled via Button) -->
+                        <div class="perf-chart-card" id="perfChartContainer" style="display:none;">
                             <div class="perf-chart-header">
                                 <div style="display:flex; align-items:center; gap: 10px; flex-wrap: wrap;">
-                                    <span style="font-weight: 700; font-size: 0.95rem; color: #1e293b;">Cumulative Returns & Drawdowns (vs QQQ)</span>
+                                    <span style="font-weight: 700; font-size: 0.88rem; color: #1e293b;">Cumulative Returns & Drawdowns (vs QQQ)</span>
                                     <div class="perf-legend">
                                         <span class="legend-item"><span class="legend-dot" style="background:#8b5cf6;"></span> Portfolio</span>
                                         <span class="legend-item"><span class="legend-dot" style="background:#64748b;"></span> Benchmark (QQQ)</span>
                                         <span class="legend-item"><span class="legend-diamond" style="background:#3b82f6;"></span> Peak</span>
                                         <span class="legend-item"><span class="legend-diamond" style="background:#ef4444;"></span> Valley</span>
+                                        <span class="legend-item"><span class="legend-dash"></span> Created Date</span>
                                     </div>
-                                </div>
-                                <div class="perf-period-buttons">
-                                    <button class="perf-period-btn active" id="btnPeriod2025" onclick="changePerfPeriod('2025')">2025~Present</button>
-                                    <button class="perf-period-btn" id="btnPeriod1Y" onclick="changePerfPeriod('1y')">1Y</button>
-                                    <button class="perf-period-btn" id="btnPeriodAll" onclick="changePerfPeriod('all')">All</button>
                                 </div>
                             </div>
 
@@ -386,11 +389,14 @@ export const HTML = `<!DOCTYPE html>
                     Context: <span id="chatContext">None</span>
                 </div>
             </div>
-            <div style="display:flex; align-items:center; gap:10px;">
+            <div style="display:flex; align-items:center; gap:8px;">
                 <select id="modelSelector" style="padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:0.8rem; background:white;">
-                    <option value="nemotron-3-super-120b-a12b" selected>Nemotron-3 Super 120B</option>
-                    <option value="gemma-4-26b-a4b-it">Gemma-4-26B (Cloudflare)</option>
+                    <option value="gemma-4-26b-a4b-it" selected>Gemma-4-26B (Cloudflare)</option>
+                    <option value="nemotron-3-super-120b-a12b">Nemotron-3 Super 120B</option>
                 </select>
+                <button class="translate-toggle-btn" onclick="requestTranslationToggle()" title="中/英切换翻译上一条回复" style="padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:0.78rem; font-weight:600; background:white; color:#374151; cursor:pointer; display:flex; align-items:center; gap:2px; height:28px;">
+                    <span>中 / EN</span>
+                </button>
                 <button onclick="toggleMaximize()" style="background:none; border:none; cursor:pointer;" title="Maximize">
                     <svg id="maxIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -410,8 +416,8 @@ export const HTML = `<!DOCTYPE html>
         
         <div id="chatMessages" class="chat-messages">
             <div class="message bot">
-                Hello! I am your Investment Portfolio Expert. You can ask me about valuations, technical trends, or portfolio allocation.<br><br>
-                Try typing <b>/p</b> to select a portfolio or <b>@</b> to analyze a specific stock.
+                您好！我是您的投资组合与个股分析专家。您可以向我咨询估值指标、技术趋势或组合配置。<br><br>
+                输入 <b>/p</b> 可选择投资组合，或输入 <b>@</b> 分析具体股票。
             </div>
         </div>
 
@@ -422,15 +428,12 @@ export const HTML = `<!DOCTYPE html>
 
         <div class="input-area">
             <div class="chips-row">
-                <div class="chip" onclick="setContextQuestion('✨ Analyze this')">✨ Analyze this</div>
-                <div class="chip" onclick="setContextQuestion('📈 Technical Trend')">📈 Technical Trend</div>
-                <div class="chip" onclick="setContextQuestion('💰 Valuation Check')">💰 Valuation Check</div>
+                <div class="chip" onclick="setContextQuestion('✨ 分析当前组合')">✨ 综合分析</div>
+                <div class="chip" onclick="setContextQuestion('📈 分析技术趋势')">📈 技术趋势</div>
+                <div class="chip" onclick="setContextQuestion('💰 估值与PEG评估')">💰 估值评估</div>
             </div>
             <div class="input-wrapper">
-                <button class="translate-btn" onclick="requestTranslation()" title="Translate last reply to Chinese" style="background:none; border:none; cursor:pointer; padding:0 8px; color:#666;">
-                    <span style="font-size: 1.2rem;">文</span>
-                </button>
-                <input type="text" id="chatInput" class="chat-input" placeholder="Ask, @mention, or /command..." onkeydown="handleChatInput(event)" oninput="handleInputTrigger(event)">
+                <input type="text" id="chatInput" class="chat-input" placeholder="提问、@提及股票 或 输入 / 命令..." onkeydown="handleChatInput(event)" oninput="handleInputTrigger(event)">
                 <button class="send-btn" onclick="sendChat()">
                     <svg  xmlns="http://www.w3.org/2000/svg"  width="20"  height="20"  viewBox="0 0 24 24"  fill="none"  stroke="currentColor"  stroke-width="2"  stroke-linecap="round"  stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 14l11 -11" /><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5" /></svg>
                 </button>

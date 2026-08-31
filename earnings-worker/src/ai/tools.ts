@@ -38,7 +38,7 @@ export async function handleInvestmentTool(name: string, args: any, env: Binding
             symbol: d.symbol,
             price: d.price,
             allocation: d.allocation, // Assuming 'allocation' field exists and is populated
-            value_metrics: { peg: d.peg, growth: d.peg ? (d.quote?.forward_pe! / d.peg).toFixed(1) + '%' : 'N/A' }
+            value_metrics: { peg: d.peg, growth: (d.peg && d.quote?.forwardPE) ? (d.quote.forwardPE / d.peg).toFixed(1) + '%' : 'N/A' }
         }));
         return {
             total_stocks: summary.length,
@@ -177,9 +177,9 @@ export async function handleValueTool(name: string, args: any, env: Bindings): P
         return {
             symbol: stock.symbol,
             price: stock.price,
-            forward_pe: stock.peg && stock.quote?.forward_pe ? stock.quote.forward_pe : "N/A",
+            forward_pe: stock.peg && stock.quote?.forwardPE ? stock.quote.forwardPE : "N/A",
             peg_ratio: stock.peg || "N/A",
-            growth_rate_implied: stock.peg && stock.quote?.forward_pe ? (stock.quote.forward_pe / stock.peg).toFixed(2) + "%" : "N/A",
+            growth_rate_implied: stock.peg && stock.quote?.forwardPE ? (stock.quote.forwardPE / stock.peg).toFixed(2) + "%" : "N/A",
             valuation_bias: (stock.peg && stock.peg < 1.5) ? "UNDERVALUED" : (stock.peg && stock.peg > 2.5) ? "OVERVALUED" : "FAIR"
         };
     }

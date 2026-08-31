@@ -15,7 +15,7 @@ export const MANIFEST_JSON = JSON.stringify({
     "scope": "/"
 });
 
-export const SW_JS = `const CACHE_NAME = 'peg-sys-v1';
+export const SW_JS = `const CACHE_NAME = 'peg-sys-v2';
 const urlsToCache = [
     '/',
     '/favicon.ico',

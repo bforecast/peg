@@ -500,49 +500,102 @@ export const STYLES = `
             .chat-container { width: 100%; height: 100%; max-height: 100%; bottom: 0; right: 0; border-radius: 0; }
         }
 
-        /* Portfolio Performance & Trend Section */
-        .perf-stats-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
-            gap: 10px;
-            margin-bottom: 15px;
+        /* Portfolio Performance & Trend Section (Compact Mobile-Optimized) */
+        .perf-control-bar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 8px;
         }
-        .perf-card {
+        .perf-period-buttons {
+            display: inline-flex;
+            gap: 3px;
+            background: #F1F5F9;
+            padding: 2px;
+            border-radius: 6px;
+        }
+        .perf-period-btn {
+            background: transparent;
+            border: none;
+            border-radius: 4px;
+            padding: 4px 8px;
+            font-size: 0.76rem;
+            font-weight: 500;
+            color: #64748B;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .perf-period-btn:hover {
+            color: #0F172A;
+        }
+        .perf-period-btn.active {
             background: white;
+            color: #2563EB;
+            font-weight: 600;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+        }
+        .btn-toggle-chart {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 10px;
+            font-size: 0.76rem;
+            font-weight: 600;
+            color: #475569;
+            background: white;
+            border: 1px solid #CBD5E1;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.15s;
+            white-space: nowrap;
+        }
+        .btn-toggle-chart:hover {
+            background: #F8FAFC;
+            color: #0F172A;
+            border-color: #94A3B8;
+        }
+        .btn-toggle-chart.active {
+            background: #EFF6FF;
+            color: #2563EB;
+            border-color: #93C5FD;
+        }
+
+        .perf-stats-text-bar {
+            background: #F8FAFC;
             border: 1px solid #E2E8F0;
             border-radius: 8px;
-            padding: 10px 12px;
+            padding: 7px 12px;
             display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            box-shadow: 0 1px 2px rgba(0,0,0,0.03);
-            transition: all 0.2s ease;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px 14px;
+            font-size: 0.8rem;
+            color: #475569;
+            line-height: 1.35;
+            margin-bottom: 10px;
         }
-        .perf-card:hover {
-            box-shadow: 0 3px 8px rgba(0,0,0,0.07);
-            border-color: #CBD5E1;
+        .perf-stat-item {
+            display: inline-flex;
+            align-items: baseline;
+            gap: 4px;
+            white-space: nowrap;
         }
-        .perf-card-title {
-            font-size: 0.75rem;
-            font-weight: 600;
+        .perf-stat-label {
             color: #64748B;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            margin-bottom: 4px;
+            font-weight: 500;
+            font-size: 0.76rem;
         }
-        .perf-card-val {
-            font-size: 1.25rem;
+        .perf-stat-val {
             font-weight: 700;
             color: #0F172A;
-            line-height: 1.2;
         }
-        .perf-card-sub {
-            font-size: 0.72rem;
+        .perf-stat-sub {
             color: #94A3B8;
-            margin-top: 3px;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            font-size: 0.72rem;
+            font-weight: 400;
         }
         .val-pos { color: #10B981 !important; }
         .val-neg { color: #EF4444 !important; }
@@ -588,6 +641,13 @@ export const STYLES = `
             height: 8px;
             transform: rotate(45deg);
             display: inline-block;
+        }
+        .legend-dash {
+            width: 14px;
+            height: 0;
+            border-top: 2px dashed #0284c7;
+            display: inline-block;
+            vertical-align: middle;
         }
         .perf-period-buttons {
             display: inline-flex;

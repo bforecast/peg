@@ -43,7 +43,7 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
 
     // 2. Fetch History for ALL members + Benchmark
     const allSymbols = [...new Set([...symbols, BENCHMARK_SYMBOL])];
-    const priceMap = new Map<string, StockPrice[]>();
+    const priceMap = new Map<string, { date: string; close: number | null }[]>();
 
     // Optimization: Batch Fetch from D1
     // SQLite limit is usually high (999 vars), but let's batch by 50 to be safe
@@ -139,11 +139,11 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
 
     validSymbols.forEach(sym => {
         const history = priceMap.get(sym)!;
-        const startPrice = history[0].close || 0; // Robust null check
+        const matchingPrice = history.find(p => p.date >= commonStartDate)?.close || history[history.length - 1]?.close || 0;
         const alloc = targetAllocations.get(sym) || 0;
         const dollarAmount = (alloc / 100) * INITIAL_CAPITAL;
-        if (startPrice > 0) {
-            shares.set(sym, dollarAmount / startPrice);
+        if (matchingPrice > 0) {
+            shares.set(sym, dollarAmount / matchingPrice);
         } else {
             shares.set(sym, 0);
         }
@@ -165,6 +165,13 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     const portfolioCurve: { date: string, value: number }[] = [];
     const benchmarkCurve: { date: string, value: number }[] = [];
     const lastKnownPrices = new Map<string, number>();
+
+    // Initial price seed
+    validSymbols.forEach(sym => {
+        const history = priceMap.get(sym)!;
+        const matchingPrice = history.find(p => p.date >= commonStartDate)?.close || history[history.length - 1]?.close || 0;
+        if (matchingPrice > 0) lastKnownPrices.set(sym, matchingPrice);
+    });
 
     // Simulation Loop  
     for (const day of validSpy) {
@@ -304,7 +311,9 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
         for (let i = 1; i < validHistory.length; i++) {
             const prev = validHistory[i - 1].close;
             const curr = validHistory[i].close;
-            if (prev > 0) dailyRets.push((curr - prev) / prev);
+            if (prev !== null && prev !== undefined && curr !== null && curr !== undefined && prev > 0) {
+                dailyRets.push((curr - prev) / prev);
+            }
         }
 
         if (dailyRets.length === 0) return;
@@ -393,6 +402,7 @@ export interface PortfolioPerformanceData {
     benchmarkSymbol: string;
     startDate: string;
     endDate: string;
+    createdAt?: string | null;
     totalTradingDays: number;
     stats: PerformanceMetricStats;
     history: {
@@ -422,9 +432,16 @@ export async function calculatePortfolioPerformance(
 ): Promise<PortfolioPerformanceData | null> {
     const benchmarkSymbol = (options?.benchmark || 'QQQ').toUpperCase();
     
+    // 1. Fetch Group details and Members
+    const groupRow: any = await env.DB.prepare("SELECT id, name, type, description, created_at FROM groups WHERE id = ?").bind(groupId).first();
+    const groupName = groupRow?.name || `Portfolio ${groupId}`;
+    const createdDateStr = groupRow?.created_at ? (String(groupRow.created_at).split('T')[0].split(' ')[0]) : null;
+
     // Default startDate is 2025-01-01 (2025 to present)
     let targetStartDate = options?.startDate || '2025-01-01';
-    if (options?.period === '1y') {
+    if (options?.period === 'created' || options?.period === 'inception') {
+        targetStartDate = createdDateStr || '2025-01-01';
+    } else if (options?.period === '1y') {
         targetStartDate = getDateDaysAgo(365);
     } else if (options?.period === 'all') {
         targetStartDate = '2020-01-01';
@@ -437,10 +454,6 @@ export async function calculatePortfolioPerformance(
     d.setDate(d.getDate() - 15);
     const fetchStartDate = d.toISOString().split('T')[0];
 
-    // 1. Fetch Group details and Members
-    const groupRow: any = await env.DB.prepare("SELECT id, name, type, description, created_at FROM groups WHERE id = ?").bind(groupId).first();
-    const groupName = groupRow?.name || `Portfolio ${groupId}`;
-
     const { results: members } = await env.DB.prepare(
         "SELECT symbol, allocation FROM group_members WHERE group_id = ?"
     ).bind(groupId).all();
@@ -452,6 +465,7 @@ export async function calculatePortfolioPerformance(
             benchmarkSymbol,
             startDate: targetStartDate,
             endDate: new Date().toISOString().split('T')[0],
+            createdAt: createdDateStr,
             totalTradingDays: 0,
             stats: {
                 totalReturn: null,
@@ -478,7 +492,7 @@ export async function calculatePortfolioPerformance(
 
     // 2. Fetch prices for all symbols + Benchmark
     const allSymbols = [...new Set([...symbols, benchmarkSymbol])];
-    const priceMap = new Map<string, StockPrice[]>();
+    const priceMap = new Map<string, { date: string; close: number | null }[]>();
     const BATCH_SIZE = 50;
 
     for (let i = 0; i < allSymbols.length; i += BATCH_SIZE) {
@@ -601,8 +615,8 @@ export async function calculatePortfolioPerformance(
     // Initial price seed
     validSymbols.forEach(sym => {
         const history = priceMap.get(sym)!;
-        const firstP = history.find(p => p.date <= commonStartDate)?.close || history[0]?.close;
-        if (firstP) lastKnownPrices.set(sym, firstP);
+        const matchingPrice = history.find(p => p.date >= commonStartDate)?.close || history[history.length - 1]?.close || 0;
+        if (matchingPrice > 0) lastKnownPrices.set(sym, matchingPrice);
     });
 
     // 4. Daily Tracking Simulation
@@ -647,7 +661,8 @@ export async function calculatePortfolioPerformance(
         }
 
         const portReturnPct = ((dailyValue - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100;
-        const benchVal = (day.close / benchStartPrice) * INITIAL_CAPITAL;
+        const benchClose = day.close || benchStartPrice;
+        const benchVal = (benchClose / benchStartPrice) * INITIAL_CAPITAL;
         const benchReturnPct = ((benchVal - INITIAL_CAPITAL) / INITIAL_CAPITAL) * 100;
 
         historyPoints.push({
@@ -806,6 +821,7 @@ export async function calculatePortfolioPerformance(
         benchmarkSymbol,
         startDate: commonStartDate,
         endDate: historyPoints[N - 1].date,
+        createdAt: createdDateStr,
         totalTradingDays: N,
         stats: {
             totalReturn: safeNum(totalReturn),

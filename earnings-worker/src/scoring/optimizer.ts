@@ -429,7 +429,7 @@ export function optimizePortfolioWeights(
     );
 
     // Build final result
-    let recommendation = verifyResult.recommendation;
+    let recommendation: 'REBALANCE' | 'HOLD' | 'PROTECT' = verifyResult.recommendation;
     let finalWeights = phase2Result.newWeights;
 
     if (phase1Status === 'PROTECTING') {

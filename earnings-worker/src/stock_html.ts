@@ -307,11 +307,14 @@ export const STOCK_HTML = `<!DOCTYPE html>
                     Context: <span id="chatContext">Loading...</span>
                 </div>
             </div>
-            <div style="display:flex; align-items:center; gap:10px;">
+            <div style="display:flex; align-items:center; gap:8px;">
                 <select id="modelSelector" style="padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:0.8rem; background:white;">
-                    <option value="nemotron-3-super-120b-a12b" selected>Nemotron-3 Super 120B</option>
-                    <option value="gemma-4-26b-a4b-it">Gemma-4-26B (Cloudflare)</option>
+                    <option value="gemma-4-26b-a4b-it" selected>Gemma-4-26B (Cloudflare)</option>
+                    <option value="nemotron-3-super-120b-a12b">Nemotron-3 Super 120B</option>
                 </select>
+                <button class="translate-toggle-btn" onclick="requestTranslationToggle()" title="中/英切换翻译上一条回复" style="padding:4px 8px; border-radius:4px; border:1px solid #ddd; font-size:0.78rem; font-weight:600; background:white; color:#374151; cursor:pointer; display:flex; align-items:center; gap:2px; height:28px;">
+                    <span>中 / EN</span>
+                </button>
                 <button onclick="toggleMaximize()" style="background:none; border:none; cursor:pointer;" title="Maximize">
                     <svg id="maxIcon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                         <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
@@ -331,22 +334,19 @@ export const STOCK_HTML = `<!DOCTYPE html>
         
         <div id="chatMessages" class="chat-messages">
             <div class="message bot" id="welcomeMessage">
-                Hello! I can analyze this stock for you. Ask about earnings, valuation, or technical trends.
+                您好！我可以为您深度分析这只股票。您可以向我询问财报数据、估值与PEG评估或技术走势。
             </div>
         </div>
 
         <div class="input-area">
             <div class="chips-row">
-                <div class="chip" onclick="setContextQuestion('✨ Analyze this stock')">✨ Analyze this</div>
-                <div class="chip" onclick="setContextQuestion('📈 Technical Analysis for '+symbol)">📈 Technical Trend</div>
-                <div class="chip" onclick="setContextQuestion('💰 Valuation Check for '+symbol)">💰 Valuation Check</div>
-                 <div class="chip" onclick="setContextQuestion('📊 Earnings History for '+symbol)">📊 Earnings</div>
+                <div class="chip" onclick="setContextQuestion('✨ 综合分析此股票: '+symbol)">✨ 综合分析</div>
+                <div class="chip" onclick="setContextQuestion('📈 技术趋势分析: '+symbol)">📈 技术趋势</div>
+                <div class="chip" onclick="setContextQuestion('💰 估值与PEG评估: '+symbol)">💰 估值评估</div>
+                 <div class="chip" onclick="setContextQuestion('📊 历史财报与增长: '+symbol)">📊 财报分析</div>
             </div>
             <div class="input-wrapper">
-                 <button class="translate-btn" onclick="requestTranslation()" title="Translate last reply to Chinese" style="background:none; border:none; cursor:pointer; padding:0 8px; color:#666;">
-                    <span style="font-size: 1.2rem;">文</span>
-                </button>
-                <input type="text" id="chatInput" class="chat-input" placeholder="Ask about this stock..." onkeydown="handleChatInput(event)">
+                <input type="text" id="chatInput" class="chat-input" placeholder="询问关于此股票的问题..." onkeydown="handleChatInput(event)">
                 <button class="send-btn" onclick="sendChat()">
                     <svg  xmlns="http://www.w3.org/2000/svg"  width="20"  height="20"  viewBox="0 0 24 24"  fill="none"  stroke="currentColor"  stroke-width="2"  stroke-linecap="round"  stroke-linejoin="round"><path stroke="none" d="M0 0h24v24H0z" fill="none"/><path d="M10 14l11 -11" /><path d="M21 3l-6.5 18a.55 .55 0 0 1 -1 0l-3.5 -7l-7 -3.5a.55 .55 0 0 1 0 -1l18 -6.5" /></svg>
                 </button>
@@ -515,7 +515,7 @@ export const STOCK_HTML = `<!DOCTYPE html>
         };
 
         const modelSelector = document.getElementById('modelSelector');
-        const selectedModel = modelSelector ? modelSelector.value : 'nemotron-3-super-120b-a12b';
+        const selectedModel = modelSelector ? modelSelector.value : 'gemma-4-26b-a4b-it';
         
         try {
             const res = await fetch('/api/chat', {
@@ -542,11 +542,24 @@ export const STOCK_HTML = `<!DOCTYPE html>
         if (e.key === 'Enter') sendChat();
     }
 
-    function requestTranslation() {
+    function requestTranslationToggle() {
         const input = document.getElementById('chatInput');
-        input.value = "Please translate your PREVIOUS response into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text.";
+        let hasChinese = true;
+        if (chatHistory && chatHistory.length > 0) {
+            const reversed = [...chatHistory].reverse();
+            const lastBot = reversed.find(m => m.role === 'assistant' || m.role === 'bot' || m.role === 'model');
+            if (lastBot && lastBot.content) {
+                hasChinese = /[\u4e00-\u9fa5]/.test(lastBot.content);
+            }
+        }
+        if (hasChinese) {
+            input.value = "Please translate your PREVIOUS response into English. Do NOT search the web or provide new analysis -- strictly translate the text.";
+        } else {
+            input.value = "Please translate your PREVIOUS response into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text.";
+        }
         sendChat();
     }
+    const requestTranslation = requestTranslationToggle;
     
     function setContextQuestion(q) {
         if(!chatOpen) toggleChat();
@@ -558,8 +571,8 @@ export const STOCK_HTML = `<!DOCTYPE html>
     async function init() {
         // Update Static Chat Elements with Symbol
         document.getElementById('chatContext').innerText = '@' + symbol;
-        document.getElementById('welcomeMessage').innerText = 'Hello! I can analyze ' + symbol + ' for you. Ask about earnings, valuation, or technical trends.';
-        document.getElementById('chatInput').placeholder = 'Ask about ' + symbol + '...';
+        document.getElementById('welcomeMessage').innerText = '您好！我可以为您深度分析 ' + symbol + '。您可以询问财报、估值或技术走势。';
+        document.getElementById('chatInput').placeholder = '询问关于 ' + symbol + ' 的问题...';
         
         try {
             console.log('Fetching stock data...');

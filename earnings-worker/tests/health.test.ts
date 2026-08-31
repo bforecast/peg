@@ -22,7 +22,7 @@ describe('Health Check', () => {
         await waitOnExecutionContext(ctx);
 
         expect(response.status).toBe(200);
-        const json = await response.json();
+        const json: any = await response.json();
         expect(json.status).toBe('healthy');
         expect(json.checks.db).toBe('ok');
         expect(json.checks.env.ALPHA_VANTAGE).toBe('set');

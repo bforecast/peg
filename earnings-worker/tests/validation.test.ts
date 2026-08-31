@@ -32,7 +32,7 @@ describe('Validation Endpoint', () => {
         await waitOnExecutionContext(ctx);
 
         expect(response.status).toBe(200);
-        const json = await response.json();
+        const json: any = await response.json();
         expect(json.valid).toBe(true);
         expect(json.symbol).toBe('MSFT');
     });
@@ -53,7 +53,7 @@ describe('Validation Endpoint', () => {
         await waitOnExecutionContext(ctx);
 
         expect(response.status).toBe(200);
-        const json = await response.json();
+        const json: any = await response.json();
         expect(json.valid).toBe(false);
     });
 });

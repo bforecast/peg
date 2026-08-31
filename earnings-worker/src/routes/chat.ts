@@ -12,17 +12,19 @@ You act as three experts rolled into one:
 1. Investment Expert: Analyzes portfolio allocations, diversification, and risks.
 2. Value Investing Expert: Evaluates valuations using PEG, Forward PE, and Earnings Growth.
    - Ideal PEG is around 1.0. < 1.5 is potentially undervalued. > 2.5 is expensive unless growth is massive.
-   - Loves consistant earnings growth.
+   - Loves consistent earnings growth.
 3. Technical Analyst: Looks at Price vs SMA (20/50/200) and RS Rank.
    - RS Rank (1-99) above 80 is Strong.
    - Price > 20SMA > 50SMA is a strong uptrend.
 
 Context Handling:
 - The user might supply a "Context" like a specific Stock Symbol or Portfolio Name.
-- Use the available TOOLS to fetch real data. DO NOT Hallucinate prices.
-- If the user asks about a stock, ALWAYS fetch its valuation and technical data first.
+- Use the provided data to evaluate metrics. DO NOT Hallucinate prices.
+- If the user asks about a stock, ALWAYS consider its valuation and technical data first.
 
-Tone: Professional, Insightful, yet Concise. Use markdown for formatting.
+Language & Tone:
+- ALWAYS respond in Simplified Chinese (简体中文) by default with professional financial terminology, unless the user explicitly requests another language.
+- Tone: Professional, Insightful, yet Concise. Use markdown tables and lists for clear formatting.
 `;
 
 chatRoutes.post('/api/chat', async (c) => {
@@ -30,10 +32,10 @@ chatRoutes.post('/api/chat', async (c) => {
         const body = await c.req.json();
         let { message, context, history, model } = body;
 
-        // Default to NVIDIA Nemotron-3 Super 120B if not specified
-        const selectedModel = (model === 'gemma-4-26b-a4b-it' || model === '@cf/google/gemma-4-26b-a4b-it')
-            ? '@cf/google/gemma-4-26b-a4b-it'
-            : 'nemotron-3-super-120b-a12b';
+        // Default to Cloudflare Workers AI Gemma-4-26B if not specified
+        const selectedModel = (model === 'nemotron-3-super-120b-a12b' || model === 'nemotron')
+            ? 'nemotron-3-super-120b-a12b'
+            : '@cf/google/gemma-4-26b-a4b-it';
 
         console.log(`[Chat] Selected model: ${selectedModel} (received: ${model})`);
 
@@ -89,21 +91,24 @@ chatRoutes.post('/api/chat', async (c) => {
         let localDataContext = '';
 
         // Handle Translation requests
-        const isTranslationRequest = /translate.*previous|缈昏瘧|translation/i.test(message);
+        const isTranslationToEnglish = /translate.*(?:into|to)?\s*english|翻译.*(?:成|为)?\s*(?:英文|英语)/i.test(message);
+        const isTranslationToChinese = /translate.*(?:into|to)?\s*(?:simplified\s+chinese|chinese|zh)|翻译.*(?:成|为)?\s*(?:中文|简体中文)/i.test(message);
+        const isTranslationRequest = isTranslationToEnglish || isTranslationToChinese || /translate.*previous|翻译|translation/i.test(message);
         let enhancedMessage = message;
 
         if (isTranslationRequest) {
-            console.log('[NVIDIA Chat] Translation request detected.');
+            console.log('[Chat] Translation request detected.');
             localDataContext = ''; // No context for translation
             if (history && Array.isArray(history)) {
                 const reversedHistory = [...history].reverse();
-                // Match standard assistant roles (Gemini history used model, others assistant)
-                const lastAssistantMsg = reversedHistory.find(h => h.role === 'model' || h.role === 'assistant');
+                // Match standard assistant roles
+                const lastAssistantMsg = reversedHistory.find(h => h.role === 'model' || h.role === 'assistant' || h.role === 'bot');
                 if (lastAssistantMsg && lastAssistantMsg.content) {
-                    console.log('[NVIDIA Chat] Injecting ' + lastAssistantMsg.content.length + ' chars for translation');
-                    enhancedMessage = `Please translate the following text into Simplified Chinese. Do NOT search the web or provide new analysis -- strictly translate the text:\n\n"""\n${lastAssistantMsg.content}\n"""`;
+                    const targetLang = isTranslationToEnglish ? 'English' : 'Simplified Chinese';
+                    console.log(`[Chat] Injecting ${lastAssistantMsg.content.length} chars for translation to ${targetLang}`);
+                    enhancedMessage = `Please translate the following text into ${targetLang}. Do NOT search the web or provide new analysis -- strictly translate the text:\n\n"""\n${lastAssistantMsg.content}\n"""`;
                 } else {
-                    console.log('[NVIDIA Chat] WARNING: No assistant message found for translation.');
+                    console.log('[Chat] WARNING: No assistant message found for translation.');
                     enhancedMessage = message + `\n\n[System Note: The user requested translation of the previous response, but the server implementation could not locate a previous assistant message in the history.]`;
                 }
             }
@@ -156,7 +161,7 @@ chatRoutes.post('/api/chat', async (c) => {
                 }
 
                 for (const target of portfoliosToFetch) {
-                    let group;
+                    let group: any;
                     if (target.type === 'id') {
                         group = await db.prepare(
                             `SELECT g.id, g.name, g.description,

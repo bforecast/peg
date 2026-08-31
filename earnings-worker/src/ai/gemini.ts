@@ -2,7 +2,7 @@ import { Bindings } from '../types';
 import { ALL_TOOLS, dispatchToolCall } from './tools';
 
 type ChatMessage = {
-    role: 'user' | 'model'; // Gemini uses 'model' instead of 'assistant'
+    role: 'user' | 'model' | 'function'; // Gemini uses 'model' instead of 'assistant', and 'function' for tool responses
     parts: { text?: string; functionCall?: any; functionResponse?: any }[];
 };
 

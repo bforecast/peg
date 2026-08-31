@@ -3,8 +3,9 @@ import { SUPERINVESTORS, CUSIP_MAP } from './sec_data';
 
 const SEC_USER_AGENT = 'ForwardPegSystem admin@bforecast.com';
 
-let _companyTickersCache: { exactMap: Map<string, string>; strippedMap: Map<string, string> } | null = null;
-let _companyTickersPromise: Promise<typeof _companyTickersCache> | null = null;
+type TickersCache = { exactMap: Map<string, string>; strippedMap: Map<string, string> };
+let _companyTickersCache: TickersCache | null = null;
+let _companyTickersPromise: Promise<TickersCache | null> | null = null;
 
 function decodeHtml(html: string): string {
     return html
