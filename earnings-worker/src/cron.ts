@@ -1,6 +1,6 @@
 import { Bindings } from './types';
 import { fetchQuotes } from './yahoo';
-import { logCronStatus, saveQuotesToDB, getLastTradingDate, getESTDate, getESTTimestamp } from './db';
+import { logCronStatus, saveQuotesToDB, getLastTradingDate, getESTDate, getESTTimestamp, updatePrices } from './db';
 import { calculateStats } from './stats';
 import { updateScoringMetrics } from './scoring/fetcher';
 
@@ -60,7 +60,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     WHERE ps.updated_at IS NULL OR ps.updated_at < ?
                 `).bind(cutoffTime).first() as any;
 
-                if (stalePfs === 0 && (now.getHours() >= 18 || (now.getHours() < 10 && !isWeekend))) {
+                if (stalePfs === 0) {
                     // Throttled SKIP log: Only log to database once per hour to avoid spam
                     const lastSkip = await env.DB.prepare(
                         "SELECT timestamp FROM cron_logs WHERE status IN ('SKIP', 'CHECKED') ORDER BY id DESC LIMIT 1"
@@ -102,6 +102,47 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     const tasks = quotes.map(async (q) => {
                         if (q.regularMarketPrice && q.regularMarketPrice > 0) {
                             try {
+                                // 2a. Gap Detection & Split Detection Check (Auto-Healing)
+                                // If the symbol has a missing days gap (e.g. from a past interruption/outage)
+                                // or price drastic change (>40% drop or >60% jump indicating split),
+                                // automatically backfill full history to heal all missing days seamlessly.
+                                const lastPriceRow = await env.DB.prepare(
+                                    `SELECT date, close FROM stock_prices WHERE symbol = ? AND date < ? ORDER BY date DESC LIMIT 1`
+                                ).bind(q.symbol, dateStr).first() as { date: string, close: number } | null;
+
+                                let needsFullBackfill = false;
+
+                                if (!lastPriceRow) {
+                                    // Completely new symbol or no history
+                                    needsFullBackfill = true;
+                                } else {
+                                    // Check for date gap between last recorded price and target dateStr
+                                    const lastDate = new Date(lastPriceRow.date + 'T00:00:00Z');
+                                    const currentDate = new Date(dateStr + 'T00:00:00Z');
+                                    const dayDiff = Math.round((currentDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+                                    const dayOfWeek = currentDate.getUTCDay(); // 1=Mon, 2=Tue...
+
+                                    // Normal trading gap is 1 day (Tue-Fri), 3 days (Mon after weekend), or 4 days (after holiday)
+                                    const maxNormalGap = (dayOfWeek === 1 || dayOfWeek === 2) ? 4 : 2;
+                                    if (dayDiff > maxNormalGap) {
+                                        console.warn(`[Cron Auto-Heal] Detected historical price gap for ${q.symbol}: last date was ${lastPriceRow.date}, target is ${dateStr} (gap: ${dayDiff} days). Triggering auto-backfill.`);
+                                        needsFullBackfill = true;
+                                    } else if (lastPriceRow.close > 0) {
+                                        const ratio = q.regularMarketPrice / lastPriceRow.close;
+                                        if (ratio < 0.6 || ratio > 1.6) {
+                                            console.warn(`[Cron Split Detection] Detected potential stock split for ${q.symbol}: ratio ${ratio.toFixed(2)} (Prev: ${lastPriceRow.close}, New: ${q.regularMarketPrice}). Triggering full history backfill.`);
+                                            needsFullBackfill = true;
+                                        }
+                                    }
+                                }
+
+                                if (needsFullBackfill) {
+                                    await updatePrices(env, q.symbol);
+                                    pricesUpdated++;
+                                    statsUpdated++;
+                                    return;
+                                }
+
                                 // Insert today's price (using current quote price as close)
                                 await env.DB.prepare(`
                                     INSERT OR REPLACE INTO stock_prices (symbol, date, close, open, high, low, volume, updated_at)
@@ -329,11 +370,12 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             const verifyStart = Date.now();
             let gapSymbols: string[] = [];
 
+            // Verify that all active portfolio symbols have been processed in stock_stats
             const { results: gapRows } = await env.DB.prepare(`
-                SELECT q.symbol FROM stock_quotes q
-                LEFT JOIN stock_stats s ON q.symbol = s.symbol
-                WHERE q.updated_at > ? AND (s.updated_at IS NULL OR s.updated_at <= ?)
-            `).bind(cutoffTime, cutoffTime).all();
+                SELECT DISTINCT gm.symbol FROM group_members gm
+                LEFT JOIN stock_stats s ON gm.symbol = s.symbol
+                WHERE s.updated_at IS NULL OR s.updated_at <= ?
+            `).bind(cutoffTime).all();
 
             gapSymbols = gapRows.map((r: any) => r.symbol);
 

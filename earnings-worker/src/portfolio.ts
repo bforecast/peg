@@ -12,6 +12,28 @@ const BENCHMARK_SYMBOL = "SPY";
 const TRADING_DAYS_PER_YEAR = 252;
 const RISK_FREE_RATE = 0.04; // 4% approximation for Sharpe
 
+/**
+ * Robust filter for isolated single-day outliers (e.g. unadjusted split spikes / bad ticks)
+ */
+function sanitizePriceHistory(history: { date: string; close: number | null }[]): { date: string; close: number | null }[] {
+    if (!history || history.length < 3) return history;
+    const sanitized = history.map(h => ({ ...h }));
+    for (let i = 1; i < sanitized.length - 1; i++) {
+        const prev = sanitized[i - 1].close;
+        const curr = sanitized[i].close;
+        const next = sanitized[i + 1].close;
+        if (prev && curr && next && prev > 0 && next > 0) {
+            // Check for isolated single-day spike (e.g. unadjusted split / bad tick > 2.0x or < 0.5x)
+            const spikeUp = (curr > 2.0 * prev) && (curr > 2.0 * next);
+            const spikeDown = (curr < 0.5 * prev) && (curr < 0.5 * next);
+            if (spikeUp || spikeDown) {
+                sanitized[i].close = (prev + next) / 2;
+            }
+        }
+    }
+    return sanitized;
+}
+
 export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     console.log(`[Portfolio Stats] Starting calculation for group ${groupId}`);
     
@@ -71,6 +93,11 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
         } catch (err) {
             console.error("Error batch fetching prices:", err);
         }
+    }
+
+    // Sanitize price histories to remove bad ticks / unadjusted single-day split spikes
+    for (const [sym, history] of priceMap.entries()) {
+        priceMap.set(sym, sanitizePriceHistory(history));
     }
 
     // Benchmark Data
@@ -437,16 +464,16 @@ export async function calculatePortfolioPerformance(
     const groupName = groupRow?.name || `Portfolio ${groupId}`;
     const createdDateStr = groupRow?.created_at ? (String(groupRow.created_at).split('T')[0].split(' ')[0]) : null;
 
-    // Default startDate is 2025-01-01 (2025 to present)
-    let targetStartDate = options?.startDate || '2025-01-01';
+    // Default startDate is 1Y (365 days ago) to correspond with database portfolio_stats
+    let targetStartDate = options?.startDate || getDateDaysAgo(365);
     if (options?.period === 'created' || options?.period === 'inception') {
         targetStartDate = createdDateStr || '2025-01-01';
-    } else if (options?.period === '1y') {
-        targetStartDate = getDateDaysAgo(365);
-    } else if (options?.period === 'all') {
-        targetStartDate = '2020-01-01';
     } else if (options?.period === '2025' || options?.period === 'ytd') {
         targetStartDate = '2025-01-01';
+    } else if (options?.period === 'all') {
+        targetStartDate = '2020-01-01';
+    } else if (options?.period === '1y') {
+        targetStartDate = getDateDaysAgo(365);
     }
 
     // Fetch extra days before start date to find the earliest close price on/before start
@@ -536,6 +563,11 @@ export async function calculatePortfolioPerformance(
     // Fallback to SPY if QQQ not available
     if ((!benchPrices || benchPrices.length < 10) && benchmarkSymbol !== 'SPY') {
         benchPrices = priceMap.get('SPY');
+    }
+
+    // Sanitize price histories to remove bad ticks / unadjusted single-day split spikes
+    for (const [sym, history] of priceMap.entries()) {
+        priceMap.set(sym, sanitizePriceHistory(history));
     }
 
     if (!benchPrices || benchPrices.length < 5) {

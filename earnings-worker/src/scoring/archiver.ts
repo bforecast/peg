@@ -13,11 +13,10 @@ export async function archivePortfolioScore(env: Bindings, groupId: number, isWe
         // 2. Calculate Score (Use DB stats for consistency with Dashboard)
         const scoreResult = await calculatePortfolioScore(env, groupId, stocks, true);
 
-        // 3. Update 'last_score' in portfolio_stats
-        // Also update timestamp
+        // 3. Update 'last_score' in portfolio_stats (preserve existing EST updated_at)
         await env.DB.prepare(`
             UPDATE portfolio_stats 
-            SET last_score = ?, updated_at = CURRENT_TIMESTAMP 
+            SET last_score = ? 
             WHERE group_id = ?
         `).bind(scoreResult.total_score, groupId).run();
 

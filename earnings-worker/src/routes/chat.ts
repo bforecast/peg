@@ -293,29 +293,52 @@ export default chatRoutes;
 // Shared helper function to fetch and format portfolio context
 async function fetchPortfolioContext(db: any, portfolioId: string | number, portfolioName?: string): Promise<string | null> {
     try {
-        const holdings = await db.prepare(
+        // 1. Fetch top 20 holdings and their stats directly using indexes (no full table GROUP BY)
+        const holdingsRes = await db.prepare(
             `SELECT gm.symbol, gm.allocation, 
-                    sq.price, sq.forward_pe, sq.pe_ratio, sq.eps_current_year, sq.eps_next_year,
                     ss.change_ytd, ss.change_1y, ss.sma_20, ss.sma_50, ss.sma_200, ss.rs_rank_1m
-                FROM group_members gm
-                LEFT JOIN (
-                    SELECT * FROM stock_quotes WHERE rowid IN (
-                        SELECT MAX(rowid) FROM stock_quotes GROUP BY symbol
-                    )
-                ) sq ON gm.symbol = sq.symbol
-                LEFT JOIN (
-                    SELECT * FROM stock_stats WHERE rowid IN (
-                        SELECT MAX(rowid) FROM stock_stats GROUP BY symbol
-                    )
-                ) ss ON gm.symbol = ss.symbol
-                WHERE gm.group_id = ?
-                ORDER BY gm.allocation DESC
-                LIMIT 20`
+             FROM group_members gm
+             LEFT JOIN stock_stats ss ON gm.symbol = ss.symbol
+             WHERE gm.group_id = ?
+             ORDER BY gm.allocation DESC
+             LIMIT 20`
         ).bind(portfolioId).all();
 
-        if (holdings.results && holdings.results.length > 0) {
+        const holdingsList: any[] = holdingsRes.results || [];
+
+        // 2. Fetch quotes for these top 20 symbols within recent 14 days (fast index lookup)
+        if (holdingsList.length > 0) {
+            const symbols = holdingsList.map((h: any) => h.symbol);
+            const placeholders = symbols.map(() => '?').join(',');
+            const recentCutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+            const quotesRes = await db.prepare(
+                `SELECT symbol, price, forward_pe, pe_ratio, eps_current_year, eps_next_year
+                 FROM stock_quotes
+                 WHERE symbol IN (${placeholders}) AND date >= ?
+                 ORDER BY date ASC`
+            ).bind(...symbols, recentCutoff).all();
+
+            const quoteMap = new Map<string, any>();
+            if (quotesRes.results) {
+                for (const q of quotesRes.results as any[]) {
+                    quoteMap.set(q.symbol, q);
+                }
+            }
+
+            for (const h of holdingsList) {
+                const q = quoteMap.get(h.symbol);
+                h.price = q?.price;
+                h.forward_pe = q?.forward_pe;
+                h.pe_ratio = q?.pe_ratio;
+                h.eps_current_year = q?.eps_current_year;
+                h.eps_next_year = q?.eps_next_year;
+            }
+        }
+
+        if (holdingsList.length > 0) {
             let contextStr = `\n\n### Portfolio: ${portfolioName || 'Selected Portfolio'}\n`;
-            contextStr += `Total Holdings: ${holdings.results.length}\n\n`;
+            contextStr += `Total Holdings: ${holdingsList.length}\n\n`;
 
             // Performance & Risk Stats (from portfolio_stats)
             const statsRow: any = await db.prepare(
@@ -336,7 +359,7 @@ async function fetchPortfolioContext(db: any, portfolioId: string | number, port
                 contextStr += `\n`;
             }
 
-            for (const h of holdings.results as any[]) {
+            for (const h of holdingsList) {
                 const priceVsSma = h.price && h.sma_20 && h.sma_50 && h.sma_200
                     ? (h.price > h.sma_20 && h.sma_20 > h.sma_50 ? 'Uptrend' : h.price < h.sma_200 ? 'Downtrend' : 'Neutral')
                     : 'N/A';
@@ -390,13 +413,15 @@ async function fetchStockContext(c: any, db: any, symbol: string): Promise<strin
         // Regenerate stats if needed
         await regenerateStats(c.env, symbol);
 
-        // Fetch Quote & Stats
-        const quote = await db.prepare(
-            `SELECT sq.*, ss.* 
-             FROM stock_quotes sq
-             LEFT JOIN (SELECT * FROM stock_stats WHERE rowid IN (SELECT MAX(rowid) FROM stock_stats GROUP BY symbol)) ss ON sq.symbol = ss.symbol
-             WHERE sq.symbol = ? ORDER BY sq.updated_at DESC LIMIT 1`
+        // Fetch Quote & Stats via point lookups (1 row each via indexes, 0ms)
+        const quoteRow = await db.prepare(
+            `SELECT * FROM stock_quotes WHERE symbol = ? ORDER BY date DESC LIMIT 1`
         ).bind(symbol).first();
+        const statsRow = await db.prepare(
+            `SELECT * FROM stock_stats WHERE symbol = ?`
+        ).bind(symbol).first();
+
+        const quote: any = quoteRow ? { ...quoteRow, ...statsRow } : null;
 
         let context = '';
 
@@ -430,10 +455,10 @@ async function fetchStockContext(c: any, db: any, symbol: string): Promise<strin
             context += `- 200 SMA: ${quote.sma_200}\n`;
             context += `- Technical Status: ${(quote.price > quote.sma_20 && quote.sma_20 > quote.sma_50) ? 'Strong Uptrend' : 'Neutral/Mixed'}\n`;
 
-            // Earnings History
+            // Earnings History (from earnings_estimates table using PK symbol)
             const earnings = await db.prepare(
                 `SELECT fiscal_date_ending, estimated_eps, reported_eps, surprise_percentage
-                 FROM stock_earnings
+                 FROM earnings_estimates
                  WHERE symbol = ?
                  ORDER BY fiscal_date_ending DESC LIMIT 4`
             ).bind(symbol).all();

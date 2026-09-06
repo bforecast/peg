@@ -60,9 +60,9 @@ app.get('/api/dashboard-data', async (c) => {
         const groupId = c.req.query('groupId');
         const data = await getDashboardData(c.env, groupId);
 
-        // Get last updated date from stock_quotes
+        // Get last updated date from stock_stats (373 rows vs 180k+ in stock_quotes)
         const lastUpdatedRow: any = await c.env.DB.prepare(
-            'SELECT MAX(updated_at) as lastTime FROM stock_quotes'
+            'SELECT MAX(updated_at) as lastTime FROM stock_stats'
         ).first();
         const lastUpdated = lastUpdatedRow?.lastTime || null;
 
@@ -112,8 +112,8 @@ app.get('/api/stock-details/:symbol', async (c) => {
     try {
         const symbol = c.req.param('symbol').toUpperCase();
 
-        // 1. Get Quote & Metrics
-        const quote = await c.env.DB.prepare('SELECT * FROM stock_quotes WHERE symbol = ?').bind(symbol).first();
+        // 1. Get Quote & Metrics (uses idx_quotes_symbol_date for 1-row index lookup of latest quote)
+        const quote = await c.env.DB.prepare('SELECT * FROM stock_quotes WHERE symbol = ? ORDER BY date DESC LIMIT 1').bind(symbol).first();
         const stats = await c.env.DB.prepare('SELECT * FROM stock_stats WHERE symbol = ?').bind(symbol).first();
 
         if (!quote) {

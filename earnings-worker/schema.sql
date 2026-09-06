@@ -26,6 +26,7 @@ CREATE TABLE stock_prices (
 );
 CREATE INDEX idx_prices_symbol ON stock_prices(symbol);
 CREATE INDEX idx_prices_date ON stock_prices(symbol, date DESC);
+CREATE INDEX IF NOT EXISTS idx_prices_date_only ON stock_prices(date DESC);
 
 -- Cron Logs Table
 CREATE TABLE IF NOT EXISTS cron_logs (

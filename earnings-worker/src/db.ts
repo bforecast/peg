@@ -101,7 +101,7 @@ export async function updatePrices(env: Bindings, symbol: string) {
     }
 
     if (batch.length > 0) {
-        const CHUNK_SIZE = 50;
+        const CHUNK_SIZE = 100;
         for (let i = 0; i < batch.length; i += CHUNK_SIZE) {
             await env.DB.batch(batch.slice(i, i + CHUNK_SIZE));
         }
@@ -324,19 +324,21 @@ export async function getLatestQuotes(env: Bindings, symbols: string[]): Promise
     const foundSymbols = new Set<string>();
 
     try {
-        // Optimize: Fetch all latest quotes in one query using Window Function
+        // Optimize: Limit scan to recent 14 days (handles long weekends and holidays)
+        // instead of scanning all 50k+ historical rows across the entire table.
+        const recentCutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
         const placeholders = targetSymbols.map(() => '?').join(',');
 
-        // Use ROW_NUMBER() to get the latest entry for each symbol
+        // Use ROW_NUMBER() over recent 14 days
         const query = `
             SELECT * FROM (
                 SELECT *, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn 
                 FROM stock_quotes 
-                WHERE symbol IN (${placeholders})
+                WHERE symbol IN (${placeholders}) AND date >= ?
             ) WHERE rn = 1
         `;
 
-        const { results: rows } = await env.DB.prepare(query).bind(...targetSymbols).all();
+        const { results: rows } = await env.DB.prepare(query).bind(...targetSymbols, recentCutoff).all();
 
         if (rows) {
             for (const r of rows) {
@@ -345,13 +347,26 @@ export async function getLatestQuotes(env: Bindings, symbols: string[]): Promise
                 foundSymbols.add(row.symbol.toUpperCase());
             }
         }
-        console.log(`[getLatestQuotes] Found ${foundSymbols.size} / ${targetSymbols.length} via SQL`);
+        console.log(`[getLatestQuotes] Found ${foundSymbols.size} / ${targetSymbols.length} via SQL (recent 14d)`);
+
+        // Check if any symbols were older than 14 days, fetch individually via index (1 row read each)
+        for (const sym of targetSymbols) {
+            if (!foundSymbols.has(sym)) {
+                const olderRow = await env.DB.prepare(
+                    `SELECT * FROM stock_quotes WHERE symbol = ? ORDER BY date DESC LIMIT 1`
+                ).bind(sym).first() as unknown as StockQuote | null;
+                if (olderRow) {
+                    results.push(mapToYahooQuote(olderRow));
+                    foundSymbols.add(sym);
+                }
+            }
+        }
     } catch (e) {
         console.error("Error batch fetching quotes", e);
         // Fallback or just proceed to missing check
     }
 
-    // Identify missing symbols
+    // Identify symbols completely missing from DB
     for (const sym of targetSymbols) {
         if (!foundSymbols.has(sym)) missing.push(sym);
     }
@@ -359,7 +374,7 @@ export async function getLatestQuotes(env: Bindings, symbols: string[]): Promise
     if (missing.length > 0) {
         // If > 20 missing, we might timeout the worker if we fetch all inline.
         // But we must fetch to show data.
-        console.log(`[getLatestQuotes] Fetching ${missing.length} missing quotes...`); // Log missing
+        console.log(`[getLatestQuotes] Fetching ${missing.length} missing quotes from Yahoo...`);
         try {
             const liveQuotes = await fetchQuotes(missing);
             if (liveQuotes && liveQuotes.length > 0) {

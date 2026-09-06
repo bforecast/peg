@@ -71,9 +71,9 @@ app.get('/api/cron-summary', async (c) => {
         const trackedSet = new Set([...results.map((r: any) => r.symbol), 'SPY']);
         const total = trackedSet.size;
 
-        // 2. Updated in last 24h
-        const { count: quotes } = await c.env.DB.prepare('SELECT count(*) as count FROM stock_quotes WHERE updated_at >= ?').bind(cutoff).first() as any;
+        // 2. Updated in last 24h (stock_stats is 1-to-1 per symbol and only has ~370 rows, avoiding scanning 180k+ rows in stock_quotes)
         const { count: stats } = await c.env.DB.prepare('SELECT count(*) as count FROM stock_stats WHERE updated_at >= ?').bind(cutoff).first() as any;
+        const quotes = stats;
 
         // 3. Last Success (or Checked)
         const lastSuccess = await c.env.DB.prepare("SELECT timestamp, message FROM cron_logs WHERE status IN ('SUCCESS', 'CHECKED') ORDER BY id DESC LIMIT 1").first() as any;
@@ -157,9 +157,9 @@ app.get('/api/health', async (c) => {
     if (deep) {
         status.checks.deep = {};
 
-        // A. Freshness: Check most recent price date
+        // A. Freshness: Check most recent price date using benchmark SPY (uses (symbol, date DESC) index: 1 row read vs 800k rows)
         try {
-            const row = await c.env.DB.prepare('SELECT MAX(date) as last_date FROM stock_prices').first() as unknown as { last_date: string };
+            const row = await c.env.DB.prepare("SELECT MAX(date) as last_date FROM stock_prices WHERE symbol = 'SPY'").first() as unknown as { last_date: string };
             const lastDate = row?.last_date;
 
             // Simple check: Is it within last 4 days? (Allow for long weekends)
@@ -172,11 +172,13 @@ app.get('/api/health', async (c) => {
             }
         } catch (e: any) { status.checks.deep.freshness = 'error: ' + e.message; }
 
+        const recentDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
         // B. Critical Symbols (Regression Test)
         try {
             const syms = ['BRK-B', 'GOOG', 'MSFT'];
             const placeholders = syms.map(() => '?').join(',');
-            const { results } = await c.env.DB.prepare(`SELECT symbol FROM stock_quotes WHERE symbol IN (${placeholders})`).bind(...syms).all();
+            const { results } = await c.env.DB.prepare(`SELECT DISTINCT symbol FROM stock_quotes WHERE symbol IN (${placeholders}) AND date >= ?`).bind(...syms, recentDaysAgo).all();
             const found = (results || []).map((r: any) => r.symbol);
             const missing = syms.filter(s => !found.includes(s));
 
@@ -187,7 +189,7 @@ app.get('/api/health', async (c) => {
 
         // C. Data Integrity (Zero Prices)
         try {
-            const row = await c.env.DB.prepare('SELECT count(*) as count FROM stock_quotes WHERE price = 0 OR price IS NULL').first() as unknown as { count: number };
+            const row = await c.env.DB.prepare('SELECT count(*) as count FROM stock_quotes WHERE (price = 0 OR price IS NULL) AND date >= ?').bind(recentDaysAgo).first() as unknown as { count: number };
             const zeroCount = row?.count || 0;
             status.checks.deep.integrity = zeroCount === 0 ? 'ok' : `warn: ${zeroCount} stocks with 0 price`;
             if (zeroCount > 0) status.checks.deep.integrity_details = 'Run SELECT * FROM stock_quotes WHERE price=0';
@@ -762,10 +764,10 @@ app.on(['GET', 'POST'], '/api/admin/trigger-cron', async (c) => {
         // Phase 5: Verification
         const verifyStart = Date.now();
         const { results: gapRows } = await c.env.DB.prepare(`
-            SELECT q.symbol FROM stock_quotes q
-            LEFT JOIN stock_stats s ON q.symbol = s.symbol
-            WHERE q.updated_at > ? AND (s.updated_at IS NULL OR s.updated_at <= ?)
-        `).bind(cutoffTime, cutoffTime).all();
+            SELECT DISTINCT gm.symbol FROM group_members gm
+            LEFT JOIN stock_stats s ON gm.symbol = s.symbol
+            WHERE s.updated_at IS NULL OR s.updated_at <= ?
+        `).bind(cutoffTime).all();
 
         const gapSymbols = gapRows.map((r: any) => r.symbol);
         const verifyDuration = Date.now() - verifyStart;

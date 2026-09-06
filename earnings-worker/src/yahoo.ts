@@ -219,7 +219,7 @@ export async function fetchYahooPrices(symbol: string, retries = 1) {
         if (!session) return null;
 
         const { cookie, crumb } = session;
-        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=10y&crumb=${crumb}`;
+        const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=2y&crumb=${crumb}`;
 
         const response = await fetchWithTimeout(url, {
             headers: { 'User-Agent': USER_AGENT, 'Cookie': cookie }
@@ -237,6 +237,7 @@ export async function fetchYahooPrices(symbol: string, retries = 1) {
 
         const timestamps = result.timestamp;
         const quote = result.indicators?.quote?.[0];
+        const adjclose = result.indicators?.adjclose?.[0]?.adjclose;
         if (!timestamps || !quote) return null;
 
         const closes = quote.close;
@@ -249,14 +250,16 @@ export async function fetchYahooPrices(symbol: string, retries = 1) {
 
         const prices = [];
         for (let i = 0; i < timestamps.length; i++) {
-            if (closes[i] === null) continue;
+            const rawClose = closes[i];
+            const finalClose = (adjclose && adjclose[i] !== null && adjclose[i] !== undefined) ? adjclose[i] : rawClose;
+            if (finalClose === null || finalClose === undefined || isNaN(finalClose) || finalClose <= 0) continue;
             const d = new Date(timestamps[i] * 1000);
             prices.push({
                 date: d.toISOString().split('T')[0],
                 open: opens ? opens[i] : null,
                 high: highs ? highs[i] : null,
                 low: lows ? lows[i] : null,
-                close: closes[i],
+                close: finalClose,
                 volume: volumes ? volumes[i] : null
             });
         }

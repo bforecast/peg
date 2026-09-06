@@ -17,3 +17,4 @@ CREATE TABLE IF NOT EXISTS stock_quotes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_quotes_symbol_date ON stock_quotes(symbol, date DESC);
+CREATE INDEX IF NOT EXISTS idx_quotes_date ON stock_quotes(date DESC);

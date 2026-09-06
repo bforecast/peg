@@ -293,6 +293,14 @@ export const STYLES = `
             display: flex;
             align-items: center;
             gap: 6px;
+            max-width: 240px;
+        }
+        #chatContext {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            display: inline-block;
+            max-width: 210px;
         }
 
         .status-dot {
@@ -300,6 +308,7 @@ export const STYLES = `
             height: 8px;
             background: #10B981;
             border-radius: 50%;
+            flex-shrink: 0;
         }
 
         .close-btn { color: #6B7280; cursor: pointer; font-size: 24px; line-height: 1; }

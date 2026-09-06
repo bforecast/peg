@@ -499,17 +499,20 @@ export async function fetchStockMetricsForScoring(
     const placeholders = symbols.map(() => '?').join(',');
 
     // 2. 批量一次性获取所有 symbols 最新的报价数据 (Forward PE, EPS)
+    // 限制最近 14 天时间窗口，利用 (symbol, date DESC) 索引，避免全表扫描与临时排序
+    const quoteStartDate = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const quotesQuery = `
         SELECT q.symbol, q.forward_pe, q.eps_current_year, q.eps_next_year 
         FROM stock_quotes q
         INNER JOIN (
             SELECT symbol, MAX(date) as max_date 
             FROM stock_quotes 
-            WHERE symbol IN (${placeholders})
+            WHERE symbol IN (${placeholders}) AND date >= ?
             GROUP BY symbol
         ) latest ON q.symbol = latest.symbol AND q.date = latest.max_date
+        WHERE q.date >= ?
     `;
-    const { results: quoteRows } = await env.DB.prepare(quotesQuery).bind(...symbols).all();
+    const { results: quoteRows } = await env.DB.prepare(quotesQuery).bind(...symbols, quoteStartDate, quoteStartDate).all();
 
     // Map quotes by symbol for fast O(1) lookup
     const quoteMap = new Map<string, { forward_pe?: number; eps_current_year?: number; eps_next_year?: number }>();
@@ -520,18 +523,29 @@ export async function fetchStockMetricsForScoring(
         }
     }
 
-    // 3. 批量一次性获取所有 symbols 的最新价格历史 (252天) using ROW_NUMBER() window function
+    // 针对超过 14 天无行情的非活跃标的，执行单行点查回退 (利用 (symbol, date DESC) 索引单次只读 1 行)
+    for (const s of symbols) {
+        if (!quoteMap.has(s)) {
+            const older = await env.DB.prepare(
+                'SELECT symbol, forward_pe, eps_current_year, eps_next_year FROM stock_quotes WHERE symbol = ? ORDER BY date DESC LIMIT 1'
+            ).bind(s).first() as any;
+            if (older) quoteMap.set(s, older);
+        }
+    }
+
+    // 3. 批量一次性获取所有 symbols 的最新价格历史 (252天)
+    // 加入 date >= startDate 范围过滤，使用 (symbol, date) 索引，
+    // 避免在 80+ 万行全表中执行无过滤的 ROW_NUMBER() 扫描导致打爆 Cloudflare D1 500 万行免费读取配额
+    const startDate = new Date(Date.now() - 370 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
     const pricesQuery = `
         SELECT symbol, close 
-        FROM (
-            SELECT symbol, close, ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
-            FROM stock_prices
-            WHERE symbol IN (${placeholders})
-        ) WHERE rn <= 252
+        FROM stock_prices
+        WHERE symbol IN (${placeholders}) AND date >= ?
+        ORDER BY symbol, date DESC
     `;
-    const { results: priceRows } = await env.DB.prepare(pricesQuery).bind(...symbols).all();
+    const { results: priceRows } = await env.DB.prepare(pricesQuery).bind(...symbols, startDate).all();
 
-    // Map price lists by symbol (preserves descending order from query)
+    // Map price lists by symbol (preserves descending order from query, max 252 days)
     const priceMap = new Map<string, number[]>();
     if (priceRows) {
         for (const row of priceRows) {
@@ -539,7 +553,7 @@ export async function fetchStockMetricsForScoring(
             if (!priceMap.has(p.symbol)) {
                 priceMap.set(p.symbol, []);
             }
-            if (p.close && p.close > 0) {
+            if (p.close && p.close > 0 && priceMap.get(p.symbol)!.length < 252) {
                 priceMap.get(p.symbol)!.push(p.close);
             }
         }

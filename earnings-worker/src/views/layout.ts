@@ -92,9 +92,9 @@ export const HTML = `<!DOCTYPE html>
                         <!-- Top Toolbar: Period Buttons (Always Outside & Visible) & Expand Chart Toggle -->
                         <div class="perf-control-bar">
                             <div class="perf-period-buttons">
-                                <button class="perf-period-btn active" id="btnPeriodCreated" onclick="changePerfPeriod('created')">Created Date</button>
+                                <button class="perf-period-btn" id="btnPeriodCreated" onclick="changePerfPeriod('created')">Created Date</button>
                                 <button class="perf-period-btn" id="btnPeriod2025" onclick="changePerfPeriod('2025')">2025~Present</button>
-                                <button class="perf-period-btn" id="btnPeriod1Y" onclick="changePerfPeriod('1y')">1Y</button>
+                                <button class="perf-period-btn active" id="btnPeriod1Y" onclick="changePerfPeriod('1y')">1Y</button>
                                 <button class="perf-period-btn" id="btnPeriodAll" onclick="changePerfPeriod('all')">All</button>
                             </div>
                             <button id="btnTogglePerfChart" class="btn-toggle-chart" onclick="togglePerfChart()">📈 View Chart ▼</button>
@@ -386,7 +386,7 @@ export const HTML = `<!DOCTYPE html>
                 Investment AI Expert
                 <div class="header-subtitle">
                     <span class="status-dot"></span>
-                    Context: <span id="chatContext">None</span>
+                    <span id="chatContext">None</span>
                 </div>
             </div>
             <div style="display:flex; align-items:center; gap:8px;">

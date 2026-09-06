@@ -19,3 +19,5 @@ CREATE TABLE IF NOT EXISTS group_members (
 
 -- Index for faster lookup of members by group
 CREATE INDEX IF NOT EXISTS idx_group_members_group_id ON group_members(group_id);
+-- Index for reverse lookup of groups by symbol
+CREATE INDEX IF NOT EXISTS idx_group_members_symbol ON group_members(symbol);

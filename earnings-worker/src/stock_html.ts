@@ -304,7 +304,7 @@ export const STOCK_HTML = `<!DOCTYPE html>
                 Forward PEG AI Expert
                 <div class="header-subtitle">
                     <span class="status-dot"></span>
-                    Context: <span id="chatContext">Loading...</span>
+                    <span id="chatContext">Loading...</span>
                 </div>
             </div>
             <div style="display:flex; align-items:center; gap:8px;">
