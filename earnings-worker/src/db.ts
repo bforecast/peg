@@ -11,36 +11,51 @@ export function getESTDate(): string {
     return now.toLocaleDateString("en-CA", { timeZone: "America/New_York" });
 }
 
-// Helper to get the last trading date (handles weekends and pre-market)
-export function getLastTradingDate(): string {
-    const now = new Date();
+// US Market Holidays (NYSE/NASDAQ) for 2025-2027
+const US_MARKET_HOLIDAYS = new Set<string>([
+    // 2025
+    '2025-01-01', '2025-01-20', '2025-02-17', '2025-04-18', '2025-05-26',
+    '2025-06-19', '2025-07-04', '2025-09-01', '2025-11-27', '2025-12-25',
+    // 2026
+    '2026-01-01', '2026-01-19', '2026-02-16', '2026-04-03', '2026-05-25',
+    '2026-06-19', '2026-07-03', '2026-09-07', '2026-11-26', '2026-12-25',
+    // 2027
+    '2027-01-01', '2027-01-18', '2027-02-15', '2027-03-26', '2027-05-31',
+    '2027-06-18', '2027-07-05', '2027-09-06', '2027-11-25', '2027-12-24'
+]);
+
+export function isUSMarketHoliday(dateStr: string): boolean {
+    return US_MARKET_HOLIDAYS.has(dateStr);
+}
+
+// Helper to get the last trading date (handles weekends, holidays and pre-market)
+export function getLastTradingDate(referenceDate?: Date): string {
+    const now = referenceDate || new Date();
     const estStr = now.toLocaleString("en-US", { timeZone: "America/New_York", hour12: false });
     const est = new Date(estStr);
 
-    const dayOfWeek = est.getDay(); // 0=Sun, 6=Sat
     const hour = est.getHours();
+    let cursor = new Date(est);
 
-    let tradingDate = new Date(est);
-
-    if (dayOfWeek === 0) {
-        // Sunday -> Friday
-        tradingDate.setDate(est.getDate() - 2);
-    } else if (dayOfWeek === 6) {
-        // Saturday -> Friday
-        tradingDate.setDate(est.getDate() - 1);
-    } else if (hour < 16) {
-        // Weekday before market close -> previous trading day
-        if (dayOfWeek === 1) {
-            // Monday before close -> Friday
-            tradingDate.setDate(est.getDate() - 3);
-        } else {
-            tradingDate.setDate(est.getDate() - 1);
-        }
+    // If today is a weekday and before market close (16:00), today cannot be the completed trading date yet
+    if (cursor.getDay() !== 0 && cursor.getDay() !== 6 && hour < 16) {
+        cursor.setDate(cursor.getDate() - 1);
     }
-    // else: Weekday after market close -> today (already set)
 
     const pad = (n: number) => n.toString().padStart(2, '0');
-    return `${tradingDate.getFullYear()}-${pad(tradingDate.getMonth() + 1)}-${pad(tradingDate.getDate())}`;
+    const toYMD = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    // Loop backwards until we hit a date that is neither a weekend nor a market holiday
+    while (true) {
+        const dayOfWeek = cursor.getDay();
+        const dateStr = toYMD(cursor);
+
+        if (dayOfWeek === 0 || dayOfWeek === 6 || isUSMarketHoliday(dateStr)) {
+            cursor.setDate(cursor.getDate() - 1);
+        } else {
+            return dateStr;
+        }
+    }
 }
 
 // Helper for EST Timestamp (YYYY-MM-DD HH:MM:SS)
@@ -61,12 +76,12 @@ export async function logCronStatus(env: Bindings, status: string, message: stri
     }
 }
 
-export async function updatePrices(env: Bindings, symbol: string) {
+export async function updatePrices(env: Bindings, symbol: string, force: boolean = false) {
     const { maxDate, count } = await env.DB.prepare(
         `SELECT max(date) as maxDate, count(*) as count FROM stock_prices WHERE symbol = ?`
     ).bind(symbol).first() as { maxDate: string, count: number };
 
-    if (maxDate && count >= 250) {
+    if (!force && maxDate && count >= 250) {
         const now = new Date();
         const nyStr = now.toLocaleString("en-US", { timeZone: "America/New_York" });
         const nyTime = new Date(nyStr);
@@ -87,7 +102,19 @@ export async function updatePrices(env: Bindings, symbol: string) {
     }
 
     const prices = await fetchYahooPrices(symbol);
-    if (!prices) return { count: 0, message: "Yahoo Price Fetch Failed" };
+    if (!prices || prices.length === 0) return { count: 0, message: "Yahoo Price Fetch Failed" };
+
+    // Incremental vs Full Update:
+    // If not forced and we already have sufficient history (count >= 200) with a valid maxDate,
+    // only insert rows on or after maxDate (typically 1-2 days to refresh today's close or add latest day).
+    // This reduces D1 daily rows_written by >99% (from ~500 rows down to 1~2 rows per update).
+    const pricesToInsert = (!force && maxDate && count >= 200)
+        ? prices.filter((p: StockPrice) => p.date >= maxDate)
+        : prices;
+
+    if (pricesToInsert.length === 0) {
+        return { count: 0, message: `Prices already up to date (no newer dates than ${maxDate})` };
+    }
 
     const updatedAt = getESTTimestamp();
     const stmt = env.DB.prepare(`
@@ -96,7 +123,7 @@ export async function updatePrices(env: Bindings, symbol: string) {
     `);
 
     const batch = [];
-    for (const price of prices) {
+    for (const price of pricesToInsert) {
         batch.push(stmt.bind(symbol, price.date, price.open || null, price.high || null, price.low || null, price.close || null, price.volume || null, updatedAt));
     }
 

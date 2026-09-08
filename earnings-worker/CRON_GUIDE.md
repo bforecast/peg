@@ -103,3 +103,34 @@ This ensures that the repository remains 100% clean and production does not cont
 - Inside the simulation loop, replace the $O(N)$ linear `.find()` with a direct $O(1)$ Map `.get()` lookup.
 - This simple data-structure shift reduced average CPU execution time from **10ms+** to **< 1.3ms** per portfolio, comfortably avoiding V8 runtime terminations.
 
+---
+
+## 5. The D1 Full-History Overwrite Trap (Free Tier 100k `rows_written` Limit)
+
+**CRITICAL LESSON:** Daily price update routines must never overwrite full 2-year history on every ticker refresh.
+
+### The Bug
+- `updatePrices()` previously fetched Yahoo Finance 2-year OHLCV prices (~500 days) and performed an unconditional `INSERT OR REPLACE` for all 500 rows into `stock_prices`.
+- Updating 200 symbol instances per day consumed $200 \times 500 = 100,000$ database writes, instantly exhausting Cloudflare D1's 100,000 rows_written free tier daily quota.
+
+### The Solution: Smart Incremental Upsert
+- Check `max(date)` in `stock_prices`.
+- For symbols with existing history (`count >= 200` and not forced), filter `pricesToInsert = prices.filter(p => p.date >= maxDate)`.
+- This reduces writes from ~500 rows down to 1–2 rows per update (refreshing latest day + inserting today's new close), slashing daily D1 write volume by **99.6%**.
+- Full 2-year backfill is preserved for brand-new symbols (`count < 200`) and stock split events (`force = true`).
+
+---
+
+## 6. The US Market Holiday Trap (Market Closures)
+
+**CRITICAL LESSON:** Simply checking `hour >= 16` and weekday index is insufficient because US stock exchanges close on official federal holidays (e.g. Labor Day, Memorial Day, Juneteenth, Independence Day).
+
+### The Bug
+- On holiday evenings, `getLastTradingDate()` previously assumed that any weekday after 16:00 EST was a valid trading day.
+- Quotes fetched on holidays retained the previous Friday's closing price, but were stamped with the holiday date (e.g. `2026-09-07` on Labor Day), inserting phantom non-trading-day records into `stock_prices` and leaving the true trading day missing.
+
+### The Solution: Holiday-Aware Backward Search
+- Built an explicit `US_MARKET_HOLIDAYS` set covering all NYSE/NASDAQ holidays (2025–2027).
+- `getLastTradingDate()` loops backward past both weekends and market holidays until it reaches a genuine trading day.
+- During holidays, Cron detects that all symbols are already fresh for the true prior trading day and immediately exits silently in Phase 1, avoiding spurious writes and false gap healing.
+

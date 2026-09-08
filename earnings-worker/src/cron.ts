@@ -111,6 +111,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                                 ).bind(q.symbol, dateStr).first() as { date: string, close: number } | null;
 
                                 let needsFullBackfill = false;
+                                let isSplitDetected = false;
 
                                 if (!lastPriceRow) {
                                     // Completely new symbol or no history
@@ -132,12 +133,13 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                                         if (ratio < 0.6 || ratio > 1.6) {
                                             console.warn(`[Cron Split Detection] Detected potential stock split for ${q.symbol}: ratio ${ratio.toFixed(2)} (Prev: ${lastPriceRow.close}, New: ${q.regularMarketPrice}). Triggering full history backfill.`);
                                             needsFullBackfill = true;
+                                            isSplitDetected = true;
                                         }
                                     }
                                 }
 
                                 if (needsFullBackfill) {
-                                    await updatePrices(env, q.symbol);
+                                    await updatePrices(env, q.symbol, isSplitDetected);
                                     pricesUpdated++;
                                     statsUpdated++;
                                     return;
