@@ -6,6 +6,21 @@ import { updateScoringMetrics } from './scoring/fetcher';
 
 const PORTFOLIO_BATCH_SIZE = 5;
 
+// In-memory cache for tracked symbols to eliminate repetitive D1 full scans on group_members (saving 1M+ rows_read)
+let cachedTrackedSymbols: { symbols: string[]; timestamp: number } | null = null;
+const TRACKED_SYMBOLS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
+
+async function getTrackedSymbols(env: Bindings): Promise<string[]> {
+    const now = Date.now();
+    if (cachedTrackedSymbols && (now - cachedTrackedSymbols.timestamp < TRACKED_SYMBOLS_CACHE_TTL)) {
+        return cachedTrackedSymbols.symbols;
+    }
+    const { results } = await env.DB.prepare("SELECT DISTINCT symbol FROM group_members").all();
+    const symbols = [...new Set([...results.map((r: any) => r.symbol), 'SPY'])];
+    cachedTrackedSymbols = { symbols, timestamp: now };
+    return symbols;
+}
+
 export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
     console.log('Scheduled Update Triggered');
     const runStart = Date.now();
@@ -13,10 +28,8 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
     // Heartbeat: Log to console so it shows in Cloudflare Logs, but don't spam the DB
     console.log(`[Cron] Heartbeat check at ${new Date().toISOString()}`);
 
-    // 1. Get all unique active symbols from portfolios
-    const { results } = await env.DB.prepare("SELECT DISTINCT symbol FROM group_members").all();
-    // Always include SPY for benchmark stats
-    const symbols = [...new Set([...results.map((r: any) => r.symbol), 'SPY'])];
+    // 1. Get all unique active symbols from portfolios (using 10-min in-memory cache)
+    const symbols = await getTrackedSymbols(env);
 
     console.log(`[Cron] Updating ${symbols.length} tracked symbols...`);
 
@@ -301,6 +314,8 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
 
             if (staleGroups && staleGroups.length > 0) {
                 const { calculatePortfolioStats } = await import('./portfolio');
+                // Shared price cache across this batch of portfolios to eliminate redundant D1 queries
+                const sharedPriceMap = new Map<string, { date: string; close: number | null }[]>();
 
                 for (const g of staleGroups as any[]) {
                     try {
@@ -330,8 +345,8 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                             // Else: Proceed with update using whatever data we have for the "dead" ones
                         }
 
-                        // 1. Recalculate Stats
-                        await calculatePortfolioStats(env, g.id);
+                        // 1. Recalculate Stats (reusing cached prices across portfolios)
+                        await calculatePortfolioStats(env, g.id, sharedPriceMap);
                         try {
                             const { archivePortfolioScore } = await import('./scoring/archiver');
                             await archivePortfolioScore(env, g.id, false);

@@ -34,7 +34,11 @@ function sanitizePriceHistory(history: { date: string; close: number | null }[])
     return sanitized;
 }
 
-export async function calculatePortfolioStats(env: Bindings, groupId: number) {
+export async function calculatePortfolioStats(
+    env: Bindings,
+    groupId: number,
+    sharedPriceMap?: Map<string, { date: string; close: number | null }[]>
+) {
     console.log(`[Portfolio Stats] Starting calculation for group ${groupId}`);
     
     try {
@@ -67,16 +71,29 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
     const allSymbols = [...new Set([...symbols, BENCHMARK_SYMBOL])];
     const priceMap = new Map<string, { date: string; close: number | null }[]>();
 
-    // Optimization: Batch Fetch from D1
-    // SQLite limit is usually high (999 vars), but let's batch by 50 to be safe
+    // Reuse prices from sharedPriceMap if available to eliminate redundant D1 queries across portfolios
+    const missingSymbols = sharedPriceMap
+        ? allSymbols.filter(sym => !sharedPriceMap.has(sym))
+        : allSymbols;
+
+    if (sharedPriceMap) {
+        for (const sym of allSymbols) {
+            if (sharedPriceMap.has(sym)) {
+                priceMap.set(sym, sharedPriceMap.get(sym)!);
+            }
+        }
+    }
+
+    // Optimization: Batch Fetch from D1 for missing symbols
+    // Ordering by symbol ASC, date ASC directly utilizes primary key index, eliminating TEMP B-TREE & 2x read amplification
     const BATCH_SIZE = 50;
 
-    for (let i = 0; i < allSymbols.length; i += BATCH_SIZE) {
-        const batch = allSymbols.slice(i, i + BATCH_SIZE);
+    for (let i = 0; i < missingSymbols.length; i += BATCH_SIZE) {
+        const batch = missingSymbols.slice(i, i + BATCH_SIZE);
         const placeholders = batch.map(() => '?').join(',');
 
         try {
-            const query = `SELECT symbol, date, close FROM stock_prices WHERE symbol IN (${placeholders}) AND date >= ? ORDER BY date ASC`;
+            const query = `SELECT symbol, date, close FROM stock_prices WHERE symbol IN (${placeholders}) AND date >= ? ORDER BY symbol ASC, date ASC`;
             const { results } = await env.DB.prepare(query)
                 .bind(...batch, startDate)
                 .all();
@@ -92,6 +109,15 @@ export async function calculatePortfolioStats(env: Bindings, groupId: number) {
             }
         } catch (err) {
             console.error("Error batch fetching prices:", err);
+        }
+    }
+
+    // Cache newly fetched symbols back to sharedPriceMap
+    if (sharedPriceMap) {
+        for (const [sym, history] of priceMap.entries()) {
+            if (!sharedPriceMap.has(sym)) {
+                sharedPriceMap.set(sym, history);
+            }
         }
     }
 
@@ -526,7 +552,7 @@ export async function calculatePortfolioPerformance(
         const batch = allSymbols.slice(i, i + BATCH_SIZE);
         const placeholders = batch.map(() => '?').join(',');
         try {
-            const query = `SELECT symbol, date, close FROM stock_prices WHERE symbol IN (${placeholders}) AND date >= ? ORDER BY date ASC`;
+            const query = `SELECT symbol, date, close FROM stock_prices WHERE symbol IN (${placeholders}) AND date >= ? ORDER BY symbol ASC, date ASC`;
             const { results } = await env.DB.prepare(query).bind(...batch, fetchStartDate).all();
             if (results) {
                 results.forEach((row: any) => {
