@@ -81,6 +81,16 @@ export async function updatePrices(env: Bindings, symbol: string, force: boolean
         `SELECT max(date) as maxDate, count(*) as count FROM stock_prices WHERE symbol = ?`
     ).bind(symbol).first() as { maxDate: string, count: number };
 
+    const updatedAt = getESTTimestamp();
+    const stampFresh = async () => {
+        try {
+            await env.DB.prepare(`
+                INSERT INTO stock_stats (symbol, updated_at) VALUES (?, ?)
+                ON CONFLICT(symbol) DO UPDATE SET updated_at = excluded.updated_at
+            `).bind(symbol, updatedAt).run();
+        } catch (_) {}
+    };
+
     if (!force && maxDate && count >= 250) {
         const now = new Date();
         const nyStr = now.toLocaleString("en-US", { timeZone: "America/New_York" });
@@ -98,11 +108,17 @@ export async function updatePrices(env: Bindings, symbol: string, force: boolean
             }
         }
         const targetDate = lastTradingDate.toISOString().split('T')[0];
-        if (maxDate >= targetDate) return { count: 0, message: `Prices up to date (${maxDate})` };
+        if (maxDate >= targetDate) {
+            await stampFresh();
+            return { count: 0, message: `Prices up to date (${maxDate})` };
+        }
     }
 
     const prices = await fetchYahooPrices(symbol);
-    if (!prices || prices.length === 0) return { count: 0, message: "Yahoo Price Fetch Failed" };
+    if (!prices || prices.length === 0) {
+        await stampFresh();
+        return { count: 0, message: "Yahoo Price Fetch Failed" };
+    }
 
     // Incremental vs Full Update:
     // If not forced and we already have sufficient history (count >= 200) with a valid maxDate,
@@ -113,10 +129,10 @@ export async function updatePrices(env: Bindings, symbol: string, force: boolean
         : prices;
 
     if (pricesToInsert.length === 0) {
+        // Stamp stock_stats.updated_at so this symbol is marked fresh and doesn't get stuck in pending
+        await stampFresh();
         return { count: 0, message: `Prices already up to date (no newer dates than ${maxDate})` };
     }
-
-    const updatedAt = getESTTimestamp();
     const stmt = env.DB.prepare(`
         INSERT OR REPLACE INTO stock_prices (symbol, date, open, high, low, close, volume, updated_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -156,12 +172,17 @@ export async function updatePrices(env: Bindings, symbol: string, force: boolean
                     stats.sma20, stats.sma50, stats.sma200,
                     stats.chart1Y, stats.rsRank1M, updatedAt
                 ).run();
+            } else {
+                await stampFresh();
             }
+        } else {
+            await stampFresh();
         }
         // ---------------------------------
 
         return { count: batch.length, message: "Success" };
     }
+    await stampFresh();
     return { count: 0, message: "No data" };
 }
 

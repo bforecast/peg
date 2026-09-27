@@ -193,6 +193,76 @@ describe('Incremental Price Updates (D1 Free Tier Optimization)', () => {
         expect(result.count).toBe(300);
         expect(batchStatements.length).toBe(300);
     });
+
+    it('stamps stock_stats.updated_at when prices are already up to date (anti-stall)', async () => {
+        let stamped = false;
+        const futureDate = '2099-01-01';
+
+        const mockEnv = {
+            DB: {
+                prepare: vi.fn((query: string) => {
+                    if (query.includes('max(date) as maxDate')) {
+                        return {
+                            bind: vi.fn().mockReturnValue({
+                                first: vi.fn().mockResolvedValue({
+                                    maxDate: futureDate,
+                                    count: 260
+                                })
+                            })
+                        };
+                    }
+                    if (query.includes('INSERT INTO stock_stats (symbol, updated_at)')) {
+                        stamped = true;
+                    }
+                    return {
+                        bind: vi.fn().mockReturnValue({
+                            run: vi.fn().mockResolvedValue({ success: true })
+                        })
+                    };
+                })
+            }
+        };
+
+        const result = await updatePrices(mockEnv as any, 'AAPL', false);
+        expect(result.count).toBe(0);
+        expect(result.message).toContain('Prices up to date');
+        expect(stamped).toBe(true);
+    });
+
+    it('stamps stock_stats.updated_at when Yahoo price fetch fails (anti-stall)', async () => {
+        vi.spyOn(yahoo, 'fetchYahooPrices').mockResolvedValueOnce([] as any);
+        let stamped = false;
+
+        const mockEnv = {
+            DB: {
+                prepare: vi.fn((query: string) => {
+                    if (query.includes('max(date) as maxDate')) {
+                        return {
+                            bind: vi.fn().mockReturnValue({
+                                first: vi.fn().mockResolvedValue({
+                                    maxDate: null,
+                                    count: 0
+                                })
+                            })
+                        };
+                    }
+                    if (query.includes('INSERT INTO stock_stats (symbol, updated_at)')) {
+                        stamped = true;
+                    }
+                    return {
+                        bind: vi.fn().mockReturnValue({
+                            run: vi.fn().mockResolvedValue({ success: true })
+                        })
+                    };
+                })
+            }
+        };
+
+        const result = await updatePrices(mockEnv as any, 'DEAD_TICKER', false);
+        expect(result.count).toBe(0);
+        expect(result.message).toBe('Yahoo Price Fetch Failed');
+        expect(stamped).toBe(true);
+    });
 });
 
 describe('US Market Holidays & getLastTradingDate', () => {

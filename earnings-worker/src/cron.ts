@@ -94,13 +94,16 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             // ============================================================
             // PHASE 2: FETCH QUOTES & UPDATE PRICES
             // ============================================================
-            const MAX_UPDATES_PER_RUN = 5; // Reduced to 5 to avoid exceededCpu limit on Cloudflare Free plan.
+            const MAX_UPDATES_PER_RUN = 3; // Reduced to 3 to strictly stay within Cloudflare Workers Free limits (10ms CPU / 50 subrequests).
             const symbolsToProcess = pendingSymbols.slice(0, MAX_UPDATES_PER_RUN);
             const quoteStart = Date.now();
             let quotesCount = 0;
             let quoteErrors: string[] = [];
             let pricesUpdated = 0;
             let statsUpdated = 0;
+            const dateStr = getLastTradingDate();
+            const updatedAt = getESTTimestamp();
+
             try {
                 const quotes = await fetchQuotes(symbolsToProcess, 1);
                 if (quotes && quotes.length > 0) {
@@ -108,17 +111,13 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     await saveQuotesToDB(env, quotes);
                     quotesCount += quotes.length;
 
-                    // 2. NEW: Insert today's price into stock_prices for each symbol
-                    const dateStr = getLastTradingDate();
-                    const updatedAt = getESTTimestamp();
+                    // 2. Sequential processing for each symbol to prevent CPU spikes and subrequest exhaustion
+                    let scoringUpdatedCount = 0;
 
-                    const tasks = quotes.map(async (q) => {
+                    for (const q of quotes) {
                         if (q.regularMarketPrice && q.regularMarketPrice > 0) {
                             try {
                                 // 2a. Gap Detection & Split Detection Check (Auto-Healing)
-                                // If the symbol has a missing days gap (e.g. from a past interruption/outage)
-                                // or price drastic change (>40% drop or >60% jump indicating split),
-                                // automatically backfill full history to heal all missing days seamlessly.
                                 const lastPriceRow = await env.DB.prepare(
                                     `SELECT date, close FROM stock_prices WHERE symbol = ? AND date < ? ORDER BY date DESC LIMIT 1`
                                 ).bind(q.symbol, dateStr).first() as { date: string, close: number } | null;
@@ -127,16 +126,13 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                                 let isSplitDetected = false;
 
                                 if (!lastPriceRow) {
-                                    // Completely new symbol or no history
                                     needsFullBackfill = true;
                                 } else {
-                                    // Check for date gap between last recorded price and target dateStr
                                     const lastDate = new Date(lastPriceRow.date + 'T00:00:00Z');
                                     const currentDate = new Date(dateStr + 'T00:00:00Z');
                                     const dayDiff = Math.round((currentDate.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
-                                    const dayOfWeek = currentDate.getUTCDay(); // 1=Mon, 2=Tue...
+                                    const dayOfWeek = currentDate.getUTCDay();
 
-                                    // Normal trading gap is 1 day (Tue-Fri), 3 days (Mon after weekend), or 4 days (after holiday)
                                     const maxNormalGap = (dayOfWeek === 1 || dayOfWeek === 2) ? 4 : 2;
                                     if (dayDiff > maxNormalGap) {
                                         console.warn(`[Cron Auto-Heal] Detected historical price gap for ${q.symbol}: last date was ${lastPriceRow.date}, target is ${dateStr} (gap: ${dayDiff} days). Triggering auto-backfill.`);
@@ -152,86 +148,88 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                                 }
 
                                 if (needsFullBackfill) {
-                                    await updatePrices(env, q.symbol, isSplitDetected);
+                                    await updatePrices(env, q.symbol, true);
                                     pricesUpdated++;
                                     statsUpdated++;
-                                    return;
-                                }
+                                } else {
+                                    // Insert today's price (using current quote price as close)
+                                    await env.DB.prepare(`
+                                        INSERT OR REPLACE INTO stock_prices (symbol, date, close, open, high, low, volume, updated_at)
+                                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                                    `).bind(
+                                        q.symbol,
+                                        dateStr,
+                                        q.regularMarketPrice,
+                                        q.regularMarketOpen || null,
+                                        q.regularMarketDayHigh || null,
+                                        q.regularMarketDayLow || null,
+                                        q.regularMarketVolume || null,
+                                        updatedAt
+                                    ).run();
+                                    pricesUpdated++;
 
-                                // Insert today's price (using current quote price as close)
-                                await env.DB.prepare(`
-                                    INSERT OR REPLACE INTO stock_prices (symbol, date, close, open, high, low, volume, updated_at)
-                                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-                                `).bind(
-                                    q.symbol,
-                                    dateStr,
-                                    q.regularMarketPrice,
-                                    q.regularMarketOpen || null,
-                                    q.regularMarketDayHigh || null,
-                                    q.regularMarketDayLow || null,
-                                    q.regularMarketVolume || null,
-                                    updatedAt
-                                ).run();
-                                pricesUpdated++;
+                                    // 3. Recalculate stats using existing price history + new price
+                                    const { results: history } = await env.DB.prepare(
+                                        `SELECT date, close FROM stock_prices WHERE symbol = ? ORDER BY date DESC LIMIT 400`
+                                    ).bind(q.symbol).all();
 
-                                // 3. Recalculate stats using existing price history + new price
-                                const { results: history } = await env.DB.prepare(
-                                    `SELECT date, close FROM stock_prices WHERE symbol = ? ORDER BY date DESC LIMIT 400`
-                                ).bind(q.symbol).all();
+                                    if (history && history.length > 0) {
+                                        const pricesAsc = (history as any[]).map(h => ({
+                                            symbol: q.symbol,
+                                            date: h.date,
+                                            close: h.close,
+                                            open: h.open || h.close,
+                                            high: h.high || h.close,
+                                            low: h.low || h.close,
+                                            volume: h.volume || 0
+                                        })).reverse();
+                                        const stats = calculateStats(q.symbol, pricesAsc as any);
 
-                                if (history && history.length > 0) {
-                                    const pricesAsc = (history as any[]).map(h => ({
-                                        symbol: q.symbol,
-                                        date: h.date,
-                                        close: h.close,
-                                        open: h.open || h.close,
-                                        high: h.high || h.close,
-                                        low: h.low || h.close,
-                                        volume: h.volume || 0
-                                    })).reverse();
-                                    const stats = calculateStats(q.symbol, pricesAsc as any);
-
-                                    if (stats) {
-                                        await env.DB.prepare(`
-                                            INSERT OR REPLACE INTO stock_stats (
-                                                symbol, change_ytd, change_1y, delta_52w_high, 
-                                                sma_20, sma_50, sma_200, 
-                                                chart_1y, rs_rank_1m, updated_at
-                                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                                        `).bind(
-                                            stats.symbol, stats.changeYTD, stats.change1Y, stats.delta52wHigh,
-                                            stats.sma20, stats.sma50, stats.sma200,
-                                            stats.chart1Y, stats.rsRank1M, updatedAt
-                                        ).run();
-                                        statsUpdated++;
+                                        if (stats) {
+                                            await env.DB.prepare(`
+                                                INSERT OR REPLACE INTO stock_stats (
+                                                    symbol, change_ytd, change_1y, delta_52w_high, 
+                                                    sma_20, sma_50, sma_200, 
+                                                    chart_1y, rs_rank_1m, updated_at
+                                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                                            `).bind(
+                                                stats.symbol, stats.changeYTD, stats.change1Y, stats.delta52wHigh,
+                                                stats.sma20, stats.sma50, stats.sma200,
+                                                stats.chart1Y, stats.rsRank1M, updatedAt
+                                            ).run();
+                                            statsUpdated++;
+                                        } else {
+                                            await env.DB.prepare(`
+                                                INSERT INTO stock_stats (symbol, updated_at) VALUES (?, ?)
+                                                ON CONFLICT(symbol) DO UPDATE SET updated_at = excluded.updated_at
+                                            `).bind(q.symbol, updatedAt).run();
+                                        }
                                     } else {
                                         await env.DB.prepare(`
                                             INSERT INTO stock_stats (symbol, updated_at) VALUES (?, ?)
                                             ON CONFLICT(symbol) DO UPDATE SET updated_at = excluded.updated_at
                                         `).bind(q.symbol, updatedAt).run();
                                     }
-                                } else {
-                                    await env.DB.prepare(`
-                                        INSERT INTO stock_stats (symbol, updated_at) VALUES (?, ?)
-                                        ON CONFLICT(symbol) DO UPDATE SET updated_at = excluded.updated_at
-                                    `).bind(q.symbol, updatedAt).run();
                                 }
 
-                                // 4. NEW: Update Earnings & Scoring Metrics (only if not updated in the last 20 hours)
-                                try {
-                                    const yesterdayUTC = new Date(Date.now() - 20 * 60 * 60 * 1000)
-                                        .toISOString().replace('T', ' ').substring(0, 19);
-                                    const scoringFresh = await env.DB.prepare(
-                                        "SELECT 1 FROM scoring_metrics WHERE symbol = ? AND updated_at >= ?"
-                                    ).bind(q.symbol, yesterdayUTC).first();
+                                // 4. Update Earnings & Scoring Metrics: Throttled to at most 1 ticker per run to avoid CPU / subrequest limits
+                                if (scoringUpdatedCount < 1) {
+                                    try {
+                                        const yesterdayUTC = new Date(Date.now() - 20 * 60 * 60 * 1000)
+                                            .toISOString().replace('T', ' ').substring(0, 19);
+                                        const scoringFresh = await env.DB.prepare(
+                                            "SELECT 1 FROM scoring_metrics WHERE symbol = ? AND updated_at >= ?"
+                                        ).bind(q.symbol, yesterdayUTC).first();
 
-                                    if (!scoringFresh) {
-                                        const { updateTicker } = await import('./db');
-                                        await updateTicker(env, q.symbol);
-                                        await updateScoringMetrics(env, q.symbol);
+                                        if (!scoringFresh) {
+                                            const { updateTicker } = await import('./db');
+                                            await updateTicker(env, q.symbol);
+                                            await updateScoringMetrics(env, q.symbol);
+                                            scoringUpdatedCount++;
+                                        }
+                                    } catch (errSync: any) {
+                                        console.error(`[Cron] Earnings/Scoring update error for ${q.symbol}: ${errSync.message}`);
                                     }
-                                } catch (errSync: any) {
-                                    console.error(`[Cron] Earnings/Scoring update error for ${q.symbol}: ${errSync.message}`);
                                 }
 
                             } catch (e: any) {
@@ -244,9 +242,7 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                                 } catch (_) {}
                             }
                         }
-                    });
-
-                    await Promise.all(tasks);
+                    }
 
                     const failed = symbolsToProcess.filter(s => {
                         const q = quotes.find(quote => quote.symbol === s);
@@ -266,7 +262,6 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
             if (quoteErrors.length > 0) {
                 // Update or insert updated_at for failed symbols to move them out of "pending" for the current window
                 // but don't recalculate their stats. This prevents 1 symbol from blocking the system.
-                const updatedAt = getESTTimestamp();
                 for (const s of quoteErrors) {
                     try {
                         await env.DB.prepare(`
@@ -277,6 +272,17 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                         console.error(`[Cron] Failed to update error timestamp for ${s}: ${dbErr.message}`);
                     }
                 }
+            }
+
+            // Anti-Stall Guarantee: Ensure EVERY symbol in symbolsToProcess is stamped with updated_at
+            // so no single symbol can deadlock the cron queue across runs.
+            for (const s of symbolsToProcess) {
+                try {
+                    await env.DB.prepare(`
+                        INSERT INTO stock_stats (symbol, updated_at) VALUES (?, ?)
+                        ON CONFLICT(symbol) DO UPDATE SET updated_at = excluded.updated_at
+                    `).bind(s, updatedAt).run();
+                } catch (_) {}
             }
 
             remainingPending -= symbolsToProcess.length;
