@@ -3,6 +3,8 @@ import { Bindings } from '../types';
 import { generateNvidiaResponse } from '../ai/nvidia';
 import { generateCloudflareAIResponse } from '../ai/cloudflare';
 import { getLatestQuotes, regenerateStats } from '../db';
+import { runPortfolioComparisonWithJev } from '../ai/jev';
+import { fetchAllPortfoliosSummary } from './comparison';
 
 const chatRoutes = new Hono<{ Bindings: Bindings }>();
 
@@ -74,8 +76,8 @@ chatRoutes.post('/api/chat', async (c) => {
             }
         }
 
-        // Detect "all portfolios" queries - explicitly include "analyze this"
-        const allPortfoliosRegex = /\b(all|every|compare\s+all)\s+(portfolios?|groups?)|analyze\s+this|valuation\s+check|technical\s+trend/i;
+        // Detect "all portfolios" and cross-portfolio comparison queries
+        const allPortfoliosRegex = /\b(all|every|compare\s+all|compare)\s+(portfolios?|groups?)|analyze\s+this|valuation\s+check|technical\s+trend|下周.*增配|最值得增配|哪个组合.*增配|横向对比|组合对比|配置推荐/i;
         const wantsAllPortfolios = allPortfoliosRegex.test(message);
 
         // Check if user mentioned a specific stock symbol (e.g., @NVDA, @AAPL)
@@ -126,25 +128,23 @@ chatRoutes.post('/api/chat', async (c) => {
             }
         } else if (wantsAllPortfolios) {
             try {
-                const db = c.env.DB;
-                const allGroups = await db.prepare(
-                    `SELECT g.id, g.name,
-                            ps.cagr, ps.sharpe, ps.sortino, ps.max_drawdown
-                     FROM groups g
-                     LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
-                     ORDER BY ps.sharpe DESC`
-                ).all();
-
-                if (allGroups.results && allGroups.results.length > 0) {
-                    localDataContext += `\n\n### All Portfolios Comparison\n`;
-                    localDataContext += `| Portfolio | CAGR | Sharpe | Sortino | Max DD |\n`;
-                    localDataContext += `|-----------|------|--------|---------|--------|\n`;
-                    for (const g of allGroups.results as any[]) {
-                        localDataContext += `| ${g.name} | ${g.cagr?.toFixed(1) || 'N/A'}% | ${g.sharpe?.toFixed(2) || 'N/A'} | ${g.sortino?.toFixed(2) || 'N/A'} | ${g.max_drawdown?.toFixed(1) || 'N/A'}% |\n`;
+                const summaries = await fetchAllPortfoliosSummary(c.env.DB);
+                if (summaries && summaries.length > 0) {
+                    const compResult = await runPortfolioComparisonWithJev(c.env.AI, summaries);
+                    localDataContext += `\n\n### AI Cross-Portfolio Tactical Comparison & Overweight Analysis\n`;
+                    localDataContext += `**Evaluated Top Pick to Overweight Next Week**: ${compResult.topPick.name} (Conviction: ${compResult.topPick.conviction}, Confidence: ${compResult.topPick.confidence}%)\n`;
+                    localDataContext += `Headline: ${compResult.topPick.headline}\n`;
+                    localDataContext += `Key Drivers:\n- ${compResult.topPick.keyDrivers.join('\n- ')}\n`;
+                    localDataContext += `Risk Warning: ${compResult.topPick.riskWarning}\n\n`;
+                    localDataContext += `| Portfolio | Tactical Rating | Score | Avg PEG | Forward PE | CAGR | Sharpe | Max DD |\n`;
+                    localDataContext += `|-----------|-----------------|-------|---------|------------|------|--------|--------|\n`;
+                    for (const r of compResult.ratings) {
+                        localDataContext += `| ${r.name} | ${r.actionLabel} | ${r.score} | ${r.metrics.avgPeg?.toFixed(2) || 'N/A'} | ${r.metrics.avgForwardPe?.toFixed(1) || 'N/A'} | ${r.metrics.cagr?.toFixed(1) || 'N/A'}% | ${r.metrics.sharpe?.toFixed(2) || 'N/A'} | ${r.metrics.maxDrawdown?.toFixed(1) || 'N/A'}% |\n`;
                     }
+                    localDataContext += `\nResponse Guidelines:\n1. 明确向用户指出下周首选增配哪一个组合（Top Pick），并结合估值性价比(PEG)、均线动量、回撤控制给出详实的推荐理由。\n2. 输出清晰的各组合横向对比表格。\n3. 给出现实的资产配置建议和风险提示。`;
                 }
             } catch (dbError) {
-                console.error('Error fetching all portfolios:', dbError);
+                console.error('Error in cross-portfolio comparison for chat:', dbError);
             }
         } else if (mentions.length > 0 || (context && context.portfolioId)) {
             try {

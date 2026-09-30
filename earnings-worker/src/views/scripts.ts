@@ -1330,6 +1330,7 @@ async function loadMembers() {
                     
                     renderSidebar();
                     renderPortfoliosBoard(groups);
+                    loadCrossPortfolioComparison();
                 }
             } catch(e) {
                 console.error("Failed to load portfolios", e);
@@ -2125,8 +2126,139 @@ function setupPerfCanvasInteraction() {
             renderPerformanceChart(currentPerfData);
         }
     });
+// --- WEEKLY TACTICAL CROSS-PORTFOLIO RADAR (JEV POWERED) ---
+let radarExpanded = false;
+let currentRadarData = null;
+
+async function loadCrossPortfolioComparison() {
+    const summaryEl = document.getElementById('radarTopPickSummary');
+    const badgeEl = document.getElementById('jevEngineBadge');
+    if (!summaryEl) return;
+
+    try {
+        const res = await fetch('/api/portfolios/cross-comparison');
+        if (!res.ok) {
+            summaryEl.innerHTML = '<span style="color:#94A3B8;">暂无足够活跃组合数据进行横向评测</span>';
+            return;
+        }
+        const json = await res.json();
+        if (!json.success || !json.data) return;
+
+        currentRadarData = json.data;
+        const top = currentRadarData.topPick;
+
+        if (badgeEl) {
+            badgeEl.textContent = currentRadarData.engine === 'jev' ? 'Jev AI 评测' : '多因子量化引擎';
+            badgeEl.style.background = currentRadarData.engine === 'jev' ? '#DBEAFE' : '#E2E8F0';
+            badgeEl.style.color = currentRadarData.engine === 'jev' ? '#1D4ED8' : '#475569';
+        }
+
+        // Render top pick summary
+        summaryEl.innerHTML = 
+            '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">' +
+                '<span style="font-size:0.98rem; font-weight:700; color:#1E40AF;">🥇 下周首选：' + top.name + '</span>' +
+                '<span style="background:#DCFCE7; color:#166534; font-size:0.75rem; padding:1px 7px; border-radius:4px; font-weight:700;">置信度 ' + top.confidence + '%</span>' +
+                '<span style="color:#334155; font-size:0.84rem; font-weight:500;">— ' + top.headline + '</span>' +
+            '</div>' +
+            '<div style="margin-top:5px; font-size:0.8rem; color:#64748B;">' +
+                '<strong>核心驱动：</strong>' + top.keyDrivers.join(' · ') +
+            '</div>';
+
+        renderRadarMatrixTable(currentRadarData.ratings);
+    } catch (e) {
+        console.error('[Radar] Failed to load cross comparison:', e);
+        if (summaryEl) summaryEl.innerHTML = '<span style="color:#94A3B8;">横向评测加载稍后重试</span>';
+    }
 }
 
+function toggleRadarDetails() {
+    radarExpanded = !radarExpanded;
+    const container = document.getElementById('radarMatrixContainer');
+    const btn = document.getElementById('btnToggleRadarDetails');
+    if (!container || !btn) return;
+
+    if (radarExpanded) {
+        container.style.display = 'block';
+        btn.innerHTML = '收起对比矩阵 ▲';
+        btn.style.background = '#1E40AF';
+    } else {
+        container.style.display = 'none';
+        btn.innerHTML = '查看对比矩阵 ▼';
+        btn.style.background = '#2563EB';
+    }
+}
+
+function selectPortfolioById(id) {
+    const target = groups.find(g => g.id === id);
+    if (target) {
+        selectGroup(target);
+    }
+}
+
+function renderRadarMatrixTable(ratings) {
+    const wrapper = document.getElementById('radarMatrixTableWrapper');
+    if (!wrapper || !ratings || ratings.length === 0) return;
+
+    let html = '<table style="width:100%; border-collapse:collapse; font-size:0.78rem; text-align:left; background:white; border-radius:6px; overflow:hidden;">' +
+        '<thead>' +
+            '<tr style="background:#F1F5F9; border-bottom:1px solid #CBD5E1; color:#475569;">' +
+                '<th style="padding:8px 10px; font-weight:600;">组合名称</th>' +
+                '<th style="padding:8px 10px; font-weight:600; text-align:center;">下周战术建议</th>' +
+                '<th style="padding:8px 10px; font-weight:600; text-align:center;">战术分</th>' +
+                '<th style="padding:8px 10px; font-weight:600; text-align:right;">平均 Forward PEG</th>' +
+                '<th style="padding:8px 10px; font-weight:600; text-align:right;">Forward PE</th>' +
+                '<th style="padding:8px 10px; font-weight:600; text-align:right;">CAGR</th>' +
+                '<th style="padding:8px 10px; font-weight:600; text-align:right;">夏普比率</th>' +
+                '<th style="padding:8px 10px; font-weight:600; text-align:right;">最大回撤</th>' +
+                '<th style="padding:8px 10px; font-weight:600;">核心研判理由</th>' +
+            '</tr>' +
+        '</thead>' +
+        '<tbody>';
+
+    for (const r of ratings) {
+        let tagBg = '#F1F5F9';
+        let tagColor = '#475569';
+        if (r.action === 'STRONG_OVERWEIGHT') { tagBg = '#FEF3C7'; tagColor = '#B45309'; }
+        else if (r.action === 'OVERWEIGHT') { tagBg = '#DCFCE7'; tagColor = '#15803D'; }
+        else if (r.action === 'UNDERWEIGHT') { tagBg = '#FEE2E2'; tagColor = '#B91C1C'; }
+
+        const pegColor = (r.metrics.avgPeg && r.metrics.avgPeg <= 1.5) ? '#10B981' : (r.metrics.avgPeg && r.metrics.avgPeg > 2.2 ? '#EF4444' : '#64748B');
+        const cagrColor = (r.metrics.cagr && r.metrics.cagr > 0) ? '#10B981' : '#EF4444';
+
+        html += '<tr style="border-bottom:1px solid #F1F5F9; transition:background 0.15s;" onmouseover="this.style.background=\\'#F8FAFC\\'" onmouseout="this.style.background=\\'white\\'">' +
+            '<td style="padding:8px 10px; font-weight:600; cursor:pointer;" onclick="window.selectPortfolioById(' + r.id + ')">' +
+                '<span style="color:#2563EB; text-decoration:underline;">' + r.name + '</span>' +
+            '</td>' +
+            '<td style="padding:8px 10px; text-align:center;">' +
+                '<span style="display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:700; background:' + tagBg + '; color:' + tagColor + ';">' +
+                    r.actionLabel +
+                '</span>' +
+            '</td>' +
+            '<td style="padding:8px 10px; text-align:center; font-weight:700; color:#1E3A8A;">' + r.score + '</td>' +
+            '<td style="padding:8px 10px; text-align:right; font-weight:600; color:' + pegColor + '">' +
+                (r.metrics.avgPeg ? r.metrics.avgPeg.toFixed(2) : '-') +
+            '</td>' +
+            '<td style="padding:8px 10px; text-align:right; color:#475569;">' +
+                (r.metrics.avgForwardPe ? r.metrics.avgForwardPe.toFixed(1) : '-') +
+            '</td>' +
+            '<td style="padding:8px 10px; text-align:right; font-weight:600; color:' + cagrColor + '">' +
+                (r.metrics.cagr ? ((r.metrics.cagr > 0 ? '+' : '') + r.metrics.cagr.toFixed(1) + '%') : '-') +
+            '</td>' +
+            '<td style="padding:8px 10px; text-align:right; font-weight:600; color:#0F172A;">' +
+                (r.metrics.sharpe ? r.metrics.sharpe.toFixed(2) : '-') +
+            '</td>' +
+            '<td style="padding:8px 10px; text-align:right; font-weight:600; color:#EF4444;">' +
+                (r.metrics.maxDrawdown ? (r.metrics.maxDrawdown.toFixed(1) + '%') : '-') +
+            '</td>' +
+            '<td style="padding:8px 10px; color:#64748B; font-size:0.76rem; max-width:240px; line-height:1.35;">' +
+                r.reason +
+            '</td>' +
+        '</tr>';
+    }
+
+    html += '</tbody></table>';
+    wrapper.innerHTML = html;
+}
 
 // --- INIT ---
 window.initDashboard = async function () {
@@ -2198,6 +2330,9 @@ window.changePerfPeriod = changePerfPeriod;
 window.loadPortfolioPerformance = loadPortfolioPerformance;
 window.renderPerformanceChart = renderPerformanceChart;
 window.togglePerfChart = togglePerfChart;
+window.toggleRadarDetails = toggleRadarDetails;
+window.selectPortfolioById = selectPortfolioById;
+window.loadCrossPortfolioComparison = loadCrossPortfolioComparison;
 
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', window.initDashboard);
@@ -2513,6 +2648,7 @@ if (document.readyState === 'loading') {
         };
 
         window.setContextQuestion = function(q) {
+            if (!chatOpen) window.toggleChat();
             document.getElementById('chatInput').value = q;
             window.sendChat();
         };

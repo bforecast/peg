@@ -87,6 +87,7 @@ export const LOGIN_HTML = `<!DOCTYPE html>
         <h1>Welcome Back</h1>
         <form action="/auth" method="POST">
             <div id="error-msg" class="error">Invalid Credentials</div>
+            <input type="hidden" name="redirect" id="redirect-input" value="">
             <input type="text" name="username" placeholder="Username" required autocapitalize="none" autocomplete="username">
             <input type="password" name="password" placeholder="Password" required autocomplete="current-password">
             <button type="submit">Sign In</button>
@@ -97,6 +98,9 @@ export const LOGIN_HTML = `<!DOCTYPE html>
         const urlParams = new URLSearchParams(window.location.search);
         if (urlParams.has('error')) {
             document.getElementById('error-msg').style.display = 'block';
+        }
+        if (urlParams.has('redirect')) {
+            document.getElementById('redirect-input').value = urlParams.get('redirect');
         }
     </script>
 </body>

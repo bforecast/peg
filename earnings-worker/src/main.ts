@@ -16,9 +16,72 @@ const app = new Hono<{ Bindings: Bindings }>();
 
 // --- Public Routes ---
 
+function sanitizeRedirectUrl(redirectParam?: string): string {
+    if (!redirectParam) return '/';
+    try {
+        if (redirectParam.startsWith('/') && !redirectParam.startsWith('//')) {
+            return redirectParam;
+        }
+        const parsedUrl = new URL(redirectParam);
+        if (
+            parsedUrl.hostname === 'bforecast.com' ||
+            parsedUrl.hostname.endsWith('.bforecast.com') ||
+            parsedUrl.hostname === 'localhost' ||
+            parsedUrl.hostname === '127.0.0.1'
+        ) {
+            return redirectParam;
+        }
+    } catch (e) {
+        // Invalid URL format fallback
+    }
+    return '/';
+}
+
 // Login Page
-app.get('/login', (c) => {
+app.get('/login', async (c) => {
+    const session = getCookie(c, 'auth_session');
+    const secret = c.env.AUTH_PASSWORD;
+    const redirectParam = c.req.query('redirect');
+
+    if (session && secret) {
+        const verifiedUser = await verifySession(session, secret);
+        if (verifiedUser) {
+            return c.redirect(sanitizeRedirectUrl(redirectParam));
+        }
+    }
     return c.html(LOGIN_HTML);
+});
+
+// Logout Route (clears parent domain cookie)
+app.get('/logout', (c) => {
+    const host = c.req.header('host') || '';
+    const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+    setCookie(c, 'auth_session', '', {
+        path: '/',
+        ...(isLocalhost ? {} : { domain: '.bforecast.com' }),
+        secure: !isLocalhost,
+        httpOnly: true,
+        maxAge: 0,
+        sameSite: 'Lax',
+    });
+    return c.redirect('/login');
+});
+
+// Auth Verification Endpoint (used by bxhub and peer workers via Service Binding or internal HTTP)
+app.get('/api/auth/verify', async (c) => {
+    const session = getCookie(c, 'auth_session');
+    if (!session) {
+        return c.json({ authenticated: false, error: 'No session cookie' }, 401);
+    }
+    const secret = c.env.AUTH_PASSWORD;
+    if (!secret) {
+        return c.json({ authenticated: false, error: 'Auth credentials not configured' }, 500);
+    }
+    const verifiedUser = await verifySession(session, secret);
+    if (verifiedUser) {
+        return c.json({ authenticated: true, user: verifiedUser });
+    }
+    return c.json({ authenticated: false, error: 'Invalid or expired session' }, 401);
 });
 
 // PWA Assets
@@ -35,7 +98,7 @@ app.get('/sw.js', (c) => {
 });
 
 // Helper functions for HMAC signed sessions
-async function signSession(username: string, secret: string): Promise<string> {
+export async function signSession(username: string, secret: string): Promise<string> {
     const expiry = Date.now() + 1000 * 60 * 60 * 24 * 30; // 30 days
     const data = `${username}:${expiry}`;
     const encoder = new TextEncoder();
@@ -62,7 +125,7 @@ async function signSession(username: string, secret: string): Promise<string> {
     return `${dataB64}.${signatureHex}`;
 }
 
-async function verifySession(sessionStr: string, secret: string): Promise<string | null> {
+export async function verifySession(sessionStr: string, secret: string): Promise<string | null> {
     try {
         const parts = sessionStr.split('.');
         if (parts.length !== 2) return null;
@@ -106,6 +169,7 @@ app.post('/auth', async (c) => {
     const body = await c.req.parseBody();
     const username = body['username'];
     const password = body['password'];
+    const redirectParam = body['redirect'] as string | undefined;
 
     const envUser = c.env.AUTH_USERNAME;
     const envPass = c.env.AUTH_PASSWORD;
@@ -120,17 +184,22 @@ app.post('/auth', async (c) => {
         // Generate secure HMAC-SHA256 signed session cookie
         const sessionToken = await signSession(username, envPass);
 
-        // Set a persistent cookie (30 days)
+        const host = c.req.header('host') || '';
+        const isLocalhost = host.includes('localhost') || host.includes('127.0.0.1');
+
+        // Set a persistent cookie (30 days) on parent domain .bforecast.com
         setCookie(c, 'auth_session', sessionToken, {
             path: '/',
-            secure: true,
+            ...(isLocalhost ? {} : { domain: '.bforecast.com' }),
+            secure: !isLocalhost,
             httpOnly: true,
             maxAge: 60 * 60 * 24 * 30, // 30 Days
             sameSite: 'Lax',
         });
-        return c.redirect('/');
+        return c.redirect(sanitizeRedirectUrl(redirectParam));
     } else {
-        return c.redirect('/login?error=1');
+        const redirectQuery = redirectParam ? `&redirect=${encodeURIComponent(redirectParam)}` : '';
+        return c.redirect(`/login?error=1${redirectQuery}`);
     }
 });
 
@@ -144,6 +213,8 @@ app.use('/*', async (c, next) => {
     const publicPaths = [
         '/login',
         '/auth',
+        '/logout',
+        '/api/auth/verify',
         '/favicon.ico',
         '/manifest.json',
         '/sw.js',
@@ -199,6 +270,8 @@ app.route('/', chatRoutes);
 app.route('/', scoringRoutes);
 import importRoutes from './routes/import';
 app.route('/', importRoutes);
+import comparisonRoutes from './routes/comparison';
+app.route('/', comparisonRoutes);
 
 // Export Worker Entry Point
 export default {
