@@ -4,6 +4,7 @@ import { updatePrices, updateTicker, saveQuotesToDB, backfillHistory } from '../
 import { getSuperinvestors, getPortfolio, searchSuperinvestors } from '../sec_edgar';
 import { fetchQuotes } from '../yahoo';
 import { calculatePortfolioStats } from '../portfolio';
+import { invalidateCronCompletionCache } from '../cron';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -12,6 +13,7 @@ app.post('/api/update-prices', async (c) => {
     const symbol = c.req.query('symbol')?.toUpperCase();
     if (!symbol) return c.json({ error: 'Symbol required' }, 400);
 
+    invalidateCronCompletionCache();
     try {
         const result = await updatePrices(c.env, symbol);
         return c.json({ status: 'ok', symbol, ...result });
@@ -29,6 +31,7 @@ app.post('/api/update', async (c) => {
         return c.json({ error: 'ALPHA_VANTAGE_KEY not set in secrets' }, 500);
     }
 
+    invalidateCronCompletionCache();
     try {
         const result = await updateTicker(c.env, symbol);
         return c.json({ status: 'ok', symbol, ...result });
@@ -251,6 +254,7 @@ app.post('/api/import-superinvestor', async (c) => {
             const stmt = c.env.DB.prepare('INSERT INTO group_members (group_id, symbol, allocation) VALUES (?, ?, ?)');
             const batch = portfolio.holdings.map(h => stmt.bind(groupId, h.symbol, h.allocation));
             await c.env.DB.batch(batch);
+            invalidateCronCompletionCache();
 
             // Auto-hydrate quotes and price history for newly imported portfolio
             c.executionCtx.waitUntil((async () => {
@@ -463,6 +467,7 @@ app.post('/api/groups', async (c) => {
             'INSERT INTO groups (name, description) VALUES (?, ?)'
         ).bind(name, description || null).run();
 
+        invalidateCronCompletionCache();
         return c.json({ id: meta.last_row_id, name, description });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
@@ -479,6 +484,7 @@ app.delete('/api/groups/:id', async (c) => {
         await c.env.DB.prepare('DELETE FROM portfolio_stats WHERE group_id = ?').bind(id).run();
         await c.env.DB.prepare('DELETE FROM groups WHERE id = ?').bind(id).run();
 
+        invalidateCronCompletionCache();
         return c.json({ success: true });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);
@@ -488,6 +494,7 @@ app.delete('/api/groups/:id', async (c) => {
 // Force Run Cron (Debugging/Manual Fix)
 app.post('/api/admin/force-run-cron', async (c) => {
     try {
+        invalidateCronCompletionCache();
         const { scheduled } = await import('../cron');
         // Mock event/ctx
         const event: any = { cron: 'MANUAL', type: 'scheduled', scheduledTime: Date.now() };
@@ -524,6 +531,7 @@ app.post('/api/admin/force-run-cron', async (c) => {
 // Manual Trigger for Cron Job (Synchronous - Full Evaluation)
 // Supports query params: force=true (ignore freshness), limit=N (max symbols), symbols=X,Y,Z (specific symbols)
 app.on(['GET', 'POST'], '/api/admin/trigger-cron', async (c) => {
+    invalidateCronCompletionCache();
     const runStart = Date.now();
     const report: any = {
         trigger: 'MANUAL',
@@ -889,6 +897,7 @@ app.put('/api/groups/:id', async (c) => {
         }
 
         await c.env.DB.batch(statements);
+        invalidateCronCompletionCache();
 
         // Allow batch backfill triggering for new members?
         // It's complex to know which were added vs existing.
@@ -950,6 +959,8 @@ app.post('/api/groups/:id/members', async (c) => {
             'INSERT OR IGNORE INTO group_members (group_id, symbol) VALUES (?, ?)'
         ).bind(id, symUpper).run();
 
+        invalidateCronCompletionCache();
+
         // Trigger Backfill Check
         await checkAndBackfill(c.env, symUpper, c.executionCtx);
 
@@ -988,6 +999,8 @@ app.delete('/api/groups/:id/members/:symbol', async (c) => {
         await c.env.DB.prepare(
             'DELETE FROM group_members WHERE group_id = ? AND symbol = ?'
         ).bind(id, symbol).run();
+
+        invalidateCronCompletionCache();
         return c.json({ success: true });
     } catch (e: any) {
         return c.json({ error: e.message }, 500);

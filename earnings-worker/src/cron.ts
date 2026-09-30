@@ -10,6 +10,17 @@ const PORTFOLIO_BATCH_SIZE = 5;
 let cachedTrackedSymbols: { symbols: string[]; timestamp: number } | null = null;
 const TRACKED_SYMBOLS_CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
+// In-memory cache for trading day completion (eliminating ~900k idle reads per day)
+let completedCutoffTime: string | null = null;
+let lastFreshCheckTime: number = 0;
+const FRESH_CHECK_INTERVAL_MS = 60 * 60 * 1000; // 60 minutes safety re-check
+
+export function invalidateCronCompletionCache() {
+    completedCutoffTime = null;
+    lastFreshCheckTime = 0;
+    cachedTrackedSymbols = null;
+}
+
 async function getTrackedSymbols(env: Bindings): Promise<string[]> {
     const now = Date.now();
     if (cachedTrackedSymbols && (now - cachedTrackedSymbols.timestamp < TRACKED_SYMBOLS_CACHE_TTL)) {
@@ -22,11 +33,42 @@ async function getTrackedSymbols(env: Bindings): Promise<string[]> {
 }
 
 export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: ExecutionContext) {
-    console.log('Scheduled Update Triggered');
     const runStart = Date.now();
+    const isManualTrigger = (event as any)?.cron === 'MANUAL' || (event as any)?.type === 'manual';
+
+    const lastTradingDateStr = getLastTradingDate();
+    const cutoffTime = `${lastTradingDateStr} 16:00:00`;
+    const now = Date.now();
 
     // Heartbeat: Log to console so it shows in Cloudflare Logs, but don't spam the DB
-    console.log(`[Cron] Heartbeat check at ${new Date().toISOString()}`);
+    console.log(`[Cron] Heartbeat check at ${new Date().toISOString()} | Target Cutoff: ${cutoffTime}`);
+
+    // Fast-path Level 1: In-memory flag check (Zero cost: 0 DB queries, 0 rows read, <0.01ms CPU)
+    if (!isManualTrigger && completedCutoffTime === cutoffTime && (now - lastFreshCheckTime < FRESH_CHECK_INTERVAL_MS)) {
+        console.log(`[Cron] System fresh for cutoff ${cutoffTime} (verified ${Math.round((now - lastFreshCheckTime) / 60000)}m ago). Zero-cost skip.`);
+        return;
+    }
+
+    // Fast-path Level 2: Cold-start or recycled container check via cron_logs index (Cost: exactly 1 row read)
+    if (!isManualTrigger && !completedCutoffTime) {
+        try {
+            const lastLog = await env.DB.prepare(
+                "SELECT status, details, timestamp FROM cron_logs ORDER BY timestamp DESC LIMIT 1"
+            ).first() as { status: string; details: string; timestamp: string } | null;
+
+            if (lastLog?.status === 'SKIP' && lastLog?.details === `Cutoff: ${cutoffTime}`) {
+                const lastLogTime = new Date(lastLog.timestamp + ' EST').getTime();
+                if (!isNaN(lastLogTime) && (now - lastLogTime < FRESH_CHECK_INTERVAL_MS)) {
+                    completedCutoffTime = cutoffTime;
+                    lastFreshCheckTime = now;
+                    console.log(`[Cron Fast-Path] Cutoff ${cutoffTime} already verified fresh at ${lastLog.timestamp}. Zero-cost skip.`);
+                    return;
+                }
+            }
+        } catch (e) {
+            console.warn('[Cron Fast-Path] Error reading last cron log, falling back to full check:', e);
+        }
+    }
 
     // 1. Get all unique active symbols from portfolios (using 10-min in-memory cache)
     const symbols = await getTrackedSymbols(env);
@@ -74,6 +116,9 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                 `).bind(cutoffTime).first() as any;
 
                 if (stalePfs === 0) {
+                    completedCutoffTime = cutoffTime;
+                    lastFreshCheckTime = Date.now();
+
                     // Throttled SKIP log: Only log to database once per hour to avoid spam
                     const lastSkip = await env.DB.prepare(
                         "SELECT timestamp FROM cron_logs WHERE status IN ('SKIP', 'CHECKED') ORDER BY id DESC LIMIT 1"
@@ -431,6 +476,10 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     `Run Complete: ${quotesCount} quotes, ${pricesUpdated} prices, ${statsUpdated} stats`,
                     `Total: ${totalDuration}ms | Pending: ${remainingPending} remaining`
                 );
+                if (remainingPending === 0 && !hasSignificantErrors) {
+                    completedCutoffTime = cutoffTime;
+                    lastFreshCheckTime = Date.now();
+                }
             } else {
                 // Idle Run - Log CHECKED only once every 30 mins to reduce noise
                 const lastChecked = await env.DB.prepare(

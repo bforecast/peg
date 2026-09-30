@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { Bindings } from '../types';
 import { fetchQuotes } from '../yahoo';
 import { updatePrices, updateTicker } from '../db';
+import { invalidateCronCompletionCache } from '../cron';
 
 const app = new Hono<{ Bindings: Bindings }>();
 
@@ -110,6 +111,7 @@ app.post('/api/import-x', async (c) => {
         const allocation = uniqueSymbols.length > 0 ? (100 / uniqueSymbols.length) : 0;
         const batch = uniqueSymbols.map(sym => stmt.bind(groupId, sym, allocation));
         await c.env.DB.batch(batch);
+        invalidateCronCompletionCache();
 
         // Trigger Background Updates
         c.executionCtx.waitUntil((async () => {
