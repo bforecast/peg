@@ -32,10 +32,15 @@ export async function fetchAllPortfoliosSummary(db: any): Promise<PortfolioSumma
     // 3. Fetch all group members with quotes & stats
     const { results: allMembers } = await db.prepare(`
         SELECT gm.group_id, gm.symbol, gm.allocation,
-               sq.regular_market_price, sq.forward_pe, sq.eps_current_year, sq.eps_next_year,
+               lq.price, lq.forward_pe, lq.eps_current_year, lq.eps_next_year,
                ss.sma_20, ss.sma_50, ss.sma_200, ss.change_1y, ss.rs_rank_1m
         FROM group_members gm
-        LEFT JOIN stock_quotes sq ON gm.symbol = sq.symbol
+        LEFT JOIN (
+            SELECT symbol, price, forward_pe, eps_current_year, eps_next_year,
+                   ROW_NUMBER() OVER (PARTITION BY symbol ORDER BY date DESC) as rn
+            FROM stock_quotes
+            WHERE date >= date('now', '-30 days')
+        ) lq ON gm.symbol = lq.symbol AND lq.rn = 1
         LEFT JOIN stock_stats ss ON gm.symbol = ss.symbol
         ORDER BY gm.allocation DESC
     `).all();
@@ -92,7 +97,7 @@ export async function fetchAllPortfoliosSummary(db: any): Promise<PortfolioSumma
                 }
             }
 
-            const price = toFiniteNumOrNull(m.regular_market_price);
+            const price = toFiniteNumOrNull(m.price);
             const sma50 = toFiniteNumOrNull(m.sma_50);
             if (price !== null && sma50 !== null && price >= sma50) {
                 above50SmaCount++;
