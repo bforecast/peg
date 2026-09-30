@@ -132,16 +132,27 @@ chatRoutes.post('/api/chat', async (c) => {
                 if (summaries && summaries.length > 0) {
                     const compResult = await runPortfolioComparisonWithJev(c.env.AI, summaries);
                     localDataContext += `\n\n### AI Cross-Portfolio Tactical Comparison & Overweight Analysis\n`;
-                    localDataContext += `**Evaluated Top Pick to Overweight Next Week**: ${compResult.topPick.name} (Conviction: ${compResult.topPick.conviction}, Confidence: ${compResult.topPick.confidence}%)\n`;
+                    localDataContext += `**Evaluated Primary Top Pick**: ${compResult.topPick.name} (Conviction: ${compResult.topPick.conviction}, Confidence: ${compResult.topPick.confidence}%)\n`;
                     localDataContext += `Headline: ${compResult.topPick.headline}\n`;
-                    localDataContext += `Key Drivers:\n- ${compResult.topPick.keyDrivers.join('\n- ')}\n`;
-                    localDataContext += `Risk Warning: ${compResult.topPick.riskWarning}\n\n`;
-                    localDataContext += `| Portfolio | Tactical Rating | Score | Avg PEG | Forward PE | CAGR | Sharpe | Max DD |\n`;
-                    localDataContext += `|-----------|-----------------|-------|---------|------------|------|--------|--------|\n`;
-                    for (const r of compResult.ratings) {
-                        localDataContext += `| ${r.name} | ${r.actionLabel} | ${r.score} | ${r.metrics.avgPeg?.toFixed(2) || 'N/A'} | ${r.metrics.avgForwardPe?.toFixed(1) || 'N/A'} | ${r.metrics.cagr?.toFixed(1) || 'N/A'}% | ${r.metrics.sharpe?.toFixed(2) || 'N/A'} | ${r.metrics.maxDrawdown?.toFixed(1) || 'N/A'}% |\n`;
+                    if (compResult.topMomentumPick) {
+                        localDataContext += `**🚀 右侧顺势进攻首选 (Momentum Breakout)**: ${compResult.topMomentumPick.name} (置信度: ${compResult.topMomentumPick.confidence}%)\n`;
+                        localDataContext += `- 核心逻辑: ${compResult.topMomentumPick.keyDrivers.join('；')}\n`;
                     }
-                    localDataContext += `\nResponse Guidelines:\n1. 明确向用户指出下周首选增配哪一个组合（Top Pick），并结合估值性价比(PEG)、均线动量、回撤控制给出详实的推荐理由。\n2. 输出清晰的各组合横向对比表格。\n3. 给出现实的资产配置建议和风险提示。`;
+                    if (compResult.topContrarianPick) {
+                        localDataContext += `**💎 左侧超跌黄金坑首选 (Contrarian Deep Dip)**: ${compResult.topContrarianPick.name} (置信度: ${compResult.topContrarianPick.confidence}%)\n`;
+                        localDataContext += `- 核心逻辑: ${compResult.topContrarianPick.keyDrivers.join('；')}\n`;
+                    }
+                    localDataContext += `\nKey Drivers of Primary Pick:\n- ${compResult.topPick.keyDrivers.join('\n- ')}\n`;
+                    localDataContext += `Risk Warning: ${compResult.topPick.riskWarning}\n\n`;
+                    localDataContext += `| Portfolio | Tactical Rating | Style (风格) | Score | Avg PEG | 20SMA% | 距52W高点 | CAGR | Sharpe | Max DD |\n`;
+                    localDataContext += `|-----------|-----------------|--------------|-------|---------|--------|-----------|------|--------|--------|\n`;
+                    for (const r of compResult.ratings) {
+                        const styleLbl = (r as any).styleLabel || '⚖️ 均衡';
+                        const above20 = r.metrics.above20Pct !== null && r.metrics.above20Pct !== undefined ? `${r.metrics.above20Pct}%` : '-';
+                        const delta52 = r.metrics.avgDelta52w !== null && r.metrics.avgDelta52w !== undefined ? `${r.metrics.avgDelta52w.toFixed(1)}%` : '-';
+                        localDataContext += `| ${r.name} | ${r.actionLabel} | ${styleLbl} | ${r.score} | ${r.metrics.avgPeg?.toFixed(2) || 'N/A'} | ${above20} | ${delta52} | ${r.metrics.cagr?.toFixed(1) || 'N/A'}% | ${r.metrics.sharpe?.toFixed(2) || 'N/A'} | ${r.metrics.maxDrawdown?.toFixed(1) || 'N/A'}% |\n`;
+                    }
+                    localDataContext += `\nResponse Guidelines:\n1. 明确对比“🚀 右侧顺势突破”与“💎 左侧超跌黄金坑”两个维度的首选标的，结合 Forward PEG、近 20 日均线多头动量与 52 周新高距离深入剖析。\n2. 为进攻型（右侧顺势追涨）、稳健型与逆向价值型（左侧分批逢低吸筹）不同投资偏好的用户提供差异化战术配置方案。\n3. 输出包含风格定位的精选横向对比表格与严格的风控警示。`;
                 }
             } catch (dbError) {
                 console.error('Error in cross-portfolio comparison for chat:', dbError);

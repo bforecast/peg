@@ -2150,21 +2150,50 @@ async function loadCrossPortfolioComparison() {
         const top = currentRadarData.topPick;
 
         if (badgeEl) {
-            badgeEl.textContent = currentRadarData.engine === 'jev' ? 'Jev AI 评测' : '多因子量化引擎';
+            badgeEl.textContent = currentRadarData.engine === 'jev' ? 'Jev AI 双轨决策' : '双轨量化引擎';
             badgeEl.style.background = currentRadarData.engine === 'jev' ? '#DBEAFE' : '#E2E8F0';
             badgeEl.style.color = currentRadarData.engine === 'jev' ? '#1D4ED8' : '#475569';
         }
 
-        // Render top pick summary
-        summaryEl.innerHTML = 
-            '<div style="display:flex; align-items:center; flex-wrap:wrap; gap:8px;">' +
-                '<span style="font-size:0.98rem; font-weight:700; color:#1E40AF;">🥇 下周首选：' + top.name + '</span>' +
-                '<span style="background:#DCFCE7; color:#166534; font-size:0.75rem; padding:1px 7px; border-radius:4px; font-weight:700;">置信度 ' + top.confidence + '%</span>' +
-                '<span style="color:#334155; font-size:0.84rem; font-weight:500;">— ' + top.headline + '</span>' +
-            '</div>' +
-            '<div style="margin-top:5px; font-size:0.8rem; color:#64748B;">' +
-                '<strong>核心驱动：</strong>' + top.keyDrivers.join(' · ') +
-            '</div>';
+        // Render dual-track summary (Right-side momentum vs Left-side contrarian)
+        let summaryHtml = '<div style="display:flex; flex-wrap:wrap; gap:12px; align-items:stretch;">';
+
+        if (currentRadarData.topMomentumPick) {
+            const m = currentRadarData.topMomentumPick;
+            summaryHtml += 
+                '<div style="flex:1; min-width:280px; background:linear-gradient(135deg, #EFF6FF 0%, #FFFFFF 100%); border:1px solid #BFDBFE; border-radius:8px; padding:10px 14px;">' +
+                    '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">' +
+                        '<span style="font-size:0.86rem; font-weight:700; color:#1D4ED8;">🚀 右侧顺势进攻首选</span>' +
+                        '<span style="background:#DCFCE7; color:#15803D; font-size:0.72rem; padding:1px 6px; border-radius:4px; font-weight:700;">置信度 ' + m.confidence + '%</span>' +
+                    '</div>' +
+                    '<div style="font-size:0.96rem; font-weight:700; color:#0F172A; cursor:pointer;" onclick="window.selectPortfolioById(' + m.id + ')">' +
+                        '<span style="color:#1E40AF; text-decoration:underline;">' + m.name + '</span>' +
+                    '</div>' +
+                    '<div style="margin-top:4px; font-size:0.78rem; color:#475569; line-height:1.4;">' +
+                        m.keyDrivers.slice(0, 2).join(' · ') +
+                    '</div>' +
+                '</div>';
+        }
+
+        if (currentRadarData.topContrarianPick) {
+            const c = currentRadarData.topContrarianPick;
+            summaryHtml += 
+                '<div style="flex:1; min-width:280px; background:linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%); border:1px solid #FEF08A; border-radius:8px; padding:10px 14px;">' +
+                    '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">' +
+                        '<span style="font-size:0.86rem; font-weight:700; color:#B45309;">💎 左侧超跌黄金坑首选</span>' +
+                        '<span style="background:#FEF3C7; color:#B45309; font-size:0.72rem; padding:1px 6px; border-radius:4px; font-weight:700;">置信度 ' + c.confidence + '%</span>' +
+                    '</div>' +
+                    '<div style="font-size:0.96rem; font-weight:700; color:#0F172A; cursor:pointer;" onclick="window.selectPortfolioById(' + c.id + ')">' +
+                        '<span style="color:#B45309; text-decoration:underline;">' + c.name + '</span>' +
+                    '</div>' +
+                    '<div style="margin-top:4px; font-size:0.78rem; color:#475569; line-height:1.4;">' +
+                        c.keyDrivers.slice(0, 2).join(' · ') +
+                    '</div>' +
+                '</div>';
+        }
+
+        summaryHtml += '</div>';
+        summaryEl.innerHTML = summaryHtml;
 
         renderRadarMatrixTable(currentRadarData.ratings);
     } catch (e) {
@@ -2197,27 +2226,54 @@ function selectPortfolioById(id) {
     }
 }
 
+let radarFilterStyle = 'ALL';
+
+function filterRadarStyle(style) {
+    radarFilterStyle = style;
+    if (currentRadarData && currentRadarData.ratings) {
+        renderRadarMatrixTable(currentRadarData.ratings);
+    }
+}
+window.filterRadarStyle = filterRadarStyle;
+
 function renderRadarMatrixTable(ratings) {
     const wrapper = document.getElementById('radarMatrixTableWrapper');
     if (!wrapper || !ratings || ratings.length === 0) return;
 
-    let html = '<table style="width:100%; border-collapse:collapse; font-size:0.78rem; text-align:left; background:white; border-radius:6px; overflow:hidden;">' +
+    const filtered = ratings.filter(r => {
+        if (radarFilterStyle === 'MOMENTUM') return r.style === 'RIGHT_SIDE_MOMENTUM';
+        if (radarFilterStyle === 'CONTRARIAN') return r.style === 'LEFT_SIDE_CONTRARIAN';
+        if (radarFilterStyle === 'STRONG') return r.action === 'STRONG_OVERWEIGHT';
+        return true;
+    });
+
+    let html = '<div style="margin-bottom:10px; display:flex; gap:8px; flex-wrap:wrap; align-items:center;">' +
+        '<span style="font-size:0.78rem; font-weight:600; color:#64748B;">筛选维度：</span>' +
+        '<button onclick="window.filterRadarStyle(\\'ALL\\')" style="padding:3px 9px; font-size:0.75rem; border-radius:4px; border:1px solid #CBD5E1; cursor:pointer; background:' + (radarFilterStyle === 'ALL' ? '#2563EB; color:white; font-weight:600;' : '#FFFFFF; color:#475569;') + '">全部 (' + ratings.length + ')</button>' +
+        '<button onclick="window.filterRadarStyle(\\'MOMENTUM\\')" style="padding:3px 9px; font-size:0.75rem; border-radius:4px; border:1px solid #CBD5E1; cursor:pointer; background:' + (radarFilterStyle === 'MOMENTUM' ? '#2563EB; color:white; font-weight:600;' : '#FFFFFF; color:#475569;') + '">🚀 右侧顺势</button>' +
+        '<button onclick="window.filterRadarStyle(\\'CONTRARIAN\\')" style="padding:3px 9px; font-size:0.75rem; border-radius:4px; border:1px solid #CBD5E1; cursor:pointer; background:' + (radarFilterStyle === 'CONTRARIAN' ? '#2563EB; color:white; font-weight:600;' : '#FFFFFF; color:#475569;') + '">💎 左侧黄金坑</button>' +
+        '<button onclick="window.filterRadarStyle(\\'STRONG\\')" style="padding:3px 9px; font-size:0.75rem; border-radius:4px; border:1px solid #CBD5E1; cursor:pointer; background:' + (radarFilterStyle === 'STRONG' ? '#2563EB; color:white; font-weight:600;' : '#FFFFFF; color:#475569;') + '">🥇 强烈增配</button>' +
+    '</div>';
+
+    html += '<table style="width:100%; border-collapse:collapse; font-size:0.78rem; text-align:left; background:white; border-radius:6px; overflow:hidden;">' +
         '<thead>' +
             '<tr style="background:#F1F5F9; border-bottom:1px solid #CBD5E1; color:#475569;">' +
                 '<th style="padding:8px 10px; font-weight:600;">组合名称</th>' +
-                '<th style="padding:8px 10px; font-weight:600; text-align:center;">下周战术建议</th>' +
+                '<th style="padding:8px 10px; font-weight:600; text-align:center;">风格定位</th>' +
+                '<th style="padding:8px 10px; font-weight:600; text-align:center;">战术建议</th>' +
                 '<th style="padding:8px 10px; font-weight:600; text-align:center;">战术分</th>' +
-                '<th style="padding:8px 10px; font-weight:600; text-align:right;">平均 Forward PEG</th>' +
-                '<th style="padding:8px 10px; font-weight:600; text-align:right;">Forward PE</th>' +
+                '<th style="padding:8px 10px; font-weight:600; text-align:right;">Forward PEG</th>' +
+                '<th style="padding:8px 10px; font-weight:600; text-align:right;">20SMA多头率</th>' +
+                '<th style="padding:8px 10px; font-weight:600; text-align:right;">距52W新高</th>' +
                 '<th style="padding:8px 10px; font-weight:600; text-align:right;">CAGR</th>' +
                 '<th style="padding:8px 10px; font-weight:600; text-align:right;">夏普比率</th>' +
                 '<th style="padding:8px 10px; font-weight:600; text-align:right;">最大回撤</th>' +
-                '<th style="padding:8px 10px; font-weight:600;">核心研判理由</th>' +
+                '<th style="padding:8px 10px; font-weight:600;">研判理由</th>' +
             '</tr>' +
         '</thead>' +
         '<tbody>';
 
-    for (const r of ratings) {
+    for (const r of filtered) {
         let tagBg = '#F1F5F9';
         let tagColor = '#475569';
         if (r.action === 'STRONG_OVERWEIGHT') { tagBg = '#FEF3C7'; tagColor = '#B45309'; }
@@ -2227,9 +2283,20 @@ function renderRadarMatrixTable(ratings) {
         const pegColor = (r.metrics.avgPeg && r.metrics.avgPeg <= 1.5) ? '#10B981' : (r.metrics.avgPeg && r.metrics.avgPeg > 2.2 ? '#EF4444' : '#64748B');
         const cagrColor = (r.metrics.cagr && r.metrics.cagr > 0) ? '#10B981' : '#EF4444';
 
+        const smaColor = (r.metrics.above20Pct !== null && r.metrics.above20Pct !== undefined)
+            ? (r.metrics.above20Pct >= 70 ? '#10B981' : (r.metrics.above20Pct <= 35 ? '#EF4444' : '#64748B'))
+            : '#64748B';
+
+        const deltaColor = (r.metrics.avgDelta52w !== null && r.metrics.avgDelta52w !== undefined)
+            ? (r.metrics.avgDelta52w >= -12 ? '#10B981' : (r.metrics.avgDelta52w <= -25 ? '#B45309' : '#64748B'))
+            : '#64748B';
+
         html += '<tr style="border-bottom:1px solid #F1F5F9; transition:background 0.15s;" onmouseover="this.style.background=\\'#F8FAFC\\'" onmouseout="this.style.background=\\'white\\'">' +
             '<td style="padding:8px 10px; font-weight:600; cursor:pointer;" onclick="window.selectPortfolioById(' + r.id + ')">' +
                 '<span style="color:#2563EB; text-decoration:underline;">' + r.name + '</span>' +
+            '</td>' +
+            '<td style="padding:8px 10px; text-align:center; font-size:0.75rem; font-weight:600;">' +
+                (r.styleLabel || '⚖️ 均衡') +
             '</td>' +
             '<td style="padding:8px 10px; text-align:center;">' +
                 '<span style="display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:700; background:' + tagBg + '; color:' + tagColor + ';">' +
@@ -2240,8 +2307,11 @@ function renderRadarMatrixTable(ratings) {
             '<td style="padding:8px 10px; text-align:right; font-weight:600; color:' + pegColor + '">' +
                 (r.metrics.avgPeg ? r.metrics.avgPeg.toFixed(2) : '-') +
             '</td>' +
-            '<td style="padding:8px 10px; text-align:right; color:#475569;">' +
-                (r.metrics.avgForwardPe ? r.metrics.avgForwardPe.toFixed(1) : '-') +
+            '<td style="padding:8px 10px; text-align:right; font-weight:600; color:' + smaColor + '">' +
+                (r.metrics.above20Pct !== null && r.metrics.above20Pct !== undefined ? (r.metrics.above20Pct + '%') : '-') +
+            '</td>' +
+            '<td style="padding:8px 10px; text-align:right; font-weight:600; color:' + deltaColor + '">' +
+                (r.metrics.avgDelta52w !== null && r.metrics.avgDelta52w !== undefined ? (r.metrics.avgDelta52w.toFixed(1) + '%') : '-') +
             '</td>' +
             '<td style="padding:8px 10px; text-align:right; font-weight:600; color:' + cagrColor + '">' +
                 (r.metrics.cagr ? ((r.metrics.cagr > 0 ? '+' : '') + r.metrics.cagr.toFixed(1) + '%') : '-') +
@@ -2252,7 +2322,7 @@ function renderRadarMatrixTable(ratings) {
             '<td style="padding:8px 10px; text-align:right; font-weight:600; color:#EF4444;">' +
                 (r.metrics.maxDrawdown ? (r.metrics.maxDrawdown.toFixed(1) + '%') : '-') +
             '</td>' +
-            '<td style="padding:8px 10px; color:#64748B; font-size:0.76rem; max-width:240px; line-height:1.35;">' +
+            '<td style="padding:8px 10px; color:#64748B; font-size:0.75rem; max-width:260px; line-height:1.35;">' +
                 r.reason +
             '</td>' +
         '</tr>';
