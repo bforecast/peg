@@ -2126,6 +2126,8 @@ function setupPerfCanvasInteraction() {
             renderPerformanceChart(currentPerfData);
         }
     });
+}
+
 // --- WEEKLY TACTICAL CROSS-PORTFOLIO RADAR (JEV POWERED) ---
 let radarExpanded = false;
 let currentRadarData = null;
