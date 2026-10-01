@@ -24,6 +24,10 @@ export const STYLES = `
         /* Manager View specific: Needs its own scroll */
         #view-manager { flex-grow: 1; overflow-y: auto; height: 100%; padding-top: 20px; }
         
+        /* Jev View specific: Pass full height and vertical scroll */
+        #view-jev { flex-grow: 1; display: flex; flex-direction: column; overflow: hidden; height: 100%; width: 100%; }
+        .jev-scroll-container { width: 100%; max-width: 1400px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.05); border: 1px solid #EEE; overflow-y: auto; overflow-x: hidden; flex-grow: 1; -webkit-overflow-scrolling: touch; padding: 14px 18px 40px 18px; position: relative; height: 100%; }
+        
         table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
         th, td { padding: 6px 6px; text-align: center; border-bottom: 1px solid #EEE; font-weight: 600; }
         td:nth-child(1), th:nth-child(2), td:nth-child(2) { text-align: left; }

@@ -82,8 +82,8 @@ export const HTML = `<!DOCTYPE html>
             </div>
 
             <!-- Dedicated Jev Tactical Radar View (/jev) -->
-            <div id="view-jev" style="display: none; width: 100%;">
-                <div class="dashboard-container" style="max-width: 1400px; margin: 0 auto; padding: 12px 16px;">
+            <div id="view-jev" style="display: none;">
+                <div class="jev-scroll-container">
                     <!-- Jev Header Bar -->
                     <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid #E2E8F0;">
                         <div style="display:flex; align-items:center; gap:12px;">

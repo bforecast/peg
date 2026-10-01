@@ -209,7 +209,7 @@ export const SCRIPTS = `
             if(vPort) vPort.style.display = view === 'portfolios' ? 'flex' : 'none';
             
             const vJev = document.getElementById('view-jev');
-            if(vJev) vJev.style.display = view === 'jev' ? 'block' : 'none';
+            if(vJev) vJev.style.display = view === 'jev' ? 'flex' : 'none';
 
             document.getElementById('view-dashboard').style.display = view === 'dashboard' ? 'flex' : 'none';
             document.getElementById('view-manager').style.display = view === 'manager' ? 'block' : 'none';
@@ -2278,17 +2278,17 @@ function renderRadarMatrixTable(ratings) {
     html += '<table style="width:100%; border-collapse:collapse; font-size:0.78rem; text-align:left; background:white; border-radius:6px; overflow:hidden;">' +
         '<thead>' +
             '<tr style="background:#F1F5F9; border-bottom:1px solid #CBD5E1; color:#475569;">' +
-                '<th style="padding:8px 10px; font-weight:600;">组合名称</th>' +
-                '<th style="padding:8px 10px; font-weight:600; text-align:center;">风格定位</th>' +
-                '<th style="padding:8px 10px; font-weight:600; text-align:center;">战术建议</th>' +
-                '<th style="padding:8px 10px; font-weight:600; text-align:center;">战术分</th>' +
-                '<th style="padding:8px 10px; font-weight:600; text-align:right;">Forward PEG</th>' +
-                '<th style="padding:8px 10px; font-weight:600; text-align:right;">20SMA多头率</th>' +
-                '<th style="padding:8px 10px; font-weight:600; text-align:right;">距52W新高</th>' +
-                '<th style="padding:8px 10px; font-weight:600; text-align:right;">CAGR</th>' +
-                '<th style="padding:8px 10px; font-weight:600; text-align:right;">夏普比率</th>' +
-                '<th style="padding:8px 10px; font-weight:600; text-align:right;">最大回撤</th>' +
-                '<th style="padding:8px 10px; font-weight:600;">研判理由</th>' +
+                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1;">组合名称</th>' +
+                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:center;">风格定位</th>' +
+                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:center;">战术建议</th>' +
+                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:center;">战术分</th>' +
+                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right;">Forward PEG</th>' +
+                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right;">20SMA多头率</th>' +
+                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right;">距52W新高</th>' +
+                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right;">CAGR</th>' +
+                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right;">夏普比率</th>' +
+                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right;">最大回撤</th>' +
+                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1;">研判理由</th>' +
             '</tr>' +
         '</thead>' +
         '<tbody>';
