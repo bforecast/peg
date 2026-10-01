@@ -25,7 +25,7 @@ describe('Cron Completion Guard (Zero-Cost Idle Optimization)', () => {
                     first: vi.fn().mockResolvedValue({
                         status: 'SKIP',
                         details: `Cutoff: ${fixedCutoff}`,
-                        timestamp: '2026-09-30 16:15:00'
+                        timestamp: dbModule.getESTTimestamp()
                     })
                 };
             }
@@ -77,7 +77,14 @@ describe('Cron Completion Guard (Zero-Cost Idle Optimization)', () => {
                 };
             }
             if (query.includes('SELECT timestamp FROM cron_logs WHERE status IN')) {
-                return { first: vi.fn().mockResolvedValue({ timestamp: '2026-09-30 16:20:00' }) };
+                return { first: vi.fn().mockResolvedValue({ timestamp: dbModule.getESTTimestamp() }) };
+            }
+            if (query.includes('INSERT INTO cron_logs')) {
+                return {
+                    bind: vi.fn().mockReturnValue({
+                        run: vi.fn().mockResolvedValue({})
+                    })
+                };
             }
             throw new Error(`Unexpected query in test: ${query}`);
         });
@@ -111,7 +118,7 @@ describe('Cron Completion Guard (Zero-Cost Idle Optimization)', () => {
                     first: vi.fn().mockResolvedValue({
                         status: 'SKIP',
                         details: `Cutoff: ${fixedCutoff}`,
-                        timestamp: '2026-09-30 16:15:00'
+                        timestamp: dbModule.getESTTimestamp()
                     })
                 };
             }
@@ -186,5 +193,66 @@ describe('Cron Completion Guard (Zero-Cost Idle Optimization)', () => {
         expect(prepareMock).toHaveBeenCalled();
         const queries = prepareMock.mock.calls.map((c: any) => c[0]);
         expect(queries.some((q: string) => q.includes('FROM group_members'))).toBe(true);
+    });
+
+    it('Partial Portfolio Completion: does not activate completion guard when quotes are done but portfolios remain stale', async () => {
+        const prepareMock = vi.fn();
+
+        prepareMock.mockImplementation((query: string) => {
+            if (query.includes('FROM cron_logs ORDER BY timestamp DESC LIMIT 1')) {
+                return { first: vi.fn().mockResolvedValue(null) };
+            }
+            if (query.includes('FROM group_members')) {
+                return { all: vi.fn().mockResolvedValue({ results: [{ symbol: 'AAPL' }] }) };
+            }
+            if (query.includes('FROM stock_stats WHERE updated_at > ?')) {
+                return {
+                    bind: vi.fn().mockReturnValue({
+                        all: vi.fn().mockResolvedValue({ results: [{ symbol: 'AAPL' }] })
+                    })
+                };
+            }
+            // groups check: 41 stale portfolios remaining!
+            if (query.includes('FROM groups g')) {
+                return {
+                    bind: vi.fn().mockReturnValue({
+                        first: vi.fn().mockResolvedValue({ count: 41 })
+                    })
+                };
+            }
+            if (query.includes('FROM groups ORDER BY id ASC')) {
+                return {
+                    all: vi.fn().mockResolvedValue({ results: [{ id: 1, name: 'Portfolio 1' }] })
+                };
+            }
+            return {
+                bind: vi.fn().mockReturnValue({
+                    first: vi.fn().mockResolvedValue(null),
+                    all: vi.fn().mockResolvedValue({ results: [] }),
+                    run: vi.fn().mockResolvedValue({})
+                }),
+                all: vi.fn().mockResolvedValue({ results: [] }),
+                run: vi.fn().mockResolvedValue({})
+            };
+        });
+
+        const mockEnv = { DB: { prepare: prepareMock } } as any;
+        let backgroundPromise: Promise<void> | null = null;
+        const mockCtx = {
+            waitUntil: vi.fn((p) => { backgroundPromise = p; })
+        } as any;
+        const event = { cron: '*/1 * * * *', type: 'scheduled', scheduledTime: Date.now() } as any;
+
+        // Run 1: Pending quotes = 0, but stale portfolios = 41
+        await scheduled(event, mockEnv, mockCtx);
+        if (backgroundPromise) await backgroundPromise;
+
+        // Run 2: Next minute trigger -> Level 1 in-memory guard must NOT skip because portfolios are not all fresh!
+        prepareMock.mockClear();
+        const mockCtx2 = { waitUntil: vi.fn() } as any;
+        await scheduled(event, mockEnv, mockCtx2);
+
+        // prepareMock should have been called (did not skip via Level 1)
+        expect(prepareMock).toHaveBeenCalled();
     });
 });

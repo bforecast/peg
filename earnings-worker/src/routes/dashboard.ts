@@ -34,6 +34,12 @@ app.get('/portfolio/:id', (c) => {
     return c.html(DASHBOARD_HTML);
 });
 
+// Serve Jev Cross-Portfolio Tactical Radar Page
+app.get('/jev', (c) => {
+    c.header('Cache-Control', 'no-cache, no-store, must-revalidate');
+    return c.html(DASHBOARD_HTML);
+});
+
 // Serve Stock Analysis Page (skeleton)
 app.get('/stock/:symbol', async (c) => {
     const { STOCK_HTML } = await import('../stock_html');

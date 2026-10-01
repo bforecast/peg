@@ -208,10 +208,13 @@ export const SCRIPTS = `
             const vPort = document.getElementById('view-portfolios');
             if(vPort) vPort.style.display = view === 'portfolios' ? 'flex' : 'none';
             
+            const vJev = document.getElementById('view-jev');
+            if(vJev) vJev.style.display = view === 'jev' ? 'block' : 'none';
+
             document.getElementById('view-dashboard').style.display = view === 'dashboard' ? 'flex' : 'none';
             document.getElementById('view-manager').style.display = view === 'manager' ? 'block' : 'none';
             const btnRef = document.getElementById('btnRefreshSettings');
-            if(btnRef) btnRef.style.display = view === 'manager' ? 'none' : 'flex';
+            if(btnRef) btnRef.style.display = (view === 'manager' || view === 'jev') ? 'none' : 'flex';
             
             if(view === 'portfolios') {
                 document.title = 'Brilliant Forecast Portfolios';
@@ -219,6 +222,12 @@ export const SCRIPTS = `
                 if(pt) pt.textContent = 'Brilliant Forecast Portfolios';
                 const dm = document.getElementById('dashboardMemo');
                 if(dm) dm.textContent = '';
+            } else if(view === 'jev') {
+                document.title = 'Jev 战术雷达 | Brilliant Forecast Portfolios';
+                const pt = document.getElementById('pageTitle');
+                if(pt) pt.textContent = 'Jev 投资组合双轨战术雷达';
+                const dm = document.getElementById('dashboardMemo');
+                if(dm) dm.textContent = '基于 Forward PEG 与动量超跌双轨的横向战术对比';
             }
 
             if(currentView === 'manager') {
@@ -1330,7 +1339,6 @@ async function loadMembers() {
                     
                     renderSidebar();
                     renderPortfoliosBoard(groups);
-                    loadCrossPortfolioComparison();
                 }
             } catch(e) {
                 console.error("Failed to load portfolios", e);
@@ -2132,74 +2140,86 @@ function setupPerfCanvasInteraction() {
 let radarExpanded = false;
 let currentRadarData = null;
 
-async function loadCrossPortfolioComparison() {
+async function loadCrossPortfolioComparison(force = false) {
     const summaryEl = document.getElementById('radarTopPickSummary');
     const badgeEl = document.getElementById('jevEngineBadge');
     if (!summaryEl) return;
 
+    if (currentRadarData && !force) {
+        renderRadarTopPickCards(currentRadarData);
+        renderRadarMatrixTable(currentRadarData.ratings);
+        return;
+    }
+
+    summaryEl.innerHTML = '<div style="padding: 24px; text-align: center; color: #64748B; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px;">正在通过 Jev 智能评估各组合估值与收益风险比...</div>';
+
     try {
         const res = await fetch('/api/portfolios/cross-comparison');
         if (!res.ok) {
-            summaryEl.innerHTML = '<span style="color:#94A3B8;">暂无足够活跃组合数据进行横向评测</span>';
+            summaryEl.innerHTML = '<div style="padding: 24px; text-align: center; color: #94A3B8; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px;">暂无足够活跃组合数据进行横向评测</div>';
             return;
         }
         const json = await res.json();
         if (!json.success || !json.data) return;
 
         currentRadarData = json.data;
-        const top = currentRadarData.topPick;
-
-        if (badgeEl) {
-            badgeEl.textContent = currentRadarData.engine === 'jev' ? 'Jev AI 双轨决策' : '双轨量化引擎';
-            badgeEl.style.background = currentRadarData.engine === 'jev' ? '#DBEAFE' : '#E2E8F0';
-            badgeEl.style.color = currentRadarData.engine === 'jev' ? '#1D4ED8' : '#475569';
-        }
-
-        // Render dual-track summary (Right-side momentum vs Left-side contrarian)
-        let summaryHtml = '<div style="display:flex; flex-wrap:wrap; gap:12px; align-items:stretch;">';
-
-        if (currentRadarData.topMomentumPick) {
-            const m = currentRadarData.topMomentumPick;
-            summaryHtml += 
-                '<div style="flex:1; min-width:280px; background:linear-gradient(135deg, #EFF6FF 0%, #FFFFFF 100%); border:1px solid #BFDBFE; border-radius:8px; padding:10px 14px;">' +
-                    '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">' +
-                        '<span style="font-size:0.86rem; font-weight:700; color:#1D4ED8;">🚀 右侧顺势进攻首选</span>' +
-                        '<span style="background:#DCFCE7; color:#15803D; font-size:0.72rem; padding:1px 6px; border-radius:4px; font-weight:700;">置信度 ' + m.confidence + '%</span>' +
-                    '</div>' +
-                    '<div style="font-size:0.96rem; font-weight:700; color:#0F172A; cursor:pointer;" onclick="window.selectPortfolioById(' + m.id + ')">' +
-                        '<span style="color:#1E40AF; text-decoration:underline;">' + m.name + '</span>' +
-                    '</div>' +
-                    '<div style="margin-top:4px; font-size:0.78rem; color:#475569; line-height:1.4;">' +
-                        m.keyDrivers.slice(0, 2).join(' · ') +
-                    '</div>' +
-                '</div>';
-        }
-
-        if (currentRadarData.topContrarianPick) {
-            const c = currentRadarData.topContrarianPick;
-            summaryHtml += 
-                '<div style="flex:1; min-width:280px; background:linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%); border:1px solid #FEF08A; border-radius:8px; padding:10px 14px;">' +
-                    '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">' +
-                        '<span style="font-size:0.86rem; font-weight:700; color:#B45309;">💎 左侧超跌黄金坑首选</span>' +
-                        '<span style="background:#FEF3C7; color:#B45309; font-size:0.72rem; padding:1px 6px; border-radius:4px; font-weight:700;">置信度 ' + c.confidence + '%</span>' +
-                    '</div>' +
-                    '<div style="font-size:0.96rem; font-weight:700; color:#0F172A; cursor:pointer;" onclick="window.selectPortfolioById(' + c.id + ')">' +
-                        '<span style="color:#B45309; text-decoration:underline;">' + c.name + '</span>' +
-                    '</div>' +
-                    '<div style="margin-top:4px; font-size:0.78rem; color:#475569; line-height:1.4;">' +
-                        c.keyDrivers.slice(0, 2).join(' · ') +
-                    '</div>' +
-                '</div>';
-        }
-
-        summaryHtml += '</div>';
-        summaryEl.innerHTML = summaryHtml;
-
+        renderRadarTopPickCards(currentRadarData);
         renderRadarMatrixTable(currentRadarData.ratings);
     } catch (e) {
         console.error('[Radar] Failed to load cross comparison:', e);
-        if (summaryEl) summaryEl.innerHTML = '<span style="color:#94A3B8;">横向评测加载稍后重试</span>';
+        if (summaryEl) summaryEl.innerHTML = '<div style="padding: 24px; text-align: center; color: #EF4444; background: #FEF2F2; border: 1px solid #FCA5A5; border-radius: 8px;">横向评测加载稍后重试</div>';
     }
+}
+
+function renderRadarTopPickCards(data) {
+    const summaryEl = document.getElementById('radarTopPickSummary');
+    const badgeEl = document.getElementById('jevEngineBadge');
+    if (!summaryEl || !data) return;
+
+    if (badgeEl) {
+        badgeEl.textContent = data.engine === 'jev' ? 'Jev AI 双轨决策' : '双轨量化引擎';
+        badgeEl.style.background = data.engine === 'jev' ? '#DBEAFE' : '#E2E8F0';
+        badgeEl.style.color = data.engine === 'jev' ? '#1D4ED8' : '#475569';
+    }
+
+    let summaryHtml = '<div style="display:flex; flex-wrap:wrap; gap:12px; align-items:stretch;">';
+
+    if (data.topMomentumPick) {
+        const m = data.topMomentumPick;
+        summaryHtml += 
+            '<div style="flex:1; min-width:280px; background:linear-gradient(135deg, #EFF6FF 0%, #FFFFFF 100%); border:1px solid #BFDBFE; border-radius:8px; padding:12px 16px;">' +
+                '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">' +
+                    '<span style="font-size:0.86rem; font-weight:700; color:#1D4ED8;">🚀 右侧顺势进攻首选</span>' +
+                    '<span style="background:#DCFCE7; color:#15803D; font-size:0.72rem; padding:2px 7px; border-radius:4px; font-weight:700;">置信度 ' + m.confidence + '%</span>' +
+                '</div>' +
+                '<div style="font-size:1.02rem; font-weight:700; color:#0F172A; cursor:pointer;" onclick="window.selectPortfolioById(' + m.id + ')">' +
+                    '<span style="color:#1E40AF; text-decoration:underline;">' + m.name + '</span>' +
+                '</div>' +
+                '<div style="margin-top:6px; font-size:0.8rem; color:#475569; line-height:1.45;">' +
+                    m.keyDrivers.slice(0, 3).join(' · ') +
+                '</div>' +
+            '</div>';
+    }
+
+    if (data.topContrarianPick) {
+        const c = data.topContrarianPick;
+        summaryHtml += 
+            '<div style="flex:1; min-width:280px; background:linear-gradient(135deg, #FEFCE8 0%, #FFFFFF 100%); border:1px solid #FEF08A; border-radius:8px; padding:12px 16px;">' +
+                '<div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:6px;">' +
+                    '<span style="font-size:0.86rem; font-weight:700; color:#B45309;">💎 左侧超跌黄金坑首选</span>' +
+                    '<span style="background:#FEF3C7; color:#B45309; font-size:0.72rem; padding:2px 7px; border-radius:4px; font-weight:700;">置信度 ' + c.confidence + '%</span>' +
+                '</div>' +
+                '<div style="font-size:1.02rem; font-weight:700; color:#0F172A; cursor:pointer;" onclick="window.selectPortfolioById(' + c.id + ')">' +
+                    '<span style="color:#B45309; text-decoration:underline;">' + c.name + '</span>' +
+                '</div>' +
+                '<div style="margin-top:6px; font-size:0.8rem; color:#475569; line-height:1.45;">' +
+                    c.keyDrivers.slice(0, 3).join(' · ') +
+                '</div>' +
+            '</div>';
+    }
+
+    summaryHtml += '</div>';
+    summaryEl.innerHTML = summaryHtml;
 }
 
 function toggleRadarDetails() {
@@ -2343,24 +2363,37 @@ window.initDashboard = async function () {
         await loadPortfolios();
         renderSidebar();
         
-        // Check if URL contains portfolio ID
-        const pathMatch = window.location.pathname.match(/^\\/portfolio\\/(\\d+)/);
-        if (pathMatch) {
-            const portfolioId = parseInt(pathMatch[1]);
-            const targetGroup = groups.find(g => g.id === portfolioId);
-            if (targetGroup) {
-                await selectGroup(targetGroup, true); // skipPushState since we're loading from URL
+        // Check if URL is /jev
+        if (window.location.pathname === '/jev') {
+            setView('jev');
+            loadCrossPortfolioComparison();
+        } else {
+            // Check if URL contains portfolio ID
+            const pathMatch = window.location.pathname.match(/^\\/portfolio\\/(\\d+)/);
+            if (pathMatch) {
+                const portfolioId = parseInt(pathMatch[1]);
+                const targetGroup = groups.find(g => g.id === portfolioId);
+                if (targetGroup) {
+                    await selectGroup(targetGroup, true); // skipPushState since we're loading from URL
+                } else {
+                    // Portfolio not found, go home
+                    setView('portfolios');
+                }
             } else {
-                // Portfolio not found, go home
+                // Default view: Portfolios
                 setView('portfolios');
             }
-        } else {
-            // Default view: Portfolios
-            setView('portfolios');
         }
         
         // Handle browser back/forward
         window.addEventListener('popstate', async () => {
+            if (window.location.pathname === '/jev') {
+                currentGroup = null;
+                setChatContext('');
+                setView('jev');
+                loadCrossPortfolioComparison();
+                return;
+            }
             const pathMatch = window.location.pathname.match(/^\\/portfolio\\/(\\d+)/);
             if (pathMatch) {
                 const portfolioId = parseInt(pathMatch[1]);
@@ -2386,6 +2419,15 @@ window.initDashboard = async function () {
         if(loading) loading.style.display = 'none';
     }
 };
+
+function goToJev() {
+    currentGroup = null;
+    setChatContext('');
+    history.pushState(null, '', '/jev');
+    setView('jev');
+    loadCrossPortfolioComparison();
+}
+window.goToJev = goToJev;
 
 // Make functions global for HTML access
 window.selectPortfolio = selectPortfolio;

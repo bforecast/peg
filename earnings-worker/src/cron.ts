@@ -477,8 +477,17 @@ export async function scheduled(event: ScheduledEvent, env: Bindings, ctx: Execu
                     `Total: ${totalDuration}ms | Pending: ${remainingPending} remaining`
                 );
                 if (remainingPending === 0 && !hasSignificantErrors) {
-                    completedCutoffTime = cutoffTime;
-                    lastFreshCheckTime = Date.now();
+                    // Only mark completion guard if ALL portfolios are also fresh (avoid locking out remaining portfolio batches)
+                    const { count: remainingStalePfs } = await env.DB.prepare(`
+                        SELECT count(*) as count FROM groups g
+                        LEFT JOIN portfolio_stats ps ON g.id = ps.group_id
+                        WHERE ps.updated_at IS NULL OR ps.updated_at < ?
+                    `).bind(cutoffTime).first() as any;
+
+                    if (remainingStalePfs === 0) {
+                        completedCutoffTime = cutoffTime;
+                        lastFreshCheckTime = Date.now();
+                    }
                 }
             } else {
                 // Idle Run - Log CHECKED only once every 30 mins to reduce noise

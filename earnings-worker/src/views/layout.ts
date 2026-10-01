@@ -23,6 +23,13 @@ export const HTML = `<!DOCTYPE html>
             <span onclick="toggleSidebar()" class="btn-mobile-toggle" style="display:inline-block; font-size:1rem; margin-right:10px; color:#555;">&#9776;</span>
         </h2>
 
+        <div style="padding: 0 10px 10px 10px; border-bottom: 1px solid #E2E8F0; margin-bottom: 8px;">
+            <a href="/jev" onclick="event.preventDefault(); window.goToJev();" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #F8FAFC; border: 1px solid #CBD5E1; border-radius: 6px; color: #1E3A8A; text-decoration: none; font-size: 0.85rem; font-weight: 600; transition: background 0.2s;" onmouseover="this.style.background='#EFF6FF'" onmouseout="this.style.background='#F8FAFC'">
+                <span style="display:flex; align-items:center; gap:6px;"><span>🏆</span><span>Jev 战术雷达</span></span>
+                <span style="background: #DBEAFE; color: #1D4ED8; font-size: 0.7rem; padding: 2px 6px; border-radius: 4px; font-weight: 700;">双轨</span>
+            </a>
+        </div>
+
         <ul id="groupList" class="group-list">
             <!-- Populated by JS -->
         </ul>
@@ -40,7 +47,7 @@ export const HTML = `<!DOCTYPE html>
                 </div>
             </div>
             <div id="headerActions" style="display:flex; align-items:center; gap: 12px;">
-
+                <button onclick="window.goToJev()" style="padding: 6px 13px; border: 1px solid #3B82F6; background: #EFF6FF; color: #1D4ED8; border-radius: 6px; cursor: pointer; font-size: 0.84rem; font-weight: 600; display: inline-flex; align-items: center; gap: 5px; transition: all 0.2s;" onmouseover="this.style.background='#DBEAFE'" onmouseout="this.style.background='#EFF6FF'" title="Jev 投资组合双轨战术雷达">🏆 Jev 战术雷达</button>
 
                 <button onclick="openSettings()" style="padding: 6px 10px; border: 1px solid #DDD; background: white; color: #555; border-radius: 4px; cursor: pointer; font-size: 1.2rem; line-height: 1; transition: all 0.2s;" title="System Settings">&#9881;</button>
             </div>
@@ -51,28 +58,6 @@ export const HTML = `<!DOCTYPE html>
             <div id="view-portfolios" style="display: flex;">
                 <div class="dashboard-container portfolios-scroll-container">
                     
-                    <!-- Weekly Tactical Allocation Radar Banner (Jev Powered) -->
-                    <div id="weeklyTacticalRadar" style="margin-bottom: 16px; background: linear-gradient(135deg, #F8FAFC 0%, #EFF6FF 100%); border: 1px solid #BFDBFE; border-radius: 8px; padding: 12px 16px; box-shadow: 0 1px 3px rgba(0,0,0,0.03);">
-                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <span style="font-size:1.15rem;">🏆</span>
-                                <span style="font-weight:700; color:#1E3A8A; font-size:0.95rem;">下周投资组合增配优选 (Jev 智能横向对比)</span>
-                                <span id="jevEngineBadge" style="background:#DBEAFE; color:#1D4ED8; font-size:0.72rem; padding:2px 7px; border-radius:4px; font-weight:600;">Jev Powered</span>
-                            </div>
-                            <div style="display:flex; align-items:center; gap:8px;">
-                                <button onclick="window.setContextQuestion('请对我当前所有的投资组合进行横向对比，告诉我下一周最值得增配哪个组合，以及各组合的估值性价比与战术配置建议。')" style="background:white; border:1px solid #2563EB; color:#2563EB; border-radius:6px; padding:5px 11px; font-size:0.78rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.2s;" onmouseover="this.style.background='#EFF6FF'" onmouseout="this.style.background='white'">💬 AI 深度问答</button>
-                                <button id="btnToggleRadarDetails" onclick="window.toggleRadarDetails()" style="background:#2563EB; border:none; color:white; border-radius:6px; padding:5px 12px; font-size:0.78rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.2s;">查看对比矩阵 ▼</button>
-                            </div>
-                        </div>
-                        <div id="radarTopPickSummary" style="margin-top:8px; font-size:0.86rem; color:#334155; line-height:1.45;">
-                            <span style="color:#64748B;">正在通过 Jev 智能评估各组合估值与收益风险比...</span>
-                        </div>
-                        <!-- Collapsible Comparison Matrix Details -->
-                        <div id="radarMatrixContainer" style="display:none; margin-top:12px; border-top:1px dashed #CBD5E1; padding-top:10px;">
-                            <div id="radarMatrixTableWrapper" style="overflow-x:auto;"></div>
-                        </div>
-                    </div>
-
                     <table class="portfolio-table" id="portfoliosTable">
                         <thead>
                             <tr>
@@ -93,6 +78,48 @@ export const HTML = `<!DOCTYPE html>
                         <tbody id="portfoliosBody"></tbody>
                     </table>
 
+                </div>
+            </div>
+
+            <!-- Dedicated Jev Tactical Radar View (/jev) -->
+            <div id="view-jev" style="display: none; width: 100%;">
+                <div class="dashboard-container" style="max-width: 1400px; margin: 0 auto; padding: 12px 16px;">
+                    <!-- Jev Header Bar -->
+                    <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:16px; padding-bottom:12px; border-bottom:1px solid #E2E8F0;">
+                        <div style="display:flex; align-items:center; gap:12px;">
+                            <button onclick="goHome()" style="background:#F1F5F9; border:1px solid #CBD5E1; color:#334155; padding:6px 12px; border-radius:6px; font-size:0.82rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.2s;" onmouseover="this.style.background='#E2E8F0'" onmouseout="this.style.background='#F1F5F9'">← 返回组合看板</button>
+                            <div>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <span style="font-size:1.25rem;">🏆</span>
+                                    <h2 style="margin:0; font-size:1.15rem; color:#1E3A8A; font-weight:700;">Jev 投资组合双轨战术雷达</h2>
+                                    <span id="jevEngineBadge" style="background:#DBEAFE; color:#1D4ED8; font-size:0.75rem; padding:2px 8px; border-radius:4px; font-weight:600;">Jev AI 双轨决策</span>
+                                </div>
+                                <div style="font-size:0.82rem; color:#64748B; margin-top:2px;">
+                                    融合 Forward PEG 动态估值、20SMA/50SMA 短期动量、52周新高距离与深度超跌负乖离，双轨评估全场 75 个投资组合的下周配置价值。
+                                </div>
+                            </div>
+                        </div>
+                        <div style="display:flex; align-items:center; gap:10px;">
+                            <button onclick="window.setContextQuestion('请对我当前所有的投资组合进行横向对比，告诉我下一周最值得增配哪个组合，以及各组合的估值性价比与战术配置建议。')" style="background:white; border:1px solid #2563EB; color:#2563EB; border-radius:6px; padding:6px 13px; font-size:0.82rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.2s;" onmouseover="this.style.background='#EFF6FF'" onmouseout="this.style.background='white'">💬 AI 深度问答</button>
+                            <button onclick="window.loadCrossPortfolioComparison(true)" style="background:#2563EB; border:none; color:white; border-radius:6px; padding:6px 13px; font-size:0.82rem; font-weight:600; cursor:pointer; display:inline-flex; align-items:center; gap:4px; transition:all 0.2s;">🔄 刷新评测</button>
+                        </div>
+                    </div>
+
+                    <!-- Dual-Track Top Picks Cards -->
+                    <div id="radarTopPickSummary" style="margin-bottom: 20px;">
+                        <div style="padding: 24px; text-align: center; color: #64748B; background: #F8FAFC; border: 1px solid #E2E8F0; border-radius: 8px;">
+                            正在通过 Jev 智能评估各组合估值与收益风险比...
+                        </div>
+                    </div>
+
+                    <!-- Comparison Matrix Table -->
+                    <div style="background:white; border:1px solid #CBD5E1; border-radius:8px; padding:16px; box-shadow:0 1px 3px rgba(0,0,0,0.02);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                            <h3 style="margin:0; font-size:0.95rem; color:#1E293B; font-weight:700;">全量组合战术对比矩阵</h3>
+                            <span style="font-size:0.78rem; color:#64748B;">点击任意组合名称可直接进入该组合详情</span>
+                        </div>
+                        <div id="radarMatrixTableWrapper" style="overflow-x:auto;"></div>
+                    </div>
                 </div>
             </div>
 
