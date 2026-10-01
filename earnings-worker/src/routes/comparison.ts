@@ -97,7 +97,7 @@ export async function fetchAllPortfoliosSummary(db: any): Promise<PortfolioSumma
                     const growth = ((epsN - epsC) / Math.abs(epsC)) * 100;
                     if (growth > 0 && fpe > 0) {
                         const peg = fpe / growth;
-                        if (Number.isFinite(peg) && peg > 0 && peg < 10) {
+                        if (Number.isFinite(peg) && peg > 0) {
                             weightedPegSum += peg * alloc;
                             validPegWeight += alloc;
                         }
