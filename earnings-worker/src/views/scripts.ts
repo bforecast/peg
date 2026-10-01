@@ -2275,20 +2275,20 @@ function renderRadarMatrixTable(ratings) {
         '<button onclick="window.filterRadarStyle(\\'STRONG\\')" style="padding:3px 9px; font-size:0.75rem; border-radius:4px; border:1px solid #CBD5E1; cursor:pointer; background:' + (radarFilterStyle === 'STRONG' ? '#2563EB; color:white; font-weight:600;' : '#FFFFFF; color:#475569;') + '">🥇 强烈增配</button>' +
     '</div>';
 
-    html += '<table style="width:100%; border-collapse:collapse; font-size:0.78rem; text-align:left; background:white; border-radius:6px; overflow:hidden;">' +
+    html += '<table style="width:100%; border-collapse:collapse; font-size:0.75rem; text-align:left; background:white; border-radius:6px; overflow:hidden;">' +
         '<thead>' +
-            '<tr style="background:#F1F5F9; border-bottom:1px solid #CBD5E1; color:#475569;">' +
-                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1;">组合名称</th>' +
-                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:center;">风格定位</th>' +
-                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:center;">战术建议</th>' +
-                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:center;">战术分</th>' +
-                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right;">Forward PEG</th>' +
-                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right;">20SMA多头率</th>' +
-                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right;">距52W新高</th>' +
-                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right;">CAGR</th>' +
-                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right;">夏普比率</th>' +
-                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right;">最大回撤</th>' +
-                '<th style="padding:8px 10px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1;">研判理由</th>' +
+            '<tr style="background:#F1F5F9; border-bottom:1px solid #CBD5E1; color:#475569; height:28px;">' +
+                '<th style="padding:4px 8px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; white-space:nowrap;">组合名称</th>' +
+                '<th style="padding:4px 8px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:center; white-space:nowrap;">风格定位</th>' +
+                '<th style="padding:4px 8px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:center; white-space:nowrap;">战术建议</th>' +
+                '<th style="padding:4px 8px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:center; white-space:nowrap;">战术分</th>' +
+                '<th style="padding:4px 8px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right; white-space:nowrap;">Forward PEG</th>' +
+                '<th style="padding:4px 8px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right; white-space:nowrap;">20SMA多头率</th>' +
+                '<th style="padding:4px 8px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right; white-space:nowrap;">距52W新高</th>' +
+                '<th style="padding:4px 8px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right; white-space:nowrap;">CAGR</th>' +
+                '<th style="padding:4px 8px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right; white-space:nowrap;">夏普比率</th>' +
+                '<th style="padding:4px 8px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; text-align:right; white-space:nowrap;">最大回撤</th>' +
+                '<th style="padding:4px 8px; font-weight:600; position:sticky; top:0; background:#F1F5F9; z-index:10; border-bottom:1px solid #CBD5E1; white-space:nowrap;">研判理由</th>' +
             '</tr>' +
         '</thead>' +
         '<tbody>';
@@ -2311,38 +2311,38 @@ function renderRadarMatrixTable(ratings) {
             ? (r.metrics.avgDelta52w >= -12 ? '#10B981' : (r.metrics.avgDelta52w <= -25 ? '#B45309' : '#64748B'))
             : '#64748B';
 
-        html += '<tr style="border-bottom:1px solid #F1F5F9; transition:background 0.15s;" onmouseover="this.style.background=\\'#F8FAFC\\'" onmouseout="this.style.background=\\'white\\'">' +
-            '<td style="padding:8px 10px; font-weight:600; cursor:pointer;" onclick="window.selectPortfolioById(' + r.id + ')">' +
+        html += '<tr style="border-bottom:1px solid #F1F5F9; height:26px; line-height:1.15; transition:background 0.15s;" onmouseover="this.style.background=\\'#F8FAFC\\'" onmouseout="this.style.background=\\'white\\'">' +
+            '<td style="padding:3px 8px; font-weight:600; cursor:pointer; max-width:180px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" onclick="window.selectPortfolioById(' + r.id + ')" title="' + r.name + '">' +
                 '<span style="color:#2563EB; text-decoration:underline;">' + r.name + '</span>' +
             '</td>' +
-            '<td style="padding:8px 10px; text-align:center; font-size:0.75rem; font-weight:600;">' +
+            '<td style="padding:3px 8px; text-align:center; font-size:0.72rem; font-weight:600; white-space:nowrap;">' +
                 (r.styleLabel || '⚖️ 均衡') +
             '</td>' +
-            '<td style="padding:8px 10px; text-align:center;">' +
-                '<span style="display:inline-block; padding:2px 8px; border-radius:4px; font-size:0.75rem; font-weight:700; background:' + tagBg + '; color:' + tagColor + ';">' +
+            '<td style="padding:3px 8px; text-align:center; white-space:nowrap;">' +
+                '<span style="display:inline-block; padding:1px 6px; border-radius:3px; font-size:0.7rem; font-weight:700; background:' + tagBg + '; color:' + tagColor + ';">' +
                     r.actionLabel +
                 '</span>' +
             '</td>' +
-            '<td style="padding:8px 10px; text-align:center; font-weight:700; color:#1E3A8A;">' + r.score + '</td>' +
-            '<td style="padding:8px 10px; text-align:right; font-weight:600; color:' + pegColor + '">' +
+            '<td style="padding:3px 8px; text-align:center; font-weight:700; color:#1E3A8A; white-space:nowrap;">' + r.score + '</td>' +
+            '<td style="padding:3px 8px; text-align:right; font-weight:600; color:' + pegColor + '; white-space:nowrap;">' +
                 (r.metrics.avgPeg ? r.metrics.avgPeg.toFixed(2) : '-') +
             '</td>' +
-            '<td style="padding:8px 10px; text-align:right; font-weight:600; color:' + smaColor + '">' +
+            '<td style="padding:3px 8px; text-align:right; font-weight:600; color:' + smaColor + '; white-space:nowrap;">' +
                 (r.metrics.above20Pct !== null && r.metrics.above20Pct !== undefined ? (r.metrics.above20Pct + '%') : '-') +
             '</td>' +
-            '<td style="padding:8px 10px; text-align:right; font-weight:600; color:' + deltaColor + '">' +
+            '<td style="padding:3px 8px; text-align:right; font-weight:600; color:' + deltaColor + '; white-space:nowrap;">' +
                 (r.metrics.avgDelta52w !== null && r.metrics.avgDelta52w !== undefined ? (r.metrics.avgDelta52w.toFixed(1) + '%') : '-') +
             '</td>' +
-            '<td style="padding:8px 10px; text-align:right; font-weight:600; color:' + cagrColor + '">' +
+            '<td style="padding:3px 8px; text-align:right; font-weight:600; color:' + cagrColor + '; white-space:nowrap;">' +
                 (r.metrics.cagr ? ((r.metrics.cagr > 0 ? '+' : '') + r.metrics.cagr.toFixed(1) + '%') : '-') +
             '</td>' +
-            '<td style="padding:8px 10px; text-align:right; font-weight:600; color:#0F172A;">' +
+            '<td style="padding:3px 8px; text-align:right; font-weight:600; color:#0F172A; white-space:nowrap;">' +
                 (r.metrics.sharpe ? r.metrics.sharpe.toFixed(2) : '-') +
             '</td>' +
-            '<td style="padding:8px 10px; text-align:right; font-weight:600; color:#EF4444;">' +
+            '<td style="padding:3px 8px; text-align:right; font-weight:600; color:#EF4444; white-space:nowrap;">' +
                 (r.metrics.maxDrawdown ? (r.metrics.maxDrawdown.toFixed(1) + '%') : '-') +
             '</td>' +
-            '<td style="padding:8px 10px; color:#64748B; font-size:0.75rem; max-width:260px; line-height:1.35;">' +
+            '<td style="padding:3px 8px; color:#64748B; font-size:0.72rem; max-width:280px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="' + r.reason + '">' +
                 r.reason +
             '</td>' +
         '</tr>';
