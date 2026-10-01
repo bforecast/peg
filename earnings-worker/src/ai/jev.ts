@@ -241,8 +241,8 @@ export async function runPortfolioComparisonWithJev(
  */
 function calculateDeterministicComparison(portfolios: PortfolioSummaryForComparison[]): CrossComparisonResult {
     const scoredList: PortfolioTacticalRating[] = portfolios.map(p => {
-        let mScore = 45; // Momentum base score
-        let cScore = 35; // Contrarian base score
+        let mScore = 32; // Momentum base score (calibrated from 45 -> 32)
+        let cScore = 26; // Contrarian base score (calibrated from 35 -> 26)
 
         const above20 = p.above20Pct ?? 50;
         const above50 = p.above50Pct ?? 50;
@@ -251,61 +251,84 @@ function calculateDeterministicComparison(portfolios: PortfolioSummaryForCompari
         const peg = p.avgPeg;
 
         // --- 1. RIGHT-SIDE MOMENTUM SCORING ---
-        // Trend following: rewards stocks above 20SMA & 50SMA, near 52w highs, solid Sharpe & reasonable PEG
-        if (above20 >= 80) mScore += 18;
-        else if (above20 >= 60) mScore += 10;
-        else if (above20 < 40) mScore -= 15;
+        // Trend following: rewards breakout above 20/50SMA, near 52w highs, solid Sharpe & reasonable PEG
+        if (above20 >= 80) mScore += 12;
+        else if (above20 >= 60) mScore += 6;
+        else if (above20 < 40) mScore -= 10;
+        if (above20 < 20) mScore -= 8; // Cumulative breakdown penalty
 
-        if (above50 >= 75) mScore += 14;
-        else if (above50 >= 55) mScore += 7;
-        else if (above50 < 35) mScore -= 12;
+        if (above50 >= 75) mScore += 10;
+        else if (above50 >= 55) mScore += 5;
+        else if (above50 < 35) mScore -= 8;
+        if (above50 < 20) mScore -= 8;
 
-        if (delta52w >= -10) mScore += 14; // Near 52w highs / breakout
-        else if (delta52w >= -18) mScore += 7;
-        else if (delta52w < -30) mScore -= 12; // Far from highs
+        if (delta52w >= -8) mScore += 12; // Near 52w highs / breakout
+        else if (delta52w >= -15) mScore += 6;
+        else if (delta52w < -25) mScore -= 8; // Drifting far from highs
+        if (delta52w < -38) mScore -= 10; // Severe drawdown zone
 
         if (p.sharpe !== null) {
-            if (p.sharpe >= 1.8) mScore += 15;
-            else if (p.sharpe >= 1.2) mScore += 10;
-            else if (p.sharpe < 0.5) mScore -= 10;
+            if (p.sharpe >= 2.0) mScore += 12;
+            else if (p.sharpe >= 1.2) mScore += 6;
+            else if (p.sharpe < 0.4) mScore -= 8;
+            if (p.sharpe < 0) mScore -= 10; // Underperforming risk-free rate
         }
 
         if (peg !== null && peg > 0) {
-            if (peg >= 0.8 && peg <= 1.4) mScore += 15;
-            else if (peg < 0.8 && peg >= 0.5) mScore += 10;
-            else if (peg > 2.2) mScore -= 15;
+            if (peg >= 0.7 && peg <= 1.4) mScore += 12; // Sweet spot
+            else if (peg < 0.7 && peg >= 0.4) mScore += 8;
+            else if (peg > 2.0 && peg <= 2.8) mScore -= 10; // Stretched valuation
+            if (peg > 2.8) mScore -= 15; // Valuation bubble risk
         }
 
         if (p.cagr !== null) {
-            if (p.cagr >= 25) mScore += 10;
-            else if (p.cagr < 0) mScore -= 10;
+            if (p.cagr >= 30) mScore += 8;
+            else if (p.cagr >= 15) mScore += 4;
+            else if (p.cagr < 0) mScore -= 12; // Negative growth
         }
 
-        if (p.maxDrawdown !== null && p.maxDrawdown < -30) mScore -= 10;
+        if (p.maxDrawdown !== null) {
+            if (p.maxDrawdown > -12) mScore += 6; // Low drawdown resilience
+            else if (p.maxDrawdown < -25) mScore -= 6;
+            if (p.maxDrawdown < -38) mScore -= 10;
+        }
 
         // --- 2. LEFT-SIDE CONTRARIAN SCORING ---
         // Deep value dip: rewards deep pullback (-20% to -45%), washed-out 20SMA, but ultra-low PEG & growing EPS
         if (peg !== null && peg > 0) {
-            if (peg < 0.6) cScore += 30; // Extreme undervaluation
-            else if (peg < 0.8) cScore += 20;
-            else if (peg < 1.0) cScore += 10;
-            else if (peg > 1.5) cScore -= 25; // Not cheap -> Cannot be contrarian dip
+            if (peg < 0.6) cScore += 22; // Extreme undervaluation
+            else if (peg < 0.8) cScore += 15;
+            else if (peg < 1.1) cScore += 7;
+            else if (peg > 1.5 && peg <= 2.2) cScore -= 12;
+            if (peg > 2.2) cScore -= 18; // Not cheap -> Cannot be contrarian dip
         } else {
-            cScore -= 10;
+            cScore -= 12;
         }
 
-        if (epsPos >= 70) cScore += 15; // Growth resilient
-        else if (epsPos >= 50) cScore += 8;
+        if (epsPos >= 75) cScore += 12; // Growth resilient
+        else if (epsPos >= 55) cScore += 6;
+        if (epsPos < 40) cScore -= 12; // Decelerating growth trap
 
-        if (delta52w <= -20 && delta52w >= -50) cScore += 25; // Golden dip zone
-        else if (delta52w < -12) cScore += 12;
-        else if (delta52w >= -8) cScore -= 20; // Near highs is NOT a left-side dip
+        if (delta52w <= -20 && delta52w >= -45) cScore += 20; // Golden dip zone
+        else if (delta52w < -12 && delta52w > -20) cScore += 10;
+        else if (delta52w >= -8) cScore -= 18; // Near highs is NOT a left-side dip
+        if (delta52w < -55) cScore -= 15; // Fallen knife risk
 
-        if (above20 <= 35) cScore += 12; // Extreme short-term oversold exhaustion
-        if (above50 <= 40) cScore += 8;
+        if (above20 <= 30) cScore += 10; // Extreme short-term oversold exhaustion
+        else if (above20 <= 45) cScore += 5;
+        if (above20 >= 75) cScore -= 12;
 
-        if (p.sharpe !== null && p.sharpe >= 1.0) cScore += 10; // Quality rebound capacity
-        if (p.cagr !== null && p.cagr >= 15) cScore += 10;
+        if (above50 <= 35) cScore += 6;
+
+        if (p.sharpe !== null) {
+            if (p.sharpe >= 1.2) cScore += 8; // Quality rebound capacity
+            else if (p.sharpe < 0.2) cScore -= 10;
+        }
+
+        if (p.cagr !== null) {
+            if (p.cagr >= 15) cScore += 6;
+            else if (p.cagr < 0) cScore -= 12;
+        }
 
         // Bound scores
         mScore = Math.max(10, Math.min(98, Math.round(mScore)));
@@ -321,7 +344,7 @@ function calculateDeterministicComparison(portfolios: PortfolioSummaryForCompari
         } else if (mScore >= 70 && mScore >= cScore) {
             style = 'RIGHT_SIDE_MOMENTUM';
             styleLabel = '🚀 右侧顺势';
-        } else if (p.maxDrawdown !== null && p.maxDrawdown > -10 && (p.stdDev || 20) < 15) {
+        } else if (p.maxDrawdown !== null && p.maxDrawdown > -12 && (p.stdDev || 20) < 16) {
             style = 'DEFENSIVE';
             styleLabel = '🛡️ 防御底仓';
         } else if (mScore < 45 && cScore < 45) {
@@ -335,13 +358,13 @@ function calculateDeterministicComparison(portfolios: PortfolioSummaryForCompari
         let action: 'STRONG_OVERWEIGHT' | 'OVERWEIGHT' | 'NEUTRAL' | 'UNDERWEIGHT' = 'NEUTRAL';
         let actionLabel = '⚪ 保持中性';
 
-        if (score >= 80) {
+        if (score >= 88) {
             action = 'STRONG_OVERWEIGHT';
             actionLabel = '🥇 强烈增配';
-        } else if (score >= 68) {
+        } else if (score >= 70) {
             action = 'OVERWEIGHT';
             actionLabel = '🟢 适度增配';
-        } else if (score >= 50) {
+        } else if (score >= 45) {
             action = 'NEUTRAL';
             actionLabel = '⚪ 保持中性';
         } else {
